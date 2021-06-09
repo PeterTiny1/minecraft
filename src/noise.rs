@@ -1,19 +1,25 @@
 fn interpolate(a0: f32, a1: f32, w: f32) -> f32 {
-    return (a1 - a0) * w + a0;
+    return if 0.0 > w {
+        a0
+    } else if 1.0 < w {
+        a1
+    } else {
+        (a1 - a0) * (3.0 - w * 2.0) * w * w + a0
+    };
 }
 
 fn random_gradient(ix: i32, iy: i32) -> (f32, f32) {
     let random = 2920.0
         * (ix as f32 * 21942.0 + iy as f32 * 171324.0 + 8912.0).sin()
         * (ix as f32 * 23157.0 * iy as f32 * 217832.0 + 9758.0).cos();
-    return (random.cos(), random.sin());
+    (random.cos(), random.sin())
 }
 
 fn dot_grid_gradient(ix: i32, iy: i32, x: f32, y: f32) -> f32 {
     let gradient = random_gradient(ix, iy);
     let dx = x - ix as f32;
     let dy = y - iy as f32;
-    return dx * gradient.0 + dy * gradient.1;
+    dx * gradient.0 + dy * gradient.1
 }
 
 pub fn perlin(x: f32, y: f32) -> f32 {
