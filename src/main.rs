@@ -423,7 +423,18 @@ impl State {
                 .enumerate()
                 .find(|a| a.1.location == [chunk_location[0] - 1, chunk_location[1]])
                 .map(|a| a.0);
-
+            let east_chunk = self
+                .generated_chunks
+                .iter()
+                .enumerate()
+                .find(|a| a.1.location == [chunk_location[0], chunk_location[1] + 1])
+                .map(|a| a.0);
+            let west_chunk = self
+                .generated_chunks
+                .iter()
+                .enumerate()
+                .find(|a| a.1.location == [chunk_location[0], chunk_location[1] - 1])
+                .map(|a| a.0);
             let new_chunk = chunk::Chunk {
                 location: chunk_location,
                 contents: chunk_contents,
@@ -432,12 +443,8 @@ impl State {
                     chunk_contents,
                     north_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
                     south_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0], chunk_location[1] - 1]),
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0], chunk_location[1] + 1]),
+                    east_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
+                    west_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
                 ),
             };
             if north_chunk.is_some() {
@@ -450,10 +457,10 @@ impl State {
                     Some(&new_chunk),
                     self.generated_chunks
                         .iter()
-                        .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] - 1]),
+                        .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] + 1]),
                     self.generated_chunks
                         .iter()
-                        .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] + 1]),
+                        .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] - 1]),
                 )
             }
             if south_chunk.is_some() {
@@ -466,10 +473,42 @@ impl State {
                         .find(|a| a.location == [chunk_location[0] - 2, chunk_location[1]]),
                     self.generated_chunks
                         .iter()
+                        .find(|a| a.location == [chunk_location[0] - 1, chunk_location[1] + 1]),
+                    self.generated_chunks
+                        .iter()
                         .find(|a| a.location == [chunk_location[0] - 1, chunk_location[1] - 1]),
+                )
+            }
+            if east_chunk.is_some() {
+                self.generated_chunks[east_chunk.unwrap()].mesh = generate_chunk_mesh(
+                    [chunk_location[0], chunk_location[1] + 1],
+                    self.generated_chunks[east_chunk.unwrap()].contents,
+                    self.generated_chunks
+                        .iter()
+                        .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] + 1]),
                     self.generated_chunks
                         .iter()
                         .find(|a| a.location == [chunk_location[0] - 1, chunk_location[1] + 1]),
+                    self.generated_chunks
+                        .iter()
+                        .find(|a| a.location == [chunk_location[0], chunk_location[1] + 2]),
+                    Some(&new_chunk),
+                )
+            }
+            if west_chunk.is_some() {
+                self.generated_chunks[west_chunk.unwrap()].mesh = generate_chunk_mesh(
+                    [chunk_location[0], chunk_location[1] - 1],
+                    self.generated_chunks[west_chunk.unwrap()].contents,
+                    self.generated_chunks
+                        .iter()
+                        .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] - 1]),
+                    self.generated_chunks
+                        .iter()
+                        .find(|a| a.location == [chunk_location[0] - 1, chunk_location[1] - 1]),
+                    Some(&new_chunk),
+                    self.generated_chunks
+                        .iter()
+                        .find(|a| a.location == [chunk_location[0], chunk_location[1] - 2]),
                 )
             }
             self.generated_chunks.push(new_chunk);
@@ -545,7 +584,8 @@ fn generate_chunk_mesh(
             for z in 0..chunk[x][y].len() {
                 if chunk[x][y][z] == 1 {
                     // first face
-                    if (z == chunk[x][y].len() - 1 && west_chunk.is_none())
+                    if (z == chunk[x][y].len() - 1
+                        && (east_chunk.is_none() || east_chunk.unwrap().contents[x][y][0] == 0))
                         || (z != chunk[x][y].len() - 1 && chunk[x][y][z + 1] == 0)
                     {
                         vertices.append(&mut vec![
@@ -600,7 +640,8 @@ fn generate_chunk_mesh(
                         ]);
                     }
                     // second face
-                    if (x == chunk.len() - 1 && north_chunk.is_none())
+                    if (x == chunk.len() - 1
+                        && (north_chunk.is_none() || north_chunk.unwrap().contents[0][y][z] == 0))
                         || (x != chunk.len() - 1 && chunk[x + 1][y][z] == 0)
                     {
                         vertices.append(&mut vec![
@@ -655,7 +696,13 @@ fn generate_chunk_mesh(
                         ]);
                     }
                     // third face
-                    if (z == 0 && east_chunk.is_none()) || (z != 0 && chunk[x][y][z - 1] == 0) {
+                    if (z == 0
+                        && (west_chunk.is_none()
+                            || west_chunk.unwrap().contents[x][y]
+                                [west_chunk.unwrap().contents[x][y].len() - 1]
+                                == 0))
+                        || (z != 0 && chunk[x][y][z - 1] == 0)
+                    {
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [
@@ -708,7 +755,13 @@ fn generate_chunk_mesh(
                         ]);
                     }
                     // fourth face
-                    if (x == 0 && south_chunk.is_none()) || (x != 0 && chunk[x - 1][y][z] == 0) {
+                    if (x == 0
+                        && (south_chunk.is_none()
+                            || south_chunk.unwrap().contents
+                                [south_chunk.unwrap().contents.len() - 1][y][z]
+                                == 0))
+                        || (x != 0 && chunk[x - 1][y][z] == 0)
+                    {
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [
