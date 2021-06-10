@@ -3,7 +3,7 @@ mod chunk;
 mod noise;
 mod texture;
 
-use std::{convert::TryInto, f32::consts::PI, vec};
+use std::{convert::TryInto, f64::consts::PI, vec};
 
 use chunk::Chunk;
 use futures::executor::block_on;
@@ -248,8 +248,8 @@ impl State {
             .map(|x| {
                 (0..16)
                     .map(|z| {
-                        ((noise::perlin(x as f32 / 180.0, z as f32 / 180.0) + PI) * 16.0
-                            + (noise::perlin(x as f32 / 50.0 + 10.0, z as f32 / 50.0 + 10.0) * 5.0))
+                        ((noise::noise(x as f64 / 180.0, z as f64 / 180.0) + PI) * 16.0
+                            + (noise::noise(x as f64 / 50.0 + 10.0, z as f64 / 50.0 + 10.0) * 5.0))
                             as i32
                     })
                     .collect()
@@ -381,14 +381,14 @@ impl State {
                 .map(|x| {
                     (0..16)
                         .map(|z| {
-                            ((noise::perlin(
-                                (x + chunk_location[0] * 16) as f32 / 180.0,
-                                (z + chunk_location[1] * 16) as f32 / 180.0,
+                            ((noise::noise(
+                                (x + chunk_location[0] * 16) as f64 / 180.0,
+                                (z + chunk_location[1] * 16) as f64 / 180.0,
                             ) + PI)
                                 * 16.0
-                                + noise::perlin(
-                                    (x + chunk_location[0] * 16) as f32 / 50.0 + 10.0,
-                                    (z + chunk_location[1] * 16) as f32 / 50.0 + 10.0,
+                                + noise::noise(
+                                    (x + chunk_location[0] * 16) as f64 / 50.0 + 10.0,
+                                    (z + chunk_location[1] * 16) as f64 / 50.0 + 10.0,
                                 ) * 5.0) as i32
                         })
                         .collect::<Vec<i32>>()

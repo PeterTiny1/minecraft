@@ -1,43 +1,167 @@
-fn interpolate(a0: f32, a1: f32, w: f32) -> f32 {
-    return if 0.0 > w {
-        a0
-    } else if 1.0 < w {
-        a1
+#[derive(Debug, Clone, Copy)]
+struct Grad {
+    x: f64,
+    y: f64,
+    z: f64,
+}
+
+impl Grad {}
+
+static GRAD3: [Grad; 12] = [
+    Grad {
+        x: 1.0,
+        y: 1.0,
+        z: 0.0,
+    },
+    Grad {
+        x: -1.0,
+        y: 1.0,
+        z: 0.0,
+    },
+    Grad {
+        x: 1.0,
+        y: -1.0,
+        z: 0.0,
+    },
+    Grad {
+        x: -1.0,
+        y: -1.0,
+        z: 0.0,
+    },
+    Grad {
+        x: 1.0,
+        y: 0.0,
+        z: 1.0,
+    },
+    Grad {
+        x: -1.0,
+        y: 0.0,
+        z: 1.0,
+    },
+    Grad {
+        x: 1.0,
+        y: 0.0,
+        z: -1.0,
+    },
+    Grad {
+        x: -1.0,
+        y: 0.0,
+        z: -1.0,
+    },
+    Grad {
+        x: 0.0,
+        y: 1.0,
+        z: 1.0,
+    },
+    Grad {
+        x: 0.0,
+        y: -1.0,
+        z: 1.0,
+    },
+    Grad {
+        x: 0.0,
+        y: 1.0,
+        z: -1.0,
+    },
+    Grad {
+        x: 0.0,
+        y: -1.0,
+        z: -1.0,
+    },
+];
+
+const P: [i16; 256] = [
+    151, 160, 137, 91, 90, 15, 131, 13, 201, 95, 96, 53, 194, 233, 7, 225, 140, 36, 103, 30, 69,
+    142, 8, 99, 37, 240, 21, 10, 23, 190, 6, 148, 247, 120, 234, 75, 0, 26, 197, 62, 94, 252, 219,
+    203, 117, 35, 11, 32, 57, 177, 33, 88, 237, 149, 56, 87, 174, 20, 125, 136, 171, 168, 68, 175,
+    74, 165, 71, 134, 139, 48, 27, 166, 77, 146, 158, 231, 83, 111, 229, 122, 60, 211, 133, 230,
+    220, 105, 92, 41, 55, 46, 245, 40, 244, 102, 143, 54, 65, 25, 63, 161, 1, 216, 80, 73, 209, 76,
+    132, 187, 208, 89, 18, 169, 200, 196, 135, 130, 116, 188, 159, 86, 164, 100, 109, 198, 173,
+    186, 3, 64, 52, 217, 226, 250, 124, 123, 5, 202, 38, 147, 118, 126, 255, 82, 85, 212, 207, 206,
+    59, 227, 47, 16, 58, 17, 182, 189, 28, 42, 223, 183, 170, 213, 119, 248, 152, 2, 44, 154, 163,
+    70, 221, 153, 101, 155, 167, 43, 172, 9, 129, 22, 39, 253, 19, 98, 108, 110, 79, 113, 224, 232,
+    178, 185, 112, 104, 218, 246, 97, 228, 251, 34, 242, 193, 238, 210, 144, 12, 191, 179, 162,
+    241, 81, 51, 145, 235, 249, 14, 239, 107, 49, 192, 214, 31, 181, 199, 106, 157, 184, 84, 204,
+    176, 115, 121, 50, 45, 127, 4, 150, 254, 138, 236, 205, 93, 222, 114, 67, 29, 24, 72, 243, 141,
+    128, 195, 78, 66, 215, 61, 156, 180,
+];
+
+static PERM: [i16; 512] = {
+    let mut x = 0;
+    let mut a = [0; 512];
+
+    while x < 512 {
+        a[x as usize] = P[x & 255 as usize];
+        x += 1;
+    }
+    a
+};
+static PERM_MOD12: [i16; 512] = {
+    let mut x = 0;
+    let mut a = [0; 512];
+
+    while x < 512 {
+        a[x as usize] = PERM[x as usize] % 12;
+        x += 1;
+    }
+    a
+};
+
+const F2: f64 = -0.1339745962155614;
+const G2: f64 = 0.21132486540518713;
+
+fn dot(g: Grad, x: f64, y: f64) -> f64 {
+    g.x * x + g.y * y
+}
+
+pub fn noise(xin: f64, yin: f64) -> f64 {
+    let (n0, n1, n2);
+    let s = (xin + yin) * F2;
+    let i = (xin + s).floor() as i32;
+    let j = (yin + s).floor() as i32;
+    let t = (i + j) as f64 * G2;
+    let x0 = i as f64 - t;
+    let y0 = j as f64 - t;
+    let x0 = xin - x0;
+    let y0 = yin - y0;
+    let (i1, j1);
+
+    if x0 > y0 {
+        i1 = 1;
+        j1 = 0;
     } else {
-        (a1 - a0) * (3.0 - w * 2.0) * w * w + a0
-    };
-}
-
-fn random_gradient(ix: i32, iy: i32) -> (f32, f32) {
-    let random = 2920.0
-        * (ix as f32 * 21942.0 + iy as f32 * 171324.0 + 8912.0).sin()
-        * (ix as f32 * 23157.0 * iy as f32 * 217832.0 + 9758.0).cos();
-    (random.cos(), random.sin())
-}
-
-fn dot_grid_gradient(ix: i32, iy: i32, x: f32, y: f32) -> f32 {
-    let gradient = random_gradient(ix, iy);
-    let dx = x - ix as f32;
-    let dy = y - iy as f32;
-    dx * gradient.0 + dy * gradient.1
-}
-
-pub fn perlin(x: f32, y: f32) -> f32 {
-    let x0 = x as i32;
-    let x1 = x0 + 1;
-    let y0 = y as i32;
-    let y1 = y0 + 1;
-
-    let sx = x - x0 as f32;
-    let sy = y - y0 as f32;
-    let (mut n0, mut n1, ix0, ix1, value);
-    n0 = dot_grid_gradient(x0, y0, x, y);
-    n1 = dot_grid_gradient(x1, y0, x, y);
-    ix0 = interpolate(n0, n1, sx);
-    n0 = dot_grid_gradient(x0, y1, x, y);
-    n1 = dot_grid_gradient(x1, y1, x, y);
-    ix1 = interpolate(n0, n1, sx);
-
-    value = interpolate(ix0, ix1, sy);
-    value
+        i1 = 0;
+        j1 = 1;
+    }
+    let x1 = x0 - i1 as f64 + G2;
+    let y1 = y0 - j1 as f64 + G2;
+    let x2 = x0 - 1.0 + 2.0 * G2;
+    let y2 = y0 - 1.0 + 2.0 * G2;
+    let ii = i & 255;
+    let jj = j & 255;
+    let gi0 = PERM_MOD12[ii as usize + PERM[jj as usize] as usize];
+    let gi1 = PERM_MOD12[(ii + i1) as usize + PERM[(jj + j1) as usize] as usize];
+    let gi2 = PERM_MOD12[ii as usize + 1 + PERM[(jj + 1) as usize] as usize];
+    let mut t0 = 0.5 - x0 * x0 - y0 * y0;
+    if t0 < 0.0 {
+        n0 = 0.0
+    } else {
+        t0 *= t0;
+        n0 = t0 * t0 * dot(GRAD3[gi0 as usize], 0.0, 0.0);
+    }
+    let mut t1 = 0.5 * x1 * x1 - y1 * y1;
+    if t1 < 0.0 {
+        n1 = 0.0;
+    } else {
+        t1 *= t1;
+        n1 = t1 * t1 * dot(GRAD3[gi1 as usize], x1, y1);
+    }
+    let mut t2 = 0.5 - x2 * x2 - y2 * y2;
+    if t2 < 0.0 {
+        n2 = 0.0
+    } else {
+        t2 *= t2;
+        n2 = t2 * t2 * dot(GRAD3[gi2 as usize], x2, y2)
+    }
+    return 70.0 * (n0 + n1 + n2);
 }
