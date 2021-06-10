@@ -147,9 +147,9 @@ pub fn noise(xin: f64, yin: f64) -> f64 {
         n0 = 0.0
     } else {
         t0 *= t0;
-        n0 = t0 * t0 * dot(GRAD3[gi0 as usize], 0.0, 0.0);
+        n0 = t0 * t0 * dot(GRAD3[gi0 as usize], x0, y0);
     }
-    let mut t1 = 0.5 * x1 * x1 - y1 * y1;
+    let mut t1 = 0.5 - x1 * x1 - y1 * y1;
     if t1 < 0.0 {
         n1 = 0.0;
     } else {
