@@ -354,6 +354,7 @@ impl State {
                 _ => false,
             };
         } else {
+            self.camera_controller.release_all();
             self.mouse_pressed = false;
         }
         false

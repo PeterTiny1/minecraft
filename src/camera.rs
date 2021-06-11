@@ -178,4 +178,13 @@ impl CameraController {
             camera.pitch = Rad(FRAC_PI_2 - (1.0 / 360.0 * PI));
         }
     }
+
+    pub fn release_all(&mut self) {
+        self.amount_backward = 0.0;
+        self.amount_forward = 0.0;
+        self.amount_left = 0.0;
+        self.amount_right = 0.0;
+        self.amount_up = 0.0;
+        self.amount_down = 0.0;
+    }
 }
