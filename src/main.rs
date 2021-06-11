@@ -13,7 +13,7 @@ use wgpu::util::DeviceExt;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    window::{Fullscreen, Window, WindowBuilder},
 };
 
 #[repr(C)]
@@ -346,9 +346,7 @@ impl State {
                     true
                 }
                 DeviceEvent::MouseMotion { delta } => {
-                    if self.mouse_pressed {
-                        self.camera_controller.process_mouse(delta.0, delta.1);
-                    }
+                    self.camera_controller.process_mouse(delta.0, delta.1);
                     true
                 }
                 _ => false,
@@ -935,6 +933,9 @@ fn main() {
         .with_title("My Minecraft Clone")
         .build(&event_loop)
         .unwrap();
+    window.set_cursor_grab(true).expect("Failed to grab");
+    window.set_cursor_visible(false);
+    window.set_fullscreen(Some(Fullscreen::Borderless(None)));
     let mut state = block_on(State::new(&window));
     let mut last_render_time = std::time::Instant::now();
     let mut window_focused = true;
@@ -957,6 +958,17 @@ fn main() {
                         virtual_keycode: Some(VirtualKeyCode::Escape),
                         ..
                     } => *control_flow = ControlFlow::Exit,
+                    KeyboardInput {
+                        state: ElementState::Pressed,
+                        virtual_keycode: Some(VirtualKeyCode::F11),
+                        ..
+                    } => {
+                        if window.fullscreen().is_some() {
+                            window.set_fullscreen(None)
+                        } else {
+                            window.set_fullscreen(Some(Fullscreen::Borderless(None)))
+                        }
+                    }
                     _ => {}
                 },
                 WindowEvent::Resized(physical_size) => {
