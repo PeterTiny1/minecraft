@@ -5,7 +5,7 @@ mod texture;
 
 use std::{convert::TryInto, f64::consts::PI, vec};
 
-use chunk::Chunk;
+use chunk::generate_chunk_mesh;
 use futures::executor::block_on;
 
 // use rand::{thread_rng, Rng};
@@ -32,12 +32,12 @@ impl Vertex {
                 wgpu::VertexAttribute {
                     offset: 0,
                     shader_location: 0,
-                    format: wgpu::VertexFormat::Float3,
+                    format: wgpu::VertexFormat::Float32x3,
                 },
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
-                    format: wgpu::VertexFormat::Float2,
+                    format: wgpu::VertexFormat::Float32x2,
                 },
             ],
         }
@@ -100,7 +100,7 @@ impl State {
             .unwrap();
         let sc_desc = wgpu::SwapChainDescriptor {
             usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
-            format: adapter.get_swap_chain_preferred_format(&surface),
+            format: adapter.get_swap_chain_preferred_format(&surface).unwrap(),
             width: size.width,
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
@@ -207,27 +207,26 @@ impl State {
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &vs_module,
-                entry_point: "main",        // 1.
-                buffers: &[Vertex::desc()], // 2.
+                entry_point: "main",
+                buffers: &[Vertex::desc()],
             },
             fragment: Some(wgpu::FragmentState {
-                // 3.
                 module: &fs_module,
                 entry_point: "main",
                 targets: &[wgpu::ColorTargetState {
-                    // 4.
                     format: sc_desc.format,
-                    alpha_blend: wgpu::BlendState::REPLACE,
-                    color_blend: wgpu::BlendState::REPLACE,
                     write_mask: wgpu::ColorWrite::ALL,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                 }],
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: wgpu::CullMode::Back,
+                cull_mode: Some(wgpu::Face::Back),
                 polygon_mode: wgpu::PolygonMode::Fill,
+                clamp_depth: false,
+                conservative: false,
             },
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: texture::Texture::DEPTH_FORMAT,
@@ -235,7 +234,6 @@ impl State {
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
-                clamp_depth: false,
             }),
             multisample: wgpu::MultisampleState {
                 count: 1,
@@ -536,8 +534,8 @@ impl State {
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
-                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
-                    attachment: &frame.view,
+                color_attachments: &[wgpu::RenderPassColorAttachment {
+                    view: &frame.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -549,8 +547,8 @@ impl State {
                         store: true,
                     },
                 }],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
-                    attachment: &self.depth_texture.view,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: true,
@@ -567,363 +565,6 @@ impl State {
         self.queue.submit(std::iter::once(encoder.finish()));
         Ok(())
     }
-}
-
-fn generate_chunk_mesh(
-    location: [i32; 2],
-    chunk: [[[u16; 16]; 256]; 16],
-    north_chunk: Option<&Chunk>,
-    south_chunk: Option<&Chunk>,
-    east_chunk: Option<&Chunk>,
-    west_chunk: Option<&Chunk>,
-) -> Vec<Vertex> {
-    let mut vertices = vec![];
-    for x in 0..chunk.len() {
-        for y in 0..chunk[x].len() {
-            for z in 0..chunk[x][y].len() {
-                if chunk[x][y][z] == 1 {
-                    // first face
-                    if (z == chunk[x][y].len() - 1
-                        && (east_chunk.is_none() || east_chunk.unwrap().contents[x][y][0] == 0))
-                        || (z != chunk[x][y].len() - 1 && chunk[x][y][z + 1] == 0)
-                    {
-                        vertices.append(&mut vec![
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 0.0],
-                            },
-                        ]);
-                    }
-                    // second face
-                    if (x == chunk.len() - 1
-                        && (north_chunk.is_none() || north_chunk.unwrap().contents[0][y][z] == 0))
-                        || (x != chunk.len() - 1 && chunk[x + 1][y][z] == 0)
-                    {
-                        vertices.append(&mut vec![
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 0.0],
-                            },
-                        ]);
-                    }
-                    // third face
-                    if (z == 0
-                        && (west_chunk.is_none()
-                            || west_chunk.unwrap().contents[x][y]
-                                [west_chunk.unwrap().contents[x][y].len() - 1]
-                                == 0))
-                        || (z != 0 && chunk[x][y][z - 1] == 0)
-                    {
-                        vertices.append(&mut vec![
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 0.0],
-                            },
-                        ]);
-                    }
-                    // fourth face
-                    if (x == 0
-                        && (south_chunk.is_none()
-                            || south_chunk.unwrap().contents
-                                [south_chunk.unwrap().contents.len() - 1][y][z]
-                                == 0))
-                        || (x != 0 && chunk[x - 1][y][z] == 0)
-                    {
-                        vertices.append(&mut vec![
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 0.0],
-                            },
-                        ]);
-                    }
-                    // top face
-                    if y == chunk[x].len() - 1 || chunk[x][y + 1][z] == 0 {
-                        vertices.append(&mut vec![
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 0.0],
-                            },
-                        ]);
-                    }
-                    // bottom face
-                    if y == 0 || chunk[x][y - 1][z] == 0 {
-                        vertices.append(&mut vec![
-                            // start of bottom
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 0.0],
-                            },
-                        ]);
-                    }
-                }
-            }
-        }
-    }
-    vertices
 }
 
 fn main() {
