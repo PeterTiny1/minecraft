@@ -13,7 +13,7 @@ use wgpu::util::DeviceExt;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
-    window::{Fullscreen, Window, WindowBuilder},
+    window::{Fullscreen, Window},
 };
 
 #[repr(C)]
@@ -86,6 +86,59 @@ struct State {
     generated_chunks: Vec<chunk::Chunk>,
 }
 
+fn create_render_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    color_format: wgpu::TextureFormat,
+    depth_format: Option<wgpu::TextureFormat>,
+    vertex_layouts: &[wgpu::VertexBufferLayout],
+    shader: wgpu::ShaderModuleDescriptor,
+) -> wgpu::RenderPipeline {
+    let shader = device.create_shader_module(&shader);
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(&format!("{:?}", shader)),
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: "main",
+            buffers: vertex_layouts,
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: "main",
+            targets: &[wgpu::ColorTargetState {
+                format: color_format,
+                blend: Some(wgpu::BlendState {
+                    alpha: wgpu::BlendComponent::REPLACE,
+                    color: wgpu::BlendComponent::REPLACE,
+                }),
+                write_mask: wgpu::ColorWrite::ALL,
+            }],
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: Some(wgpu::Face::Back),
+            polygon_mode: wgpu::PolygonMode::Fill,
+            clamp_depth: false,
+            conservative: false,
+        },
+        depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
+            format,
+            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::Less,
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: wgpu::MultisampleState {
+            count: 1,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+    })
+}
+
 impl State {
     async fn new(window: &Window) -> Self {
         let size = window.inner_size();
@@ -98,13 +151,6 @@ impl State {
             })
             .await
             .unwrap();
-        let sc_desc = wgpu::SwapChainDescriptor {
-            usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
-            format: adapter.get_swap_chain_preferred_format(&surface).unwrap(),
-            width: size.width,
-            height: size.height,
-            present_mode: wgpu::PresentMode::Fifo,
-        };
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -116,10 +162,14 @@ impl State {
             )
             .await
             .unwrap();
+        let sc_desc = wgpu::SwapChainDescriptor {
+            usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
+            format: adapter.get_swap_chain_preferred_format(&surface).unwrap(),
+            width: size.width,
+            height: size.height,
+            present_mode: wgpu::PresentMode::Fifo,
+        };
         let swap_chain = device.create_swap_chain(&surface, &sc_desc);
-        let diffuse_bytes = include_bytes!("atlas.png");
-        let diffuse_texture =
-            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "atlas.png").unwrap();
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -129,7 +179,7 @@ impl State {
                         ty: wgpu::BindingType::Texture {
                             multisampled: false,
                             view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         },
                         count: None,
                     },
@@ -145,6 +195,9 @@ impl State {
                 ],
                 label: Some("texture_bind_group_layout"),
             });
+        let diffuse_bytes = include_bytes!("atlas.png");
+        let diffuse_texture =
+            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "atlas.png").unwrap();
         let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &texture_bind_group_layout,
             entries: &[
@@ -159,11 +212,9 @@ impl State {
             ],
             label: Some("diffuse_bind_group"),
         });
-        let vs_module = device.create_shader_module(&wgpu::include_spirv!("shader.vert.spv"));
-        let fs_module = device.create_shader_module(&wgpu::include_spirv!("shader.frag.spv"));
         let camera = camera::Camera::new((0.0, 51.5, 8.0), cgmath::Deg(-45.0), cgmath::Deg(-20.0));
         let projection =
-            camera::Projection::new(sc_desc.width, sc_desc.height, cgmath::Deg(90.0), 0.1, 500.0);
+            camera::Projection::new(sc_desc.width, sc_desc.height, cgmath::Deg(90.0), 0.1, 256.0);
         let camera_controller = camera::CameraController::new(8.0, 0.2);
         let mut uniforms = Uniforms::new();
         uniforms.update_view_proj(&camera, &projection);
@@ -202,45 +253,21 @@ impl State {
                 bind_group_layouts: &[&texture_bind_group_layout, &uniform_bind_group_layout],
                 push_constant_ranges: &[],
             });
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &vs_module,
-                entry_point: "main",
-                buffers: &[Vertex::desc()],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &fs_module,
-                entry_point: "main",
-                targets: &[wgpu::ColorTargetState {
-                    format: sc_desc.format,
-                    write_mask: wgpu::ColorWrite::ALL,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                }],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                clamp_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: texture::Texture::DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-        });
+        let render_pipeline = {
+            let shader = wgpu::ShaderModuleDescriptor {
+                label: Some("Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+                flags: wgpu::ShaderFlags::all(),
+            };
+            create_render_pipeline(
+                &device,
+                &render_pipeline_layout,
+                sc_desc.format,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[Vertex::desc()],
+                shader,
+            )
+        };
         let mut vertices = vec![];
         let heightmap: Vec<Vec<i32>> = (0..16)
             .map(|x| {
@@ -570,7 +597,7 @@ impl State {
 fn main() {
     env_logger::init();
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new()
+    let window = winit::window::WindowBuilder::new()
         .with_title("My Minecraft Clone")
         .build(&event_loop)
         .unwrap();
