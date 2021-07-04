@@ -8,6 +8,7 @@ use std::{convert::TryInto, f64::consts::PI, vec};
 use chunk::generate_chunk_mesh;
 use futures::executor::block_on;
 
+use vek::Mat4;
 // use rand::{thread_rng, Rng};
 use wgpu::util::DeviceExt;
 use winit::{
@@ -52,14 +53,13 @@ struct Uniforms {
 
 impl Uniforms {
     fn new() -> Self {
-        use cgmath::SquareMatrix;
         Self {
-            view_proj: cgmath::Matrix4::identity().into(),
+            view_proj: Mat4::<f32>::identity().into_col_arrays(),
         }
     }
 
     fn update_view_proj(&mut self, camera: &camera::Camera, projection: &camera::Projection) {
-        self.view_proj = (projection.calc_matrix() * camera.calc_matrix()).into();
+        self.view_proj = (projection.calc_matrix() * camera.calc_matrix()).into_col_arrays();
     }
 }
 
@@ -81,6 +81,7 @@ struct State {
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     mouse_pressed: bool,
+    right_pressed: bool,
     depth_texture: texture::Texture,
     vertices: Vec<Vertex>,
     generated_chunks: Vec<chunk::Chunk>,
@@ -212,9 +213,18 @@ impl State {
             ],
             label: Some("diffuse_bind_group"),
         });
-        let camera = camera::Camera::new((0.0, 51.5, 8.0), cgmath::Deg(-45.0), cgmath::Deg(-20.0));
-        let projection =
-            camera::Projection::new(sc_desc.width, sc_desc.height, cgmath::Deg(90.0), 0.1, 256.0);
+        let camera = camera::Camera::new(
+            (0.0, 51.5, 8.0),
+            -45.0_f32.to_radians(),
+            -20.0_f32.to_radians(),
+        );
+        let projection = camera::Projection::new(
+            sc_desc.width,
+            sc_desc.height,
+            90.0_f32.to_radians(),
+            0.1,
+            256.0,
+        );
         let camera_controller = camera::CameraController::new(8.0, 0.2);
         let mut uniforms = Uniforms::new();
         uniforms.update_view_proj(&camera, &projection);
@@ -324,6 +334,7 @@ impl State {
             num_vertices,
             diffuse_bind_group,
             mouse_pressed: false,
+            right_pressed: false,
             camera,
             projection,
             camera_controller,
@@ -372,6 +383,10 @@ impl State {
                 }
                 DeviceEvent::MouseMotion { delta } => {
                     self.camera_controller.process_mouse(delta.0, delta.1);
+                    true
+                }
+                DeviceEvent::Button { state, button: 3 } => {
+                    self.right_pressed = *state == ElementState::Pressed;
                     true
                 }
                 _ => false,
