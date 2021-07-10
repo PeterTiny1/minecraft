@@ -9,18 +9,30 @@ use winit::{
 #[derive(Debug)]
 pub struct Camera {
     pub position: Vec3<f32>,
+    pitch: f32,
+    yaw: f32,
     quaternion: Quaternion<f32>,
+}
+
+fn to_quaternion(heading: f32, attitude: f32) -> Quaternion<f32> {
+    let (s1, c1) = (heading / 2.0).sin_cos();
+    let (s2, c2) = (attitude / 2.0).sin_cos();
+    let (s3, c3) = (0.0, 1.0);
+    Quaternion::from_xyzw(
+        s1 * s2 * c3 + c1 * c2 * s3,
+        s1 * c2 * c3 + c1 * s2 * s3,
+        c1 * s2 * c3 - s1 * c2 * s3,
+        c1 * c2 * c3 - s1 * s2 * s3,
+    )
 }
 
 impl Camera {
     pub fn new<V: Into<Vec3<f32>>>(position: V, yaw: f32, pitch: f32) -> Self {
         Self {
             position: position.into(),
-            quaternion: {
-                let mut quaternion = Quaternion::identity().rotated_y(-yaw);
-                quaternion.rotate_3d(pitch, quaternion * Vec3::unit_z());
-                quaternion
-            },
+            pitch,
+            yaw,
+            quaternion: to_quaternion(-yaw, pitch).normalized(),
         }
     }
 
@@ -138,27 +150,32 @@ impl CameraController {
 
     pub fn update_camera(&mut self, camera: &mut Camera, dt: Duration) {
         let dt = dt.as_secs_f32();
-        let scrollward = camera.quaternion * Vec3::unit_x();
-        let forward = Vec3::new(scrollward.x, 0.0, scrollward.z);
-        let right = Quaternion::rotation_y(-FRAC_PI_2) * forward;
+        let (yaw_sin, yaw_cos) = camera.yaw.sin_cos();
+        let forward = Vec3::new(yaw_cos, 0.0, yaw_sin).normalized();
+        let right = Vec3::new(-yaw_sin, 0.0, yaw_cos).normalized();
         camera.position += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;
         camera.position += right * (self.amount_right - self.amount_left) * self.speed * dt;
 
+        let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
+        let scrollward =
+            Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalized();
         camera.position += scrollward * self.scroll * self.speed * self.sensitivity * dt;
         self.scroll = 0.0;
 
         camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;
 
-        let right = camera.quaternion * Vec3::unit_z();
-        camera
-            .quaternion
-            .rotate_y((-self.rotate_horizontal) * self.sensitivity / 100.0);
-        camera
-            .quaternion
-            .rotate_3d((self.rotate_vertical) * self.sensitivity / 100.0, right);
+        camera.yaw += (self.rotate_horizontal) * self.sensitivity / 100.0;
+        camera.pitch += (self.rotate_vertical) * self.sensitivity / 100.0;
 
         self.rotate_horizontal = 0.0;
         self.rotate_vertical = 0.0;
+
+        if camera.pitch < -FRAC_PI_2 {
+            camera.pitch = -FRAC_PI_2;
+        } else if camera.pitch > (FRAC_PI_2) {
+            camera.pitch = FRAC_PI_2;
+        }
+        camera.quaternion = to_quaternion(-camera.yaw, camera.pitch).normalized();
     }
 
     pub fn release_all(&mut self) {
