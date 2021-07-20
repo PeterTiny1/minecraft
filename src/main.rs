@@ -73,6 +73,7 @@ struct State {
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     num_vertices: u32,
+    num_indices: u32,
     diffuse_bind_group: wgpu::BindGroup,
     camera: camera::Camera,
     projection: camera::Projection,
@@ -83,8 +84,8 @@ struct State {
     mouse_pressed: bool,
     right_pressed: bool,
     depth_texture: texture::Texture,
-    vertices: Vec<Vertex>,
     generated_chunks: Vec<chunk::Chunk>,
+    index_buffer: wgpu::Buffer,
 }
 
 fn create_render_pipeline(
@@ -278,7 +279,6 @@ impl State {
                 shader,
             )
         };
-        let mut vertices = vec![];
         let heightmap: Vec<Vec<i32>> = (0..16)
             .map(|x| {
                 (0..16)
@@ -308,20 +308,31 @@ impl State {
             .collect::<Vec<[[u16; 16]; 256]>>()
             .try_into()
             .unwrap();
+        let (mesh, chunk_indices) = generate_chunk_mesh([0, 0], chunk, None, None, None, None);
         let mut generated_chunks = vec![chunk::Chunk {
             location: [0, 0],
             contents: chunk,
-            mesh: generate_chunk_mesh([0, 0], chunk, None, None, None, None),
+            mesh,
+            indices: chunk_indices,
         }];
+        let mut vertices: Vec<Vertex> = vec![];
+        let mut indices: Vec<u32> = vec![];
         for chunk in &mut generated_chunks {
             vertices.extend(&mut chunk.mesh.iter());
+            indices.extend(&mut chunk.indices.iter());
         }
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsage::VERTEX,
         });
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(&indices),
+            usage: wgpu::BufferUsage::INDEX,
+        });
         let num_vertices = vertices.len() as u32;
+        let num_indices = indices.len() as u32;
         Self {
             surface,
             device,
@@ -342,8 +353,9 @@ impl State {
             uniform_buffer,
             uniform_bind_group,
             depth_texture,
-            vertices,
             generated_chunks,
+            index_buffer,
+            num_indices,
         }
     }
 
@@ -474,20 +486,22 @@ impl State {
                 .enumerate()
                 .find(|a| a.1.location == [chunk_location[0], chunk_location[1] - 1])
                 .map(|a| a.0);
+            let (mesh, index_buffer) = generate_chunk_mesh(
+                chunk_location,
+                chunk_contents,
+                north_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
+                south_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
+                east_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
+                west_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
+            );
             let new_chunk = chunk::Chunk {
                 location: chunk_location,
                 contents: chunk_contents,
-                mesh: generate_chunk_mesh(
-                    chunk_location,
-                    chunk_contents,
-                    north_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
-                    south_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
-                    east_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
-                    west_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
-                ),
+                mesh,
+                indices: index_buffer,
             };
             if north_chunk.is_some() {
-                self.generated_chunks[north_chunk.unwrap()].mesh = generate_chunk_mesh(
+                let (mesh, indices) = generate_chunk_mesh(
                     [chunk_location[0] + 1, chunk_location[1]],
                     self.generated_chunks[north_chunk.unwrap()].contents,
                     self.generated_chunks
@@ -500,10 +514,12 @@ impl State {
                     self.generated_chunks
                         .iter()
                         .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] - 1]),
-                )
+                );
+                self.generated_chunks[north_chunk.unwrap()].mesh = mesh;
+                self.generated_chunks[north_chunk.unwrap()].indices = indices;
             }
             if south_chunk.is_some() {
-                self.generated_chunks[south_chunk.unwrap()].mesh = generate_chunk_mesh(
+                let (mesh, indices) = generate_chunk_mesh(
                     [chunk_location[0] - 1, chunk_location[1]],
                     self.generated_chunks[south_chunk.unwrap()].contents,
                     Some(&new_chunk),
@@ -516,10 +532,12 @@ impl State {
                     self.generated_chunks
                         .iter()
                         .find(|a| a.location == [chunk_location[0] - 1, chunk_location[1] - 1]),
-                )
+                );
+                self.generated_chunks[south_chunk.unwrap()].mesh = mesh;
+                self.generated_chunks[south_chunk.unwrap()].indices = indices;
             }
             if east_chunk.is_some() {
-                self.generated_chunks[east_chunk.unwrap()].mesh = generate_chunk_mesh(
+                let (mesh, indices) = generate_chunk_mesh(
                     [chunk_location[0], chunk_location[1] + 1],
                     self.generated_chunks[east_chunk.unwrap()].contents,
                     self.generated_chunks
@@ -532,10 +550,12 @@ impl State {
                         .iter()
                         .find(|a| a.location == [chunk_location[0], chunk_location[1] + 2]),
                     Some(&new_chunk),
-                )
+                );
+                self.generated_chunks[east_chunk.unwrap()].mesh = mesh;
+                self.generated_chunks[east_chunk.unwrap()].indices = indices;
             }
             if west_chunk.is_some() {
-                self.generated_chunks[west_chunk.unwrap()].mesh = generate_chunk_mesh(
+                let (mesh, indices) = generate_chunk_mesh(
                     [chunk_location[0], chunk_location[1] - 1],
                     self.generated_chunks[west_chunk.unwrap()].contents,
                     self.generated_chunks
@@ -548,21 +568,38 @@ impl State {
                     self.generated_chunks
                         .iter()
                         .find(|a| a.location == [chunk_location[0], chunk_location[1] - 2]),
-                )
+                );
+                self.generated_chunks[west_chunk.unwrap()].mesh = mesh;
+                self.generated_chunks[west_chunk.unwrap()].indices = indices;
             }
             self.generated_chunks.push(new_chunk);
-            self.vertices = vec![];
+            let mut vertices: Vec<Vertex> = vec![];
+            let mut indices: Vec<u32> = vec![];
             for chunk in &mut self.generated_chunks {
-                self.vertices.extend(&mut chunk.mesh.iter());
+                indices.extend(
+                    &mut chunk
+                        .indices
+                        .iter()
+                        .map(|i| *i as u32 + vertices.len() as u32),
+                );
+                vertices.extend(&mut chunk.mesh.iter());
             }
-            self.num_vertices = self.vertices.len() as u32;
+            self.num_vertices = vertices.len() as u32;
+            self.num_indices = indices.len() as u32;
             self.vertex_buffer =
                 self.device
                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some("Vertex Buffer"),
-                        contents: bytemuck::cast_slice(&self.vertices),
+                        contents: bytemuck::cast_slice(&vertices),
                         usage: wgpu::BufferUsage::VERTEX,
                     });
+            self.index_buffer = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Index Buffer"),
+                    contents: bytemuck::cast_slice(&indices),
+                    usage: wgpu::BufferUsage::INDEX,
+                })
         }
     }
 
@@ -602,7 +639,8 @@ impl State {
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.draw(0..self.num_vertices, 0..1);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         Ok(())

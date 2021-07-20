@@ -5,6 +5,7 @@ pub struct Chunk {
     pub location: [i32; 2],
     pub contents: [[[u16; 16]; 256]; 16],
     pub mesh: Vec<Vertex>,
+    pub indices: Vec<u32>,
 }
 
 pub fn generate_chunk_mesh(
@@ -14,8 +15,9 @@ pub fn generate_chunk_mesh(
     south_chunk: Option<&Chunk>,
     east_chunk: Option<&Chunk>,
     west_chunk: Option<&Chunk>,
-) -> Vec<Vertex> {
+) -> (Vec<Vertex>, Vec<u32>) {
     let mut vertices = vec![];
+    let mut indices = vec![];
     for x in 0..chunk.len() {
         for y in 0..chunk[x].len() {
             for z in 0..chunk[x][y].len() {
@@ -25,6 +27,11 @@ pub fn generate_chunk_mesh(
                         && (east_chunk.is_none() || east_chunk.unwrap().contents[x][y][0] == 0))
                         || (z != chunk[x][y].len() - 1 && chunk[x][y][z + 1] == 0)
                     {
+                        indices.extend(
+                            &mut vec![0, 1, 2, 0, 2, 3]
+                                .iter()
+                                .map(|i| *i as u32 + vertices.len() as u32),
+                        );
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [
@@ -41,22 +48,6 @@ pub fn generate_chunk_mesh(
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
                                 tex_coords: [0.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
                             },
                             Vertex {
                                 position: [
@@ -81,6 +72,11 @@ pub fn generate_chunk_mesh(
                         && (north_chunk.is_none() || north_chunk.unwrap().contents[0][y][z] == 0))
                         || (x != chunk.len() - 1 && chunk[x + 1][y][z] == 0)
                     {
+                        indices.extend(
+                            &mut vec![0, 1, 2, 0, 2, 3]
+                                .iter()
+                                .map(|i| *i as u32 + vertices.len() as u32),
+                        );
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [
@@ -97,22 +93,6 @@ pub fn generate_chunk_mesh(
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
                                 tex_coords: [0.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
                             },
                             Vertex {
                                 position: [
@@ -140,6 +120,11 @@ pub fn generate_chunk_mesh(
                                 == 0))
                         || (z != 0 && chunk[x][y][z - 1] == 0)
                     {
+                        indices.extend(
+                            &mut vec![0, 1, 2, 0, 2, 3]
+                                .iter()
+                                .map(|i| *i as u32 + vertices.len() as u32),
+                        );
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [
@@ -156,22 +141,6 @@ pub fn generate_chunk_mesh(
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
                                 tex_coords: [0.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
                             },
                             Vertex {
                                 position: [
@@ -199,6 +168,11 @@ pub fn generate_chunk_mesh(
                                 == 0))
                         || (x != 0 && chunk[x - 1][y][z] == 0)
                     {
+                        indices.extend(
+                            &mut vec![0, 1, 2, 0, 2, 3]
+                                .iter()
+                                .map(|i| *i as u32 + vertices.len() as u32),
+                        );
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [
@@ -215,22 +189,6 @@ pub fn generate_chunk_mesh(
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
                                 tex_coords: [0.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
                             },
                             Vertex {
                                 position: [
@@ -252,6 +210,11 @@ pub fn generate_chunk_mesh(
                     }
                     // top face
                     if y == chunk[x].len() - 1 || chunk[x][y + 1][z] == 0 {
+                        indices.extend(
+                            &mut vec![0, 1, 2, 0, 2, 3]
+                                .iter()
+                                .map(|i| *i as u32 + vertices.len() as u32),
+                        );
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [
@@ -279,22 +242,6 @@ pub fn generate_chunk_mesh(
                             },
                             Vertex {
                                 position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    1.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
                                     1.0 + (x as i32 + (location[0] * 16)) as f32,
                                     1.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
@@ -305,6 +252,11 @@ pub fn generate_chunk_mesh(
                     }
                     // bottom face
                     if y == 0 || chunk[x][y - 1][z] == 0 {
+                        indices.extend(
+                            &mut vec![0, 1, 2, 0, 2, 3]
+                                .iter()
+                                .map(|i| *i as u32 + vertices.len() as u32),
+                        );
                         vertices.append(&mut vec![
                             // start of bottom
                             Vertex {
@@ -333,22 +285,6 @@ pub fn generate_chunk_mesh(
                             },
                             Vertex {
                                 position: [
-                                    1.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    0.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [0.0, 0.0],
-                            },
-                            Vertex {
-                                position: [
-                                    0.0 + (x as i32 + (location[0] * 16)) as f32,
-                                    0.0 + y as f32,
-                                    1.0 + (z as i32 + (location[1] * 16)) as f32,
-                                ],
-                                tex_coords: [1.0, 1.0],
-                            },
-                            Vertex {
-                                position: [
                                     0.0 + (x as i32 + (location[0] * 16)) as f32,
                                     0.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
@@ -361,5 +297,5 @@ pub fn generate_chunk_mesh(
             }
         }
     }
-    vertices
+    (vertices, indices)
 }
