@@ -654,7 +654,10 @@ fn main() {
         .with_title("My Minecraft Clone")
         .build(&event_loop)
         .unwrap();
-    window.set_cursor_grab(true).expect("Failed to grab");
+    match window.set_cursor_grab(true) {
+        Ok(_) => println!("Grabbed mouse cursor"),
+        Err(_) => println!("Failed to grab mouse cursor!"),
+    };
     window.set_cursor_visible(false);
     window.set_fullscreen(Some(Fullscreen::Borderless(None)));
     let mut state = block_on(State::new(&window));
