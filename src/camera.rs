@@ -164,8 +164,8 @@ impl CameraController {
 
         camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;
 
-        camera.yaw += (self.rotate_horizontal) * self.sensitivity / 100.0;
-        camera.pitch += (self.rotate_vertical) * self.sensitivity / 100.0;
+        camera.yaw += (self.rotate_horizontal) * self.sensitivity / 10.0;
+        camera.pitch += (self.rotate_vertical) * self.sensitivity / 10.0;
 
         self.rotate_horizontal = 0.0;
         self.rotate_vertical = 0.0;

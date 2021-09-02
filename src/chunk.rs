@@ -1,11 +1,12 @@
 use crate::Vertex;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Chunk {
     pub location: [i32; 2],
     pub contents: [[[u16; 16]; 256]; 16],
-    pub mesh: Vec<Vertex>,
-    pub indices: Vec<u32>,
+    pub vertex_buffer: wgpu::Buffer,
+    pub index_buffer: wgpu::Buffer,
+    pub num_indicies: u32,
 }
 
 pub fn generate_chunk_mesh(
