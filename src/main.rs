@@ -28,7 +28,7 @@ impl Vertex {
     fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: wgpu::InputStepMode::Vertex,
+            step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &[
                 wgpu::VertexAttribute {
                     offset: 0,
@@ -67,8 +67,7 @@ struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
-    sc_desc: wgpu::SwapChainDescriptor,
-    swap_chain: wgpu::SwapChain,
+    config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
     diffuse_bind_group: wgpu::BindGroup,
@@ -110,7 +109,7 @@ fn create_render_pipeline(
                     alpha: wgpu::BlendComponent::REPLACE,
                     color: wgpu::BlendComponent::REPLACE,
                 }),
-                write_mask: wgpu::ColorWrite::ALL,
+                write_mask: wgpu::ColorWrites::ALL,
             }],
         }),
         primitive: wgpu::PrimitiveState {
@@ -140,12 +139,13 @@ fn create_render_pipeline(
 impl State {
     async fn new(window: &Window) -> Self {
         let size = window.inner_size();
-        let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
+        let instance = wgpu::Instance::new(wgpu::Backends::all());
         let surface = unsafe { instance.create_surface(window) };
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
             })
             .await
             .unwrap();
@@ -160,20 +160,20 @@ impl State {
             )
             .await
             .unwrap();
-        let sc_desc = wgpu::SwapChainDescriptor {
-            usage: wgpu::TextureUsage::RENDER_ATTACHMENT,
-            format: adapter.get_swap_chain_preferred_format(&surface).unwrap(),
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface.get_preferred_format(&adapter).unwrap(),
             width: size.width,
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
         };
-        let swap_chain = device.create_swap_chain(&surface, &sc_desc);
+        surface.configure(&device, &config);
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             multisampled: false,
                             view_dimension: wgpu::TextureViewDimension::D2,
@@ -183,7 +183,7 @@ impl State {
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
-                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler {
                             comparison: false,
                             filtering: true,
@@ -216,8 +216,8 @@ impl State {
             -20.0_f32.to_radians(),
         );
         let projection = camera::Projection::new(
-            sc_desc.width,
-            sc_desc.height,
+            config.width,
+            config.height,
             90.0_f32.to_radians(),
             0.1,
             256.0,
@@ -228,13 +228,13 @@ impl State {
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
             contents: bytemuck::cast_slice(&[uniforms]),
-            usage: wgpu::BufferUsage::UNIFORM | wgpu::BufferUsage::COPY_DST,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
         let uniform_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::FRAGMENT,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -253,7 +253,7 @@ impl State {
             label: Some("uniform_bind_group"),
         });
         let depth_texture =
-            texture::Texture::create_depth_texture(&device, &sc_desc, "depth_texture");
+            texture::Texture::create_depth_texture(&device, &config, "depth_texture");
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
@@ -264,12 +264,11 @@ impl State {
             let shader = wgpu::ShaderModuleDescriptor {
                 label: Some("Shader"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-                flags: wgpu::ShaderFlags::all(),
             };
             create_render_pipeline(
                 &device,
                 &render_pipeline_layout,
-                sc_desc.format,
+                config.format,
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[Vertex::desc()],
                 shader,
@@ -311,12 +310,12 @@ impl State {
             vertex_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Vertex Buffer"),
                 contents: bytemuck::cast_slice(&mesh),
-                usage: wgpu::BufferUsage::VERTEX,
+                usage: wgpu::BufferUsages::VERTEX,
             }),
             index_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Vertex Buffer"),
                 contents: bytemuck::cast_slice(&chunk_indices),
-                usage: wgpu::BufferUsage::INDEX,
+                usage: wgpu::BufferUsages::INDEX,
             }),
             num_indicies: chunk_indices.len() as u32,
         }];
@@ -324,8 +323,7 @@ impl State {
             surface,
             device,
             queue,
-            sc_desc,
-            swap_chain,
+            config,
             size,
             render_pipeline,
             diffuse_bind_group,
@@ -346,14 +344,11 @@ impl State {
         if new_size.height > 0 {
             self.projection.resize(new_size.width, new_size.height);
             self.size = new_size;
-            self.sc_desc.width = new_size.width;
-            self.sc_desc.height = new_size.height;
-            self.swap_chain = self.device.create_swap_chain(&self.surface, &self.sc_desc);
-            self.depth_texture = texture::Texture::create_depth_texture(
-                &self.device,
-                &self.sc_desc,
-                "depth_texture",
-            );
+            self.config.width = new_size.width;
+            self.config.height = new_size.height;
+            self.surface.configure(&self.device, &self.config);
+            self.depth_texture =
+                texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
         }
     }
 
@@ -485,21 +480,21 @@ impl State {
                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some("Vertex Buffer"),
                         contents: bytemuck::cast_slice(&mesh),
-                        usage: wgpu::BufferUsage::VERTEX,
+                        usage: wgpu::BufferUsages::VERTEX,
                     }),
                 index_buffer: self
                     .device
                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some("Index Buffer"),
                         contents: bytemuck::cast_slice(&index_buffer),
-                        usage: wgpu::BufferUsage::INDEX,
+                        usage: wgpu::BufferUsages::INDEX,
                     }),
                 num_indicies: index_buffer.len() as u32,
             };
-            if north_chunk.is_some() {
+            if let Some(chunk) = north_chunk {
                 let (mesh, indices) = generate_chunk_mesh(
                     [chunk_location[0] + 1, chunk_location[1]],
-                    self.generated_chunks[north_chunk.unwrap()].contents,
+                    self.generated_chunks[chunk].contents,
                     self.generated_chunks
                         .iter()
                         .find(|a| a.location == [chunk_location[0] + 2, chunk_location[1]]),
@@ -511,26 +506,26 @@ impl State {
                         .iter()
                         .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] - 1]),
                 );
-                self.generated_chunks[north_chunk.unwrap()].vertex_buffer = self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Vertex Buffer"),
-                        contents: bytemuck::cast_slice(&mesh),
-                        usage: wgpu::BufferUsage::VERTEX,
-                    });
-                self.generated_chunks[north_chunk.unwrap()].index_buffer = self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Index Buffer"),
-                        contents: bytemuck::cast_slice(&indices),
-                        usage: wgpu::BufferUsage::INDEX,
-                    });
-                self.generated_chunks[north_chunk.unwrap()].num_indicies = indices.len() as u32;
+                self.generated_chunks[chunk].vertex_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Vertex Buffer"),
+                            contents: bytemuck::cast_slice(&mesh),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+                self.generated_chunks[chunk].index_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Index Buffer"),
+                            contents: bytemuck::cast_slice(&indices),
+                            usage: wgpu::BufferUsages::INDEX,
+                        });
+                self.generated_chunks[chunk].num_indicies = indices.len() as u32;
             }
-            if south_chunk.is_some() {
+            if let Some(chunk) = south_chunk {
                 let (mesh, indices) = generate_chunk_mesh(
                     [chunk_location[0] - 1, chunk_location[1]],
-                    self.generated_chunks[south_chunk.unwrap()].contents,
+                    self.generated_chunks[chunk].contents,
                     Some(&new_chunk),
                     self.generated_chunks
                         .iter()
@@ -542,26 +537,26 @@ impl State {
                         .iter()
                         .find(|a| a.location == [chunk_location[0] - 1, chunk_location[1] - 1]),
                 );
-                self.generated_chunks[south_chunk.unwrap()].vertex_buffer = self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Vertex Buffer"),
-                        contents: bytemuck::cast_slice(&mesh),
-                        usage: wgpu::BufferUsage::VERTEX,
-                    });
-                self.generated_chunks[south_chunk.unwrap()].index_buffer = self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Index Buffer"),
-                        contents: bytemuck::cast_slice(&indices),
-                        usage: wgpu::BufferUsage::INDEX,
-                    });
-                self.generated_chunks[south_chunk.unwrap()].num_indicies = indices.len() as u32;
+                self.generated_chunks[chunk].vertex_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Vertex Buffer"),
+                            contents: bytemuck::cast_slice(&mesh),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+                self.generated_chunks[chunk].index_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Index Buffer"),
+                            contents: bytemuck::cast_slice(&indices),
+                            usage: wgpu::BufferUsages::INDEX,
+                        });
+                self.generated_chunks[chunk].num_indicies = indices.len() as u32;
             }
-            if east_chunk.is_some() {
+            if let Some(chunk) = east_chunk {
                 let (mesh, indices) = generate_chunk_mesh(
                     [chunk_location[0], chunk_location[1] + 1],
-                    self.generated_chunks[east_chunk.unwrap()].contents,
+                    self.generated_chunks[chunk].contents,
                     self.generated_chunks
                         .iter()
                         .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] + 1]),
@@ -573,26 +568,26 @@ impl State {
                         .find(|a| a.location == [chunk_location[0], chunk_location[1] + 2]),
                     Some(&new_chunk),
                 );
-                self.generated_chunks[east_chunk.unwrap()].vertex_buffer = self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Vertex Buffer"),
-                        contents: bytemuck::cast_slice(&mesh),
-                        usage: wgpu::BufferUsage::VERTEX,
-                    });
-                self.generated_chunks[east_chunk.unwrap()].index_buffer = self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Index Buffer"),
-                        contents: bytemuck::cast_slice(&indices),
-                        usage: wgpu::BufferUsage::INDEX,
-                    });
-                self.generated_chunks[east_chunk.unwrap()].num_indicies = indices.len() as u32;
+                self.generated_chunks[chunk].vertex_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Vertex Buffer"),
+                            contents: bytemuck::cast_slice(&mesh),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+                self.generated_chunks[chunk].index_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Index Buffer"),
+                            contents: bytemuck::cast_slice(&indices),
+                            usage: wgpu::BufferUsages::INDEX,
+                        });
+                self.generated_chunks[chunk].num_indicies = indices.len() as u32;
             }
-            if west_chunk.is_some() {
+            if let Some(chunk) = west_chunk {
                 let (mesh, indices) = generate_chunk_mesh(
                     [chunk_location[0], chunk_location[1] - 1],
-                    self.generated_chunks[west_chunk.unwrap()].contents,
+                    self.generated_chunks[chunk].contents,
                     self.generated_chunks
                         .iter()
                         .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] - 1]),
@@ -604,28 +599,31 @@ impl State {
                         .iter()
                         .find(|a| a.location == [chunk_location[0], chunk_location[1] - 2]),
                 );
-                self.generated_chunks[west_chunk.unwrap()].vertex_buffer = self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Vertex Buffer"),
-                        contents: bytemuck::cast_slice(&mesh),
-                        usage: wgpu::BufferUsage::VERTEX,
-                    });
-                self.generated_chunks[west_chunk.unwrap()].index_buffer = self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Index Buffer"),
-                        contents: bytemuck::cast_slice(&indices),
-                        usage: wgpu::BufferUsage::INDEX,
-                    });
-                self.generated_chunks[west_chunk.unwrap()].num_indicies = indices.len() as u32;
+                self.generated_chunks[chunk].vertex_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Vertex Buffer"),
+                            contents: bytemuck::cast_slice(&mesh),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+                self.generated_chunks[chunk].index_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Index Buffer"),
+                            contents: bytemuck::cast_slice(&indices),
+                            usage: wgpu::BufferUsages::INDEX,
+                        });
+                self.generated_chunks[chunk].num_indicies = indices.len() as u32;
             }
             self.generated_chunks.push(new_chunk);
         }
     }
 
-    fn render(&mut self) -> Result<(), wgpu::SwapChainError> {
-        let frame = self.swap_chain.get_current_frame()?.output;
+    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let output = self.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -635,7 +633,7 @@ impl State {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[wgpu::RenderPassColorAttachment {
-                    view: &frame.view,
+                    view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -667,6 +665,7 @@ impl State {
             }
         }
         self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
         Ok(())
     }
 }
@@ -734,8 +733,8 @@ fn main() {
                 state.update(dt);
                 match state.render() {
                     Ok(_) => {}
-                    Err(wgpu::SwapChainError::Lost) => state.resize(state.size),
-                    Err(wgpu::SwapChainError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+                    Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
+                    Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
                     Err(e) => eprintln!("{:?}", e),
                 }
             }
