@@ -9,6 +9,11 @@ pub struct Chunk {
     pub num_indicies: u32,
 }
 
+const TOP_LEFT: [f32; 2] = [0.0, 0.0];
+const TOP_RIGHT: [f32; 2] = [0.0, 0.5];
+const BOTTOM_LEFT: [f32; 2] = [0.5, 0.0];
+const BOTTOM_RIGHT: [f32; 2] = [0.5, 0.5];
+
 pub fn generate_chunk_mesh(
     location: [i32; 2],
     chunk: [[[u16; 16]; 256]; 16],
@@ -40,7 +45,7 @@ pub fn generate_chunk_mesh(
                                     1.0 + y as f32,
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [0.0, 0.0],
+                                tex_coords: TOP_LEFT,
                             },
                             Vertex {
                                 position: [
@@ -48,7 +53,7 @@ pub fn generate_chunk_mesh(
                                     0.0 + y as f32,
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [0.0, 1.0],
+                                tex_coords: TOP_RIGHT,
                             },
                             Vertex {
                                 position: [
@@ -56,7 +61,7 @@ pub fn generate_chunk_mesh(
                                     0.0 + y as f32,
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [1.0, 1.0],
+                                tex_coords: BOTTOM_RIGHT,
                             },
                             Vertex {
                                 position: [
@@ -64,7 +69,7 @@ pub fn generate_chunk_mesh(
                                     1.0 + y as f32,
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [1.0, 0.0],
+                                tex_coords: BOTTOM_LEFT,
                             },
                         ]);
                     }
@@ -85,7 +90,7 @@ pub fn generate_chunk_mesh(
                                     1.0 + y as f32,
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [0.0, 0.0],
+                                tex_coords: TOP_LEFT,
                             },
                             Vertex {
                                 position: [
@@ -93,7 +98,7 @@ pub fn generate_chunk_mesh(
                                     0.0 + y as f32,
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [0.0, 1.0],
+                                tex_coords: TOP_RIGHT,
                             },
                             Vertex {
                                 position: [
@@ -101,7 +106,7 @@ pub fn generate_chunk_mesh(
                                     0.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [1.0, 1.0],
+                                tex_coords: BOTTOM_RIGHT,
                             },
                             Vertex {
                                 position: [
@@ -109,7 +114,7 @@ pub fn generate_chunk_mesh(
                                     1.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [1.0, 0.0],
+                                tex_coords: BOTTOM_LEFT,
                             },
                         ]);
                     }
@@ -133,7 +138,7 @@ pub fn generate_chunk_mesh(
                                     1.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [0.0, 0.0],
+                                tex_coords: TOP_LEFT,
                             },
                             Vertex {
                                 position: [
@@ -141,7 +146,7 @@ pub fn generate_chunk_mesh(
                                     0.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [0.0, 1.0],
+                                tex_coords: TOP_RIGHT,
                             },
                             Vertex {
                                 position: [
@@ -149,7 +154,7 @@ pub fn generate_chunk_mesh(
                                     0.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [1.0, 1.0],
+                                tex_coords: BOTTOM_RIGHT,
                             },
                             Vertex {
                                 position: [
@@ -157,7 +162,7 @@ pub fn generate_chunk_mesh(
                                     1.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [1.0, 0.0],
+                                tex_coords: BOTTOM_LEFT,
                             },
                         ]);
                     }
@@ -181,7 +186,7 @@ pub fn generate_chunk_mesh(
                                     1.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [0.0, 0.0],
+                                tex_coords: TOP_LEFT,
                             },
                             Vertex {
                                 position: [
@@ -189,7 +194,7 @@ pub fn generate_chunk_mesh(
                                     0.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [0.0, 1.0],
+                                tex_coords: TOP_RIGHT,
                             },
                             Vertex {
                                 position: [
@@ -197,7 +202,7 @@ pub fn generate_chunk_mesh(
                                     0.0 + y as f32,
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [1.0, 1.0],
+                                tex_coords: BOTTOM_RIGHT,
                             },
                             Vertex {
                                 position: [
@@ -205,7 +210,7 @@ pub fn generate_chunk_mesh(
                                     1.0 + y as f32,
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [1.0, 0.0],
+                                tex_coords: BOTTOM_LEFT,
                             },
                         ]);
                     }
@@ -223,7 +228,7 @@ pub fn generate_chunk_mesh(
                                     1.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [0.0, 0.0],
+                                tex_coords: TOP_LEFT,
                             },
                             Vertex {
                                 position: [
@@ -231,7 +236,7 @@ pub fn generate_chunk_mesh(
                                     1.0 + y as f32,
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [0.0, 1.0],
+                                tex_coords: TOP_RIGHT,
                             },
                             Vertex {
                                 position: [
@@ -239,7 +244,7 @@ pub fn generate_chunk_mesh(
                                     1.0 + y as f32,
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [1.0, 1.0],
+                                tex_coords: BOTTOM_RIGHT,
                             },
                             Vertex {
                                 position: [
@@ -247,7 +252,7 @@ pub fn generate_chunk_mesh(
                                     1.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [1.0, 0.0],
+                                tex_coords: BOTTOM_LEFT,
                             },
                         ]);
                     }
@@ -266,7 +271,7 @@ pub fn generate_chunk_mesh(
                                     0.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [0.0, 0.0],
+                                tex_coords: TOP_LEFT,
                             },
                             Vertex {
                                 position: [
@@ -274,7 +279,7 @@ pub fn generate_chunk_mesh(
                                     0.0 + y as f32,
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [0.0, 1.0],
+                                tex_coords: TOP_RIGHT,
                             },
                             Vertex {
                                 position: [
@@ -282,7 +287,7 @@ pub fn generate_chunk_mesh(
                                     0.0 + y as f32,
                                     1.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [1.0, 1.0],
+                                tex_coords: BOTTOM_RIGHT,
                             },
                             Vertex {
                                 position: [
@@ -290,7 +295,7 @@ pub fn generate_chunk_mesh(
                                     0.0 + y as f32,
                                     0.0 + (z as i32 + (location[1] * 16)) as f32,
                                 ],
-                                tex_coords: [1.0, 0.0],
+                                tex_coords: BOTTOM_LEFT,
                             },
                         ]);
                     }
