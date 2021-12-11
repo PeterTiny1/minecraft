@@ -1,9 +1,13 @@
 use crate::Vertex;
 
+const CHUNK_WIDTH: usize = 16;
+const CHUNK_HEIGHT: usize = 256;
+const CHUNK_DEPTH: usize = 16;
+
 #[derive(Debug)]
 pub struct Chunk {
     pub location: [i32; 2],
-    pub contents: [[[u16; 16]; 256]; 16],
+    pub contents: [[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
     pub num_indicies: u32,
@@ -29,9 +33,9 @@ pub fn generate_chunk_mesh(
             for z in 0..chunk[x][y].len() {
                 if chunk[x][y][z] == 1 {
                     // first face
-                    if (z == chunk[x][y].len() - 1
-                        && (east_chunk.is_none() || east_chunk.unwrap().contents[x][y][0] == 0))
-                        || (z != chunk[x][y].len() - 1 && chunk[x][y][z + 1] == 0)
+                    if (z == CHUNK_DEPTH - 1
+                        && east_chunk.map_or(true, |chunk| chunk.contents[x][y][0] == 0))
+                        || (z != CHUNK_DEPTH - 1 && chunk[x][y][z + 1] == 0)
                     {
                         indices.extend(
                             &mut vec![0, 1, 2, 0, 2, 3]
@@ -74,9 +78,9 @@ pub fn generate_chunk_mesh(
                         ]);
                     }
                     // second face
-                    if (x == chunk.len() - 1
-                        && (north_chunk.is_none() || north_chunk.unwrap().contents[0][y][z] == 0))
-                        || (x != chunk.len() - 1 && chunk[x + 1][y][z] == 0)
+                    if (x == CHUNK_WIDTH - 1
+                        && north_chunk.map_or(true, |chunk| chunk.contents[0][y][z] == 0))
+                        || (x != CHUNK_WIDTH - 1 && chunk[x + 1][y][z] == 0)
                     {
                         indices.extend(
                             &mut vec![0, 1, 2, 0, 2, 3]
@@ -120,10 +124,8 @@ pub fn generate_chunk_mesh(
                     }
                     // third face
                     if (z == 0
-                        && (west_chunk.is_none()
-                            || west_chunk.unwrap().contents[x][y]
-                                [west_chunk.unwrap().contents[x][y].len() - 1]
-                                == 0))
+                        && west_chunk
+                            .map_or(true, |chunk| chunk.contents[x][y][CHUNK_DEPTH - 1] == 0_u16))
                         || (z != 0 && chunk[x][y][z - 1] == 0)
                     {
                         indices.extend(
@@ -168,10 +170,8 @@ pub fn generate_chunk_mesh(
                     }
                     // fourth face
                     if (x == 0
-                        && (south_chunk.is_none()
-                            || south_chunk.unwrap().contents
-                                [south_chunk.unwrap().contents.len() - 1][y][z]
-                                == 0))
+                        && south_chunk
+                            .map_or(true, |chunk| chunk.contents.last().unwrap()[y][z] == 0))
                         || (x != 0 && chunk[x - 1][y][z] == 0)
                     {
                         indices.extend(
