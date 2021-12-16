@@ -443,27 +443,19 @@ impl State {
             let north_chunk = self
                 .generated_chunks
                 .iter()
-                .enumerate()
-                .find(|a| a.1.location == [chunk_location[0] + 1, chunk_location[1]])
-                .map(|a| a.0);
+                .position(|a| a.location == [chunk_location[0] + 1, chunk_location[1]]);
             let south_chunk = self
                 .generated_chunks
                 .iter()
-                .enumerate()
-                .find(|a| a.1.location == [chunk_location[0] - 1, chunk_location[1]])
-                .map(|a| a.0);
+                .position(|a| a.location == [chunk_location[0] - 1, chunk_location[1]]);
             let east_chunk = self
                 .generated_chunks
                 .iter()
-                .enumerate()
-                .find(|a| a.1.location == [chunk_location[0], chunk_location[1] + 1])
-                .map(|a| a.0);
+                .position(|a| a.location == [chunk_location[0], chunk_location[1] + 1]);
             let west_chunk = self
                 .generated_chunks
                 .iter()
-                .enumerate()
-                .find(|a| a.1.location == [chunk_location[0], chunk_location[1] - 1])
-                .map(|a| a.0);
+                .position(|a| a.location == [chunk_location[0], chunk_location[1] - 1]);
             let (mesh, index_buffer) = generate_chunk_mesh(
                 chunk_location,
                 chunk_contents,
