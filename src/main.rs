@@ -3,6 +3,11 @@ mod chunk;
 mod noise;
 mod texture;
 
+use sdl2::{
+    event::{Event, WindowEvent},
+    keyboard::Keycode,
+    video::{FullscreenType, Window},
+};
 use std::{convert::TryInto, f64::consts::PI, vec};
 
 use chunk::generate_chunk_mesh;
@@ -11,11 +16,6 @@ use futures::executor::block_on;
 use vek::Mat4;
 // use rand::{thread_rng, Rng};
 use wgpu::util::DeviceExt;
-use winit::{
-    event::*,
-    event_loop::{ControlFlow, EventLoop},
-    window::{Fullscreen, Window},
-};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -68,7 +68,7 @@ struct State {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    size: winit::dpi::PhysicalSize<u32>,
+    size: (u32, u32),
     render_pipeline: wgpu::RenderPipeline,
     diffuse_bind_group: wgpu::BindGroup,
     camera: camera::Camera,
@@ -77,8 +77,8 @@ struct State {
     uniforms: Uniforms,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
-    mouse_pressed: bool,
-    right_pressed: bool,
+    // mouse_pressed: bool,
+    // right_pressed: bool,
     depth_texture: texture::Texture,
     generated_chunks: Vec<chunk::Chunk>,
 }
@@ -138,7 +138,7 @@ fn create_render_pipeline(
 
 impl State {
     async fn new(window: &Window) -> Self {
-        let size = window.inner_size();
+        let size = window.size();
         let instance = wgpu::Instance::new(wgpu::Backends::all());
         let surface = unsafe { instance.create_surface(window) };
         let adapter = instance
@@ -163,8 +163,8 @@ impl State {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface.get_preferred_format(&adapter).unwrap(),
-            width: size.width,
-            height: size.height,
+            width: size.0,
+            height: size.1,
             present_mode: wgpu::PresentMode::Fifo,
         };
         surface.configure(&device, &config);
@@ -327,8 +327,8 @@ impl State {
             size,
             render_pipeline,
             diffuse_bind_group,
-            mouse_pressed: false,
-            right_pressed: false,
+            // mouse_pressed: false,
+            // right_pressed: false,
             camera,
             projection,
             camera_controller,
@@ -340,52 +340,56 @@ impl State {
         }
     }
 
-    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        if new_size.height > 0 {
-            self.projection.resize(new_size.width, new_size.height);
+    fn resize(&mut self, new_size: (u32, u32)) {
+        if new_size.1 > 0 {
+            self.projection.resize(new_size.0, new_size.1);
             self.size = new_size;
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
+            self.config.width = new_size.0;
+            self.config.height = new_size.1;
             self.surface.configure(&self.device, &self.config);
             self.depth_texture =
                 texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
         }
     }
 
-    fn input(&mut self, event: &DeviceEvent, window_focused: bool) -> bool {
+    // fn input(&mut self, event: &DeviceEvent, window_focused: bool) -> bool {
+    //     if window_focused {
+    //         match event {
+    //             DeviceEvent::MouseWheel { delta, .. } => {
+    //                 self.camera_controller.process_scroll(&*delta);
+    //                 true
+    //             }
+    //             DeviceEvent::MouseMotion { delta } => {
+    //                 self.camera_controller.process_mouse(delta.0, delta.1);
+    //                 true
+    //             }
+    //             _ => false,
+    //         };
+    //     } else {
+    //         self.camera_controller.release_all();
+    //         self.mouse_pressed = false;
+    //     }
+    //     false
+    // }
+    fn keydown(&mut self, keycode: Keycode, window_focused: bool) {
         if window_focused {
-            match event {
-                DeviceEvent::Key(KeyboardInput {
-                    virtual_keycode: Some(key),
-                    state,
-                    ..
-                }) => self.camera_controller.process_keyboard(*key, *state),
-                DeviceEvent::MouseWheel { delta, .. } => {
-                    self.camera_controller.process_scroll(&*delta);
-                    true
-                }
-                DeviceEvent::Button {
-                    button: 1, // Left Mouse Button
-                    state,
-                } => {
-                    self.mouse_pressed = *state == ElementState::Pressed;
-                    true
-                }
-                DeviceEvent::MouseMotion { delta } => {
-                    self.camera_controller.process_mouse(delta.0, delta.1);
-                    true
-                }
-                DeviceEvent::Button { state, button: 3 } => {
-                    self.right_pressed = *state == ElementState::Pressed;
-                    true
-                }
-                _ => false,
-            };
-        } else {
-            self.camera_controller.release_all();
-            self.mouse_pressed = false;
+            self.camera_controller.process_keyboard(keycode, true);
         }
-        false
+    }
+
+    fn keyup(&mut self, keycode: Keycode, window_focused: bool) {
+        if window_focused {
+            self.camera_controller.process_keyboard(keycode, false);
+        }
+    }
+
+    fn mouse_motion(&mut self, xrel: i32, yrel: i32) {
+        self.camera_controller
+            .process_mouse(xrel.into(), yrel.into());
+    }
+
+    fn mouse_scroll(&mut self, delta: i32) {
+        self.camera_controller.process_scroll(delta);
     }
 
     fn update(&mut self, dt: std::time::Duration) {
@@ -664,73 +668,83 @@ impl State {
 
 fn main() {
     env_logger::init();
-    let event_loop = EventLoop::new();
-    let window = winit::window::WindowBuilder::new()
-        .with_title("My Minecraft Clone")
-        .build(&event_loop)
+    let sdl_context = sdl2::init().unwrap();
+    let video_subsystem = sdl_context.video().unwrap();
+    let mut window = video_subsystem
+        .window("My Minecraft Clone", 720, 480)
+        .position_centered()
+        .build()
         .unwrap();
-    match window.set_cursor_grab(true) {
-        Ok(_) => println!("Grabbed mouse cursor"),
-        Err(err) => eprintln!("{}", err),
-    };
-    window.set_cursor_visible(false);
-    window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+    let mut event_pump = sdl_context.event_pump().unwrap();
+    window.set_grab(true);
+    sdl_context.mouse().show_cursor(false);
+    sdl_context.mouse().set_relative_mouse_mode(true);
+    window
+        .set_fullscreen(sdl2::video::FullscreenType::Desktop)
+        .expect("Failed to make the window full screen");
     let mut state = block_on(State::new(&window));
     let mut last_render_time = std::time::Instant::now();
     let mut window_focused = true;
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
-        match event {
-            Event::MainEventsCleared => window.request_redraw(),
-            Event::DeviceEvent { ref event, .. } => {
-                state.input(event, window_focused);
-            }
-            Event::WindowEvent {
-                ref event,
-                window_id,
-            } if window_id == window.id() => match event {
-                WindowEvent::Focused(focused) => window_focused = *focused,
-                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                WindowEvent::KeyboardInput { input, .. } => match input {
-                    KeyboardInput {
-                        state: ElementState::Pressed,
-                        virtual_keycode: Some(VirtualKeyCode::Escape),
-                        ..
-                    } => *control_flow = ControlFlow::Exit,
-                    KeyboardInput {
-                        state: ElementState::Pressed,
-                        virtual_keycode: Some(VirtualKeyCode::F11),
-                        ..
-                    } => {
-                        if window.fullscreen().is_some() {
-                            window.set_fullscreen(None)
+    'running: loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::KeyDown { keycode, .. } => {
+                    if let Some(key) = keycode {
+                        if key == Keycode::F11 {
+                            if window.fullscreen_state() == FullscreenType::Desktop {
+                                window
+                                    .set_fullscreen(FullscreenType::Off)
+                                    .expect("Failed to leave fullscreen");
+                            } else {
+                                window
+                                    .set_fullscreen(FullscreenType::Desktop)
+                                    .expect("Failed to make the window fullscreen");
+                            }
+                        } else if key == Keycode::Escape {
+                            break 'running;
                         } else {
-                            window.set_fullscreen(Some(Fullscreen::Borderless(None)))
+                            state.keydown(key, window_focused);
                         }
+                    }
+                }
+                Event::KeyUp { keycode, .. } => {
+                    if let Some(key) = keycode {
+                        state.keyup(key, window_focused);
+                    }
+                }
+                Event::MouseMotion {
+                    xrel,
+                    yrel,
+                    window_id,
+                    ..
+                } if window_id == window.id() => state.mouse_motion(xrel, yrel),
+                Event::MouseWheel { y, .. } => state.mouse_scroll(y),
+                Event::Window {
+                    ref win_event,
+                    window_id,
+                    ..
+                } if window_id == window.id() => match win_event {
+                    WindowEvent::Close => break 'running,
+                    WindowEvent::FocusGained => window_focused = true,
+                    WindowEvent::FocusLost => window_focused = false,
+                    WindowEvent::Resized(width, height) => {
+                        state.resize((*width as u32, *height as u32))
                     }
                     _ => {}
                 },
-                WindowEvent::Resized(physical_size) => {
-                    state.resize(*physical_size);
-                }
-                WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                    state.resize(**new_inner_size)
-                }
+                Event::Quit { .. } => break 'running,
                 _ => {}
-            },
-            Event::RedrawRequested(_) => {
-                let now = std::time::Instant::now();
-                let dt = now - last_render_time;
-                last_render_time = now;
-                state.update(dt);
-                match state.render() {
-                    Ok(_) => {}
-                    Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
-                    Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
-                    Err(e) => eprintln!("{:?}", e),
-                }
             }
-            _ => {}
         }
-    });
+        let now = std::time::Instant::now();
+        let dt = now - last_render_time;
+        last_render_time = now;
+        state.update(dt);
+        match state.render() {
+            Ok(_) => {}
+            Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
+            Err(wgpu::SurfaceError::OutOfMemory) => break 'running,
+            Err(e) => eprintln!("{:?}", e),
+        }
+    }
 }

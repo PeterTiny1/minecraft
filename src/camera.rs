@@ -1,10 +1,7 @@
 use std::{f32::consts::FRAC_PI_2, time::Duration};
 
+use sdl2::keyboard::Keycode;
 use vek::{Mat4, Quaternion, Vec3};
-use winit::{
-    dpi::PhysicalPosition,
-    event::{ElementState, MouseScrollDelta, VirtualKeyCode},
-};
 
 #[derive(Debug)]
 pub struct Camera {
@@ -101,34 +98,30 @@ impl CameraController {
         }
     }
 
-    pub fn process_keyboard(&mut self, key: VirtualKeyCode, state: ElementState) -> bool {
-        let amount = if state == ElementState::Pressed {
-            1.0
-        } else {
-            0.0
-        };
+    pub fn process_keyboard(&mut self, key: Keycode, pressed: bool) -> bool {
+        let amount = if pressed { 1.0 } else { 0.0 };
         match key {
-            VirtualKeyCode::W | VirtualKeyCode::Up => {
+            Keycode::W | Keycode::Up => {
                 self.amount_forward = amount;
                 true
             }
-            VirtualKeyCode::S | VirtualKeyCode::Down => {
+            Keycode::S | Keycode::Down => {
                 self.amount_backward = amount;
                 true
             }
-            VirtualKeyCode::A | VirtualKeyCode::Left => {
+            Keycode::A | Keycode::Left => {
                 self.amount_left = amount;
                 true
             }
-            VirtualKeyCode::D | VirtualKeyCode::Right => {
+            Keycode::D | Keycode::Right => {
                 self.amount_right = amount;
                 true
             }
-            VirtualKeyCode::Space => {
+            Keycode::Space => {
                 self.amount_up = amount;
                 true
             }
-            VirtualKeyCode::LShift => {
+            Keycode::LShift => {
                 self.amount_down = amount;
                 true
             }
@@ -141,11 +134,8 @@ impl CameraController {
         self.rotate_vertical = -mouse_dy as f32;
     }
 
-    pub fn process_scroll(&mut self, delta: &MouseScrollDelta) {
-        self.scroll = match delta {
-            MouseScrollDelta::LineDelta(_, scroll) => scroll * 100.0,
-            MouseScrollDelta::PixelDelta(PhysicalPosition { y: scroll, .. }) => *scroll as f32,
-        };
+    pub fn process_scroll(&mut self, delta: i32) {
+        self.scroll = (delta * 200) as f32;
     }
 
     pub fn update_camera(&mut self, camera: &mut Camera, dt: Duration) {
@@ -176,14 +166,5 @@ impl CameraController {
             camera.pitch = FRAC_PI_2;
         }
         camera.quaternion = to_quaternion(-camera.yaw, camera.pitch).normalized();
-    }
-
-    pub fn release_all(&mut self) {
-        self.amount_backward = 0.0;
-        self.amount_forward = 0.0;
-        self.amount_left = 0.0;
-        self.amount_right = 0.0;
-        self.amount_up = 0.0;
-        self.amount_down = 0.0;
     }
 }
