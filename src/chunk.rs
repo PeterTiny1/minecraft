@@ -20,7 +20,7 @@ const BOTTOM_RIGHT: [f32; 2] = [0.5, 0.5];
 
 pub fn generate_chunk_mesh(
     location: [i32; 2],
-    chunk: [[[u16; 16]; 256]; 16],
+    chunk: [[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
     north_chunk: Option<&Chunk>,
     south_chunk: Option<&Chunk>,
     east_chunk: Option<&Chunk>,
@@ -28,10 +28,10 @@ pub fn generate_chunk_mesh(
 ) -> (Vec<Vertex>, Vec<u32>) {
     let mut vertices = vec![];
     let mut indices = vec![];
-    for x in 0..chunk.len() {
-        for y in 0..chunk[x].len() {
-            for z in 0..chunk[x][y].len() {
-                if chunk[x][y][z] == 1 {
+    for x in 0..CHUNK_WIDTH {
+        for y in 0..CHUNK_HEIGHT {
+            for z in 0..CHUNK_DEPTH {
+                if chunk[x][y][z] != 0 {
                     // first face
                     if (z == CHUNK_DEPTH - 1
                         && east_chunk.map_or(true, |chunk| chunk.contents[x][y][0] == 0))
