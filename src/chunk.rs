@@ -38,7 +38,7 @@ pub fn generate_chunk_mesh(
                         || (z != CHUNK_DEPTH - 1 && chunk[x][y][z + 1] == 0)
                     {
                         indices.extend(
-                            &mut vec![0, 1, 2, 0, 2, 3]
+                            vec![0, 1, 2, 0, 2, 3]
                                 .iter()
                                 .map(|i| *i as u32 + vertices.len() as u32),
                         );
@@ -83,7 +83,7 @@ pub fn generate_chunk_mesh(
                         || (x != CHUNK_WIDTH - 1 && chunk[x + 1][y][z] == 0)
                     {
                         indices.extend(
-                            &mut vec![0, 1, 2, 0, 2, 3]
+                            vec![0, 1, 2, 0, 2, 3]
                                 .iter()
                                 .map(|i| *i as u32 + vertices.len() as u32),
                         );
@@ -125,11 +125,11 @@ pub fn generate_chunk_mesh(
                     // third face
                     if (z == 0
                         && west_chunk
-                            .map_or(true, |chunk| chunk.contents[x][y][CHUNK_DEPTH - 1] == 0_u16))
+                            .map_or(true, |chunk| chunk.contents[x][y].last().unwrap() == &0_u16))
                         || (z != 0 && chunk[x][y][z - 1] == 0)
                     {
                         indices.extend(
-                            &mut vec![0, 1, 2, 0, 2, 3]
+                            vec![0, 1, 2, 0, 2, 3]
                                 .iter()
                                 .map(|i| *i as u32 + vertices.len() as u32),
                         );
