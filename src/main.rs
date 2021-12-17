@@ -352,25 +352,6 @@ impl State {
         }
     }
 
-    // fn input(&mut self, event: &DeviceEvent, window_focused: bool) -> bool {
-    //     if window_focused {
-    //         match event {
-    //             DeviceEvent::MouseWheel { delta, .. } => {
-    //                 self.camera_controller.process_scroll(&*delta);
-    //                 true
-    //             }
-    //             DeviceEvent::MouseMotion { delta } => {
-    //                 self.camera_controller.process_mouse(delta.0, delta.1);
-    //                 true
-    //             }
-    //             _ => false,
-    //         };
-    //     } else {
-    //         self.camera_controller.release_all();
-    //         self.mouse_pressed = false;
-    //     }
-    //     false
-    // }
     fn keydown(&mut self, keycode: Keycode, window_focused: bool) {
         if window_focused {
             self.camera_controller.process_keyboard(keycode, true);
