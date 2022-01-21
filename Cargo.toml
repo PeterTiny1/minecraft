@@ -8,7 +8,6 @@ edition = "2021"
 
 [dependencies]
 image = "0.23"
-# winit = "*"
 env_logger = "0.7"
 log = "0.4"
 wgpu = "0.11"
@@ -16,6 +15,7 @@ futures = "0.3"
 bytemuck = { version = "1.4", features = [ "derive" ] }
 anyhow = "1.0"
 vek = "0.15.0"
+noise = "0.7.0"
 
 [dependencies.sdl2]
 version = "*"

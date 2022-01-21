@@ -1,6 +1,5 @@
 mod camera;
 mod chunk;
-mod noise;
 mod texture;
 
 use sdl2::{
@@ -16,6 +15,8 @@ use futures::executor::block_on;
 use vek::Mat4;
 // use rand::{thread_rng, Rng};
 use wgpu::util::DeviceExt;
+
+use noise::{NoiseFn, OpenSimplex};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -63,6 +64,9 @@ impl Uniforms {
     }
 }
 
+const LARGE_SCALE: f64 = 50.0;
+const SMALL_SCALE: f64 = 20.0;
+
 struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -81,6 +85,7 @@ struct State {
     // right_pressed: bool,
     depth_texture: texture::Texture,
     generated_chunks: Vec<chunk::Chunk>,
+    noise: OpenSimplex,
 }
 
 fn create_render_pipeline(
@@ -274,13 +279,16 @@ impl State {
                 shader,
             )
         };
+        let noise = OpenSimplex::new();
         let heightmap: Vec<Vec<i32>> = (0..16)
             .map(|x| {
                 (0..16)
-                    .map(|z| {
-                        ((noise::noise(x as f64 / 180.0, z as f64 / 180.0) + PI) * 16.0
-                            + (noise::noise(x as f64 / 50.0 + 10.0, z as f64 / 50.0 + 10.0) * 5.0))
-                            as i32
+                    .map(|y| {
+                        ((noise.get([x as f64 / LARGE_SCALE, y as f64 / LARGE_SCALE]) + PI) * 16.0
+                            + (noise.get([
+                                x as f64 / SMALL_SCALE + 10.0,
+                                y as f64 / SMALL_SCALE + 10.0,
+                            ]) * 5.0)) as i32
                     })
                     .collect()
             })
@@ -337,6 +345,7 @@ impl State {
             uniform_bind_group,
             depth_texture,
             generated_chunks,
+            noise,
         }
     }
 
@@ -395,15 +404,9 @@ impl State {
                 .map(|x| {
                     (0..16)
                         .map(|z| {
-                            ((noise::noise(
-                                (x + chunk_location[0] * 16) as f64 / 180.0,
-                                (z + chunk_location[1] * 16) as f64 / 180.0,
-                            ) + PI)
-                                * 16.0
-                                + noise::noise(
-                                    (x + chunk_location[0] * 16) as f64 / 50.0 + 10.0,
-                                    (z + chunk_location[1] * 16) as f64 / 50.0 + 10.0,
-                                ) * 5.0) as i32
+                            (((self.noise_at(x, z, chunk_location, LARGE_SCALE, 0.0) + PI) * 16.0)
+                                + (self.noise_at(x, z, chunk_location, SMALL_SCALE, 10.0) * 5.0))
+                                as i32
                         })
                         .collect::<Vec<i32>>()
                 })
@@ -594,6 +597,20 @@ impl State {
             }
             self.generated_chunks.push(new_chunk);
         }
+    }
+
+    fn noise_at(
+        &mut self,
+        x: i32,
+        z: i32,
+        chunk_location: [i32; 2],
+        scale: f64,
+        offset: f64,
+    ) -> f64 {
+        self.noise.get([
+            (x + (chunk_location[0] * 16)) as f64 / scale + offset,
+            (z + (chunk_location[1] * 16)) as f64 / scale + offset,
+        ])
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
