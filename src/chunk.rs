@@ -32,6 +32,8 @@ pub fn generate_chunk_mesh(
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH {
                 if chunk[x][y][z] != 0 {
+                    let rel_x = (x as i32 + (location[0] * 16)) as f32;
+                    let rel_z = (z as i32 + (location[1] * 16)) as f32;
                     // first face
                     if (z == CHUNK_DEPTH - 1
                         && east_chunk.map_or(true, |chunk| chunk.contents[x][y][0] == 0))
@@ -42,8 +44,6 @@ pub fn generate_chunk_mesh(
                                 .iter()
                                 .map(|i| *i as u32 + vertices.len() as u32),
                         );
-                        let rel_x = (x as i32 + (location[0] * 16)) as f32;
-                        let rel_z = (z as i32 + (location[1] * 16)) as f32;
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [0.0 + rel_x, 1.0 + y as f32, 1.0 + rel_z],
@@ -73,8 +73,6 @@ pub fn generate_chunk_mesh(
                                 .iter()
                                 .map(|i| *i as u32 + vertices.len() as u32),
                         );
-                        let rel_x = (x as i32 + (location[0] * 16)) as f32;
-                        let rel_z = (z as i32 + (location[1] * 16)) as f32;
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [1.0 + rel_x, 1.0 + y as f32, 1.0 + rel_z],
@@ -105,8 +103,6 @@ pub fn generate_chunk_mesh(
                                 .iter()
                                 .map(|i| *i as u32 + vertices.len() as u32),
                         );
-                        let rel_x = (x as i32 + (location[0] * 16)) as f32;
-                        let rel_z = (z as i32 + (location[1] * 16)) as f32;
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [1.0 + rel_x, 1.0 + y as f32, 0.0 + rel_z],
@@ -137,8 +133,6 @@ pub fn generate_chunk_mesh(
                                 .iter()
                                 .map(|i| *i as u32 + vertices.len() as u32),
                         );
-                        let rel_x = (x as i32 + (location[0] * 16)) as f32;
-                        let rel_z = (z as i32 + (location[1] * 16)) as f32;
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [0.0 + rel_x, 1.0 + y as f32, 0.0 + rel_z],
@@ -165,8 +159,6 @@ pub fn generate_chunk_mesh(
                                 .iter()
                                 .map(|i| *i as u32 + vertices.len() as u32),
                         );
-                        let rel_x = (x as i32 + (location[0] * 16)) as f32;
-                        let rel_z = (z as i32 + (location[1] * 16)) as f32;
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [0.0 + rel_x, 1.0 + y as f32, 0.0 + rel_z],
@@ -193,8 +185,6 @@ pub fn generate_chunk_mesh(
                                 .iter()
                                 .map(|i| *i as u32 + vertices.len() as u32),
                         );
-                        let rel_x = (x as i32 + (location[0] * 16)) as f32;
-                        let rel_z = (z as i32 + (location[1] * 16)) as f32;
                         vertices.append(&mut vec![
                             // start of bottom
                             Vertex {

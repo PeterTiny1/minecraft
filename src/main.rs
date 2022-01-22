@@ -426,29 +426,29 @@ impl State {
                 .collect::<Vec<[[u16; 16]; 256]>>()
                 .try_into()
                 .unwrap();
-            let north_chunk = self
-                .generated_chunks
-                .iter()
-                .position(|a| a.location == [chunk_location[0] + 1, chunk_location[1]]);
-            let south_chunk = self
-                .generated_chunks
-                .iter()
-                .position(|a| a.location == [chunk_location[0] - 1, chunk_location[1]]);
-            let east_chunk = self
-                .generated_chunks
-                .iter()
-                .position(|a| a.location == [chunk_location[0], chunk_location[1] + 1]);
-            let west_chunk = self
-                .generated_chunks
-                .iter()
-                .position(|a| a.location == [chunk_location[0], chunk_location[1] - 1]);
+            let [x, y] = chunk_location;
+            let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+            let neighbouring_chunks = [
+                self.generated_chunks
+                    .iter()
+                    .position(|a| a.location == chunk_locations[0]),
+                self.generated_chunks
+                    .iter()
+                    .position(|a| a.location == chunk_locations[1]),
+                self.generated_chunks
+                    .iter()
+                    .position(|a| a.location == chunk_locations[2]),
+                self.generated_chunks
+                    .iter()
+                    .position(|a| a.location == chunk_locations[3]),
+            ];
             let (mesh, index_buffer) = generate_chunk_mesh(
                 chunk_location,
                 chunk_contents,
-                north_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
-                south_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
-                east_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
-                west_chunk.and_then(|chunk| self.generated_chunks.get(chunk)),
+                neighbouring_chunks[0].and_then(|chunk| self.generated_chunks.get(chunk)),
+                neighbouring_chunks[1].and_then(|chunk| self.generated_chunks.get(chunk)),
+                neighbouring_chunks[2].and_then(|chunk| self.generated_chunks.get(chunk)),
+                neighbouring_chunks[3].and_then(|chunk| self.generated_chunks.get(chunk)),
             );
             let new_chunk = chunk::Chunk {
                 location: chunk_location,
@@ -469,129 +469,47 @@ impl State {
                     }),
                 num_indicies: index_buffer.len() as u32,
             };
-            if let Some(chunk) = north_chunk {
-                let (mesh, indices) = generate_chunk_mesh(
-                    [chunk_location[0] + 1, chunk_location[1]],
-                    self.generated_chunks[chunk].contents,
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0] + 2, chunk_location[1]]),
-                    Some(&new_chunk),
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] + 1]),
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] - 1]),
-                );
-                self.generated_chunks[chunk].vertex_buffer =
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Vertex Buffer"),
-                            contents: bytemuck::cast_slice(&mesh),
-                            usage: wgpu::BufferUsages::VERTEX,
-                        });
-                self.generated_chunks[chunk].index_buffer =
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Index Buffer"),
-                            contents: bytemuck::cast_slice(&indices),
-                            usage: wgpu::BufferUsages::INDEX,
-                        });
-                self.generated_chunks[chunk].num_indicies = indices.len() as u32;
-            }
-            if let Some(chunk) = south_chunk {
-                let (mesh, indices) = generate_chunk_mesh(
-                    [chunk_location[0] - 1, chunk_location[1]],
-                    self.generated_chunks[chunk].contents,
-                    Some(&new_chunk),
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0] - 2, chunk_location[1]]),
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0] - 1, chunk_location[1] + 1]),
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0] - 1, chunk_location[1] - 1]),
-                );
-                self.generated_chunks[chunk].vertex_buffer =
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Vertex Buffer"),
-                            contents: bytemuck::cast_slice(&mesh),
-                            usage: wgpu::BufferUsages::VERTEX,
-                        });
-                self.generated_chunks[chunk].index_buffer =
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Index Buffer"),
-                            contents: bytemuck::cast_slice(&indices),
-                            usage: wgpu::BufferUsages::INDEX,
-                        });
-                self.generated_chunks[chunk].num_indicies = indices.len() as u32;
-            }
-            if let Some(chunk) = east_chunk {
-                let (mesh, indices) = generate_chunk_mesh(
-                    [chunk_location[0], chunk_location[1] + 1],
-                    self.generated_chunks[chunk].contents,
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] + 1]),
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0] - 1, chunk_location[1] + 1]),
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0], chunk_location[1] + 2]),
-                    Some(&new_chunk),
-                );
-                self.generated_chunks[chunk].vertex_buffer =
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Vertex Buffer"),
-                            contents: bytemuck::cast_slice(&mesh),
-                            usage: wgpu::BufferUsages::VERTEX,
-                        });
-                self.generated_chunks[chunk].index_buffer =
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Index Buffer"),
-                            contents: bytemuck::cast_slice(&indices),
-                            usage: wgpu::BufferUsages::INDEX,
-                        });
-                self.generated_chunks[chunk].num_indicies = indices.len() as u32;
-            }
-            if let Some(chunk) = west_chunk {
-                let (mesh, indices) = generate_chunk_mesh(
-                    [chunk_location[0], chunk_location[1] - 1],
-                    self.generated_chunks[chunk].contents,
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0] + 1, chunk_location[1] - 1]),
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0] - 1, chunk_location[1] - 1]),
-                    Some(&new_chunk),
-                    self.generated_chunks
-                        .iter()
-                        .find(|a| a.location == [chunk_location[0], chunk_location[1] - 2]),
-                );
-                self.generated_chunks[chunk].vertex_buffer =
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Vertex Buffer"),
-                            contents: bytemuck::cast_slice(&mesh),
-                            usage: wgpu::BufferUsages::VERTEX,
-                        });
-                self.generated_chunks[chunk].index_buffer =
-                    self.device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Index Buffer"),
-                            contents: bytemuck::cast_slice(&indices),
-                            usage: wgpu::BufferUsages::INDEX,
-                        });
-                self.generated_chunks[chunk].num_indicies = indices.len() as u32;
+            let further_chunks = [
+                [[x + 2, y], [x + 1, y + 1], [x + 1, y - 1]],
+                [[x - 2, y], [x - 1, y + 1], [x - 1, y - 1]],
+                [[x + 1, y + 1], [x - 1, y + 1], [x, y + 2]],
+                [[x + 1, y - 1], [x - 1, y - 1], [x, y - 2]],
+            ];
+            for (index, chunk_index) in neighbouring_chunks.iter().enumerate() {
+                let get_chunk = |a, b| {
+                    if index == a {
+                        Some(&new_chunk)
+                    } else {
+                        self.generated_chunks
+                            .iter()
+                            .find(|a| a.location == further_chunks[index][b])
+                    }
+                };
+                if let Some(chunk) = *chunk_index {
+                    let (mesh, indices) = generate_chunk_mesh(
+                        chunk_locations[index],
+                        self.generated_chunks[chunk].contents,
+                        get_chunk(1, 0),
+                        get_chunk(0, if index == 1 { 0 } else { 1 }),
+                        get_chunk(3, if index < 2 { 1 } else { 2 }),
+                        get_chunk(2, 2),
+                    );
+                    self.generated_chunks[chunk].vertex_buffer =
+                        self.device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("Vertex Buffer"),
+                                contents: bytemuck::cast_slice(&mesh),
+                                usage: wgpu::BufferUsages::VERTEX,
+                            });
+                    self.generated_chunks[chunk].index_buffer =
+                        self.device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("Index Buffer"),
+                                contents: bytemuck::cast_slice(&indices),
+                                usage: wgpu::BufferUsages::INDEX,
+                            });
+                    self.generated_chunks[chunk].num_indicies = indices.len() as u32;
+                }
             }
             self.generated_chunks.push(new_chunk);
         }
