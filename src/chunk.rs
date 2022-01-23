@@ -21,13 +21,11 @@ const BOTTOM_RIGHT: [f32; 2] = [0.5, 0.5];
 pub fn generate_chunk_mesh(
     location: [i32; 2],
     chunk: [[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
-    north_chunk: Option<&Chunk>,
-    south_chunk: Option<&Chunk>,
-    east_chunk: Option<&Chunk>,
-    west_chunk: Option<&Chunk>,
+    surrounding_chunks: [Option<&Chunk>; 4], // north, south, east, west for... reasons...
 ) -> (Vec<Vertex>, Vec<u32>) {
     let mut vertices = vec![];
     let mut indices = vec![];
+    let [north_chunk, south_chunk, east_chunk, west_chunk] = surrounding_chunks;
     for x in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH {

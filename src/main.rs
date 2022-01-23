@@ -309,7 +309,7 @@ impl State {
             .collect::<Vec<[[u16; 16]; 256]>>()
             .try_into()
             .unwrap();
-        let (mesh, chunk_indices) = generate_chunk_mesh([0, 0], chunk, None, None, None, None);
+        let (mesh, chunk_indices) = generate_chunk_mesh([0, 0], chunk, [None, None, None, None]);
         let generated_chunks = vec![chunk::Chunk {
             location: [0, 0],
             contents: chunk,
@@ -393,10 +393,10 @@ impl State {
             (self.camera.position.x / 16.0).floor() as i32,
             (self.camera.position.z / 16.0).floor() as i32,
         ];
-        if !self
+        if self
             .generated_chunks
             .iter()
-            .any(|chunk| chunk.location == chunk_location)
+            .all(|chunk| chunk.location != chunk_location)
         {
             let heightmap: Vec<Vec<i32>> = (0..16)
                 .map(|x| {
@@ -428,28 +428,20 @@ impl State {
                 .unwrap();
             let [x, y] = chunk_location;
             let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
-            let neighbouring_chunks = [
+            let get_chunk_index = |location| {
                 self.generated_chunks
                     .iter()
-                    .position(|a| a.location == chunk_locations[0]),
-                self.generated_chunks
-                    .iter()
-                    .position(|a| a.location == chunk_locations[1]),
-                self.generated_chunks
-                    .iter()
-                    .position(|a| a.location == chunk_locations[2]),
-                self.generated_chunks
-                    .iter()
-                    .position(|a| a.location == chunk_locations[3]),
-            ];
+                    .position(|a| a.location == location)
+            };
+            let neighbouring_chunks: [Option<usize>; 4] =
+                chunk_locations.map(|loc| get_chunk_index(loc));
             let (mesh, index_buffer) = generate_chunk_mesh(
                 chunk_location,
                 chunk_contents,
-                neighbouring_chunks[0].and_then(|chunk| self.generated_chunks.get(chunk)),
-                neighbouring_chunks[1].and_then(|chunk| self.generated_chunks.get(chunk)),
-                neighbouring_chunks[2].and_then(|chunk| self.generated_chunks.get(chunk)),
-                neighbouring_chunks[3].and_then(|chunk| self.generated_chunks.get(chunk)),
+                neighbouring_chunks
+                    .map(|chunk| chunk.and_then(|chunk| self.generated_chunks.get(chunk))),
             );
+            let num_indicies = index_buffer.len() as u32;
             let new_chunk = chunk::Chunk {
                 location: chunk_location,
                 contents: chunk_contents,
@@ -467,7 +459,7 @@ impl State {
                         contents: bytemuck::cast_slice(&index_buffer),
                         usage: wgpu::BufferUsages::INDEX,
                     }),
-                num_indicies: index_buffer.len() as u32,
+                num_indicies,
             };
             let further_chunks = [
                 [[x + 2, y], [x + 1, y + 1], [x + 1, y - 1]],
@@ -475,24 +467,28 @@ impl State {
                 [[x + 1, y + 1], [x - 1, y + 1], [x, y + 2]],
                 [[x + 1, y - 1], [x - 1, y - 1], [x, y - 2]],
             ];
-            for (index, chunk_index) in neighbouring_chunks.iter().enumerate() {
+            for (index, (chunk_index, surrounding_chunks)) in
+                neighbouring_chunks.iter().zip(further_chunks).enumerate()
+            {
                 let get_chunk = |a, b| {
                     if index == a {
                         Some(&new_chunk)
                     } else {
                         self.generated_chunks
                             .iter()
-                            .find(|a| a.location == further_chunks[index][b])
+                            .find(|a| a.location == surrounding_chunks[b])
                     }
                 };
                 if let Some(chunk) = *chunk_index {
                     let (mesh, indices) = generate_chunk_mesh(
                         chunk_locations[index],
                         self.generated_chunks[chunk].contents,
-                        get_chunk(1, 0),
-                        get_chunk(0, if index == 1 { 0 } else { 1 }),
-                        get_chunk(3, if index < 2 { 1 } else { 2 }),
-                        get_chunk(2, 2),
+                        [
+                            get_chunk(1, 0),
+                            get_chunk(0, if index == 1 { 0 } else { 1 }),
+                            get_chunk(3, if index < 2 { 1 } else { 2 }),
+                            get_chunk(2, 2),
+                        ],
                     );
                     self.generated_chunks[chunk].vertex_buffer =
                         self.device
