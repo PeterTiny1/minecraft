@@ -165,6 +165,8 @@ impl CameraController {
         } else if camera.pitch > (FRAC_PI_2) {
             camera.pitch = FRAC_PI_2;
         }
+        // TODO: implement placing/breaking blocks
+
         camera.quaternion = to_quaternion(-camera.yaw, camera.pitch).normalized();
     }
 }

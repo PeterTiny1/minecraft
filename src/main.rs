@@ -81,7 +81,7 @@ struct State {
     uniforms: Uniforms,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
-    // mouse_pressed: bool,
+    mouse_pressed: bool,
     // right_pressed: bool,
     depth_texture: texture::Texture,
     generated_chunks: Vec<chunk::Chunk>,
@@ -333,7 +333,7 @@ impl State {
             size,
             render_pipeline,
             diffuse_bind_group,
-            // mouse_pressed: false,
+            mouse_pressed: false,
             // right_pressed: false,
             camera,
             projection,
@@ -642,6 +642,12 @@ fn main() {
                     }
                     _ => {}
                 },
+                Event::MouseButtonDown { .. } => {
+                    state.mouse_pressed = true;
+                }
+                Event::MouseButtonUp { .. } => {
+                    state.mouse_pressed = true;
+                }
                 Event::Quit { .. } => break 'running,
                 _ => {}
             }
