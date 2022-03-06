@@ -18,7 +18,6 @@ vek = "0.15.0"
 noise = "0.7.0"
 
 [dependencies.sdl2]
-git = "https://github.com/Rust-SDL2/rust-sdl2/"
-rev = "9dab73d585c63c405f0ea255794fa8941c8b3e53"
+version="0.35.2"
 default-features = false
 features = ["bundled", "static-link", "raw-window-handle"]
