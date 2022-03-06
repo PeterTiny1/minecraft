@@ -1,8 +1,8 @@
 use crate::Vertex;
 
-const CHUNK_WIDTH: usize = 16;
-const CHUNK_HEIGHT: usize = 256;
-const CHUNK_DEPTH: usize = 16;
+pub const CHUNK_WIDTH: usize = 32;
+pub const CHUNK_HEIGHT: usize = 256;
+pub const CHUNK_DEPTH: usize = 32;
 
 #[derive(Debug)]
 pub struct Chunk {
@@ -29,8 +29,8 @@ pub fn generate_chunk_mesh(
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH {
                 if chunk[x][y][z] != 0 {
-                    let rel_x = (x as i32 + (location[0] * 16)) as f32;
-                    let rel_z = (z as i32 + (location[1] * 16)) as f32;
+                    let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH as i32)) as f32;
+                    let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH as i32)) as f32;
                     let y_f32 = y as f32;
                     // first face
                     if (z == CHUNK_DEPTH - 1

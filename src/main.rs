@@ -9,7 +9,7 @@ use sdl2::{
 };
 use std::{convert::TryInto, f64::consts::PI, vec};
 
-use chunk::generate_chunk_mesh;
+use chunk::{generate_chunk_mesh, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
 use futures::executor::block_on;
 
 use vek::Mat4;
@@ -278,9 +278,9 @@ impl State {
             )
         };
         let noise = OpenSimplex::new();
-        let heightmap: Vec<Vec<i32>> = (0..16)
+        let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
             .map(|x| {
-                (0..16)
+                (0..CHUNK_DEPTH)
                     .map(|y| {
                         ((noise.get([x as f64 / LARGE_SCALE, y as f64 / LARGE_SCALE]) + PI) * 16.0
                             + (noise.get([
@@ -292,21 +292,21 @@ impl State {
             })
             .collect();
         // Generate chunk:
-        let chunk: [[[u16; 16]; 256]; 16] = (0..16)
+        let chunk: [[[u16; CHUNK_WIDTH]; CHUNK_HEIGHT]; CHUNK_DEPTH] = (0..CHUNK_WIDTH)
             .map(|x| {
-                (0..256)
+                (0..CHUNK_HEIGHT)
                     .map(|y| {
-                        (0..16)
-                            .map(|z| (y < heightmap[x][z]) as u16)
+                        (0..CHUNK_DEPTH)
+                            .map(|z| ((y as i32) < heightmap[x][z]) as u16)
                             .collect::<Vec<u16>>()
                             .try_into()
                             .unwrap()
                     })
-                    .collect::<Vec<[u16; 16]>>()
+                    .collect::<Vec<[u16; CHUNK_DEPTH]>>()
                     .try_into()
                     .unwrap()
             })
-            .collect::<Vec<[[u16; 16]; 256]>>()
+            .collect::<Vec<[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]>>()
             .try_into()
             .unwrap();
         let (mesh, chunk_indices) = generate_chunk_mesh([0, 0], chunk, [None, None, None, None]);
@@ -390,40 +390,53 @@ impl State {
             bytemuck::cast_slice(&[self.uniforms]),
         );
         let chunk_location = [
-            (self.camera.position.x / 16.0).floor() as i32,
-            (self.camera.position.z / 16.0).floor() as i32,
+            (self.camera.position.x / CHUNK_WIDTH as f32).floor() as i32,
+            (self.camera.position.z / CHUNK_DEPTH as f32).floor() as i32,
         ];
         if self
             .generated_chunks
             .iter()
             .all(|chunk| chunk.location != chunk_location)
         {
-            let heightmap: Vec<Vec<i32>> = (0..16)
+            let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
                 .map(|x| {
-                    (0..16)
+                    (0..CHUNK_DEPTH)
                         .map(|z| {
-                            (((self.noise_at(x, z, chunk_location, LARGE_SCALE, 0.0) + PI) * 16.0)
-                                + (self.noise_at(x, z, chunk_location, SMALL_SCALE, 10.0) * 5.0))
-                                as i32
+                            (((self.noise_at(
+                                x as i32,
+                                z as i32,
+                                chunk_location,
+                                LARGE_SCALE,
+                                0.0,
+                            ) + PI)
+                                * 16.0)
+                                + (self.noise_at(
+                                    x as i32,
+                                    z as i32,
+                                    chunk_location,
+                                    SMALL_SCALE,
+                                    10.0,
+                                ) * 5.0)) as i32
                         })
                         .collect::<Vec<i32>>()
                 })
                 .collect();
-            let chunk_contents: [[[u16; 16]; 256]; 16] = (0..16)
+            let chunk_contents: [[[u16; CHUNK_WIDTH]; CHUNK_HEIGHT]; CHUNK_DEPTH] = (0
+                ..CHUNK_WIDTH)
                 .map(|x| {
-                    (0..256)
+                    (0..CHUNK_HEIGHT)
                         .map(|y| {
-                            (0..16)
-                                .map(|z| (y < heightmap[x][z]) as u16)
+                            (0..CHUNK_DEPTH)
+                                .map(|z| ((y as i32) < heightmap[x][z]) as u16)
                                 .collect::<Vec<u16>>()
                                 .try_into()
                                 .unwrap()
                         })
-                        .collect::<Vec<[u16; 16]>>()
+                        .collect::<Vec<[u16; CHUNK_DEPTH]>>()
                         .try_into()
                         .unwrap()
                 })
-                .collect::<Vec<[[u16; 16]; 256]>>()
+                .collect::<Vec<[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]>>()
                 .try_into()
                 .unwrap();
             let [x, y] = chunk_location;
@@ -520,8 +533,8 @@ impl State {
         offset: f64,
     ) -> f64 {
         self.noise.get([
-            (x + (chunk_location[0] * 16)) as f64 / scale + offset,
-            (z + (chunk_location[1] * 16)) as f64 / scale + offset,
+            (x + (chunk_location[0] * CHUNK_WIDTH as i32)) as f64 / scale + offset,
+            (z + (chunk_location[1] * CHUNK_DEPTH as i32)) as f64 / scale + offset,
         ])
     }
 
