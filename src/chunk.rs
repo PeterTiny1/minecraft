@@ -4,13 +4,10 @@ pub const CHUNK_WIDTH: usize = 32;
 pub const CHUNK_HEIGHT: usize = 256;
 pub const CHUNK_DEPTH: usize = 32;
 
-#[derive(Debug)]
-pub struct Chunk {
+#[derive(Debug, Clone, Copy)]
+pub struct ChunkData {
     pub location: [i32; 2],
     pub contents: [[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
-    pub vertex_buffer: wgpu::Buffer,
-    pub index_buffer: wgpu::Buffer,
-    pub num_indicies: u32,
 }
 
 const TOP_LEFT: [f32; 2] = [0.0, 0.0];
@@ -22,7 +19,7 @@ const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
 pub fn generate_chunk_mesh(
     location: [i32; 2],
     chunk: [[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
-    surrounding_chunks: [Option<&Chunk>; 4], // north, south, east, west for... reasons...
+    surrounding_chunks: [Option<&ChunkData>; 4], // north, south, east, west for... reasons...
 ) -> (Vec<Vertex>, Vec<u32>) {
     let (mut vertices, mut indices) = (vec![], vec![]);
     for x in 0..CHUNK_WIDTH {
