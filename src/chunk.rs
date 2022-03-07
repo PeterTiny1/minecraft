@@ -1,3 +1,5 @@
+use noise::{NoiseFn, OpenSimplex};
+
 use crate::Vertex;
 
 pub const CHUNK_WIDTH: usize = 32;
@@ -15,6 +17,20 @@ const TOP_RIGHT: [f32; 2] = [0.0, 0.5];
 const BOTTOM_LEFT: [f32; 2] = [0.5, 0.0];
 const BOTTOM_RIGHT: [f32; 2] = [0.5, 0.5];
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
+
+pub fn noise_at(
+    noise: &OpenSimplex,
+    x: i32,
+    z: i32,
+    chunk_location: [i32; 2],
+    scale: f64,
+    offset: f64,
+) -> f64 {
+    noise.get([
+        (x + (chunk_location[0] * CHUNK_WIDTH as i32)) as f64 / scale + offset,
+        (z + (chunk_location[1] * CHUNK_DEPTH as i32)) as f64 / scale + offset,
+    ])
+}
 
 pub fn generate_chunk_mesh(
     location: [i32; 2],
