@@ -16,7 +16,7 @@ use std::{
     vec,
 };
 
-use chunk::{generate_chunk_mesh, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
+use chunk::{generate_chunk_mesh, ChunkData, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
 use futures::executor::block_on;
 
 use vek::Mat4;
@@ -102,6 +102,7 @@ struct State {
     generated_chunk_buffers: Vec<ChunkBuffers>,
     generating_chunks: Arc<Mutex<Vec<([i32; 2], usize)>>>,
     returned_buffers: Arc<Mutex<Vec<(Vec<Vertex>, Vec<u32>, usize)>>>,
+    noise: noise::OpenSimplex,
 }
 
 fn create_render_pipeline(
@@ -350,115 +351,70 @@ impl State {
         let chunkdata_arc = Arc::clone(&generated_chunkdata);
         let returning_arc = Arc::clone(&returned_buffers);
         // Chunk generator thread
-        thread::spawn(move || {
-            let noise = OpenSimplex::new();
-            loop {
-                thread::sleep(Duration::from_millis(1));
-                let mut locked = thread_arc.lock().unwrap();
-                for (chunk_location, index) in locked.drain(..) {
-                    let mut generated_chunkdata = chunkdata_arc.lock().unwrap();
-                    let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
-                        .map(|x| {
-                            (0..CHUNK_DEPTH)
-                                .map(|z| {
-                                    (((chunk::noise_at(
-                                        &noise,
-                                        x as i32,
-                                        z as i32,
-                                        chunk_location,
-                                        LARGE_SCALE,
-                                        0.0,
-                                    ) + PI)
-                                        * 16.0)
-                                        + (chunk::noise_at(
-                                            &noise,
-                                            x as i32,
-                                            z as i32,
-                                            chunk_location,
-                                            SMALL_SCALE,
-                                            10.0,
-                                        ) * 5.0)) as i32
-                                })
-                                .collect::<Vec<i32>>()
-                        })
-                        .collect();
-                    let chunk_contents: [[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH] = (0
-                        ..CHUNK_WIDTH)
-                        .map(|x| {
-                            (0..CHUNK_HEIGHT)
-                                .map(|y| {
-                                    (0..CHUNK_DEPTH)
-                                        .map(|z| ((y as i32) < heightmap[x][z]) as u16)
-                                        .collect::<Vec<u16>>()
-                                        .try_into()
-                                        .unwrap()
-                                })
-                                .collect::<Vec<[u16; CHUNK_DEPTH]>>()
-                                .try_into()
-                                .unwrap()
-                        })
-                        .collect::<Vec<[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]>>()
-                        .try_into()
-                        .unwrap();
-                    let [x, y] = chunk_location;
-                    let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
-                    let get_chunk_index = |location| {
-                        generated_chunkdata
-                            .iter()
-                            .position(|a| a.location == location)
-                    };
-                    let neighbouring_chunks: [Option<usize>; 4] =
-                        chunk_locations.map(|loc| get_chunk_index(loc));
-                    let (mesh, index_buffer) = generate_chunk_mesh(
-                        chunk_location,
-                        chunk_contents,
-                        neighbouring_chunks
-                            .map(|chunk| chunk.and_then(|chunk| generated_chunkdata.get(chunk))),
-                    );
-                    let further_chunks = [
-                        [[x + 2, y], [x + 1, y + 1], [x + 1, y - 1]],
-                        [[x - 2, y], [x - 1, y + 1], [x - 1, y - 1]],
-                        [[x + 1, y + 1], [x - 1, y + 1], [x, y + 2]],
-                        [[x + 1, y - 1], [x - 1, y - 1], [x, y - 2]],
-                    ];
-                    let new_chunkdata = chunk::ChunkData {
-                        location: chunk_location,
-                        contents: chunk_contents,
-                    };
-                    generated_chunkdata.push(new_chunkdata);
-                    for (index, (chunk_index, surrounding_chunks)) in
-                        neighbouring_chunks.iter().zip(further_chunks).enumerate()
-                    {
-                        let get_chunk = |a, b| {
-                            if index == a {
-                                Some(&new_chunkdata)
-                            } else {
-                                generated_chunkdata
-                                    .iter()
-                                    .find(|a| a.location == surrounding_chunks[b])
-                            }
-                        };
-                        if let Some(chunk) = *chunk_index {
-                            let (mesh, indices) = generate_chunk_mesh(
-                                chunk_locations[index],
-                                generated_chunkdata[chunk].contents,
-                                [
-                                    get_chunk(1, 0),
-                                    get_chunk(0, if index == 1 { 0 } else { 1 }),
-                                    get_chunk(3, if index < 2 { 1 } else { 2 }),
-                                    get_chunk(2, 2),
-                                ],
-                            );
-                            returning_arc.lock().unwrap().push((mesh, indices, chunk))
+        thread::spawn(move || loop {
+            thread::sleep(Duration::from_millis(3));
+            let mut locked = thread_arc.lock().unwrap();
+            for (chunk_location, index) in locked.drain(..) {
+                let generated_chunkdata = chunkdata_arc.lock().unwrap();
+                let chunk_contents = generated_chunkdata[index].contents;
+                let [x, y] = chunk_location;
+                let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+                let get_chunk_index = |location| {
+                    generated_chunkdata
+                        .iter()
+                        .position(|a| a.location == location)
+                };
+                let neighbouring_chunks: [Option<usize>; 4] =
+                    chunk_locations.map(|loc| get_chunk_index(loc));
+                let (mesh, index_buffer) = generate_chunk_mesh(
+                    chunk_location,
+                    chunk_contents,
+                    neighbouring_chunks
+                        .map(|chunk| chunk.and_then(|chunk| generated_chunkdata.get(chunk))),
+                );
+                let further_chunks = [
+                    [[x + 2, y], [x + 1, y + 1], [x + 1, y - 1]],
+                    [[x - 2, y], [x - 1, y + 1], [x - 1, y - 1]],
+                    [[x + 1, y + 1], [x - 1, y + 1], [x, y + 2]],
+                    [[x + 1, y - 1], [x - 1, y - 1], [x, y - 2]],
+                ];
+                let new_chunkdata = chunk::ChunkData {
+                    location: chunk_location,
+                    contents: chunk_contents,
+                };
+                for (index, (chunk_index, surrounding_chunks)) in
+                    neighbouring_chunks.iter().zip(further_chunks).enumerate()
+                {
+                    let get_chunk = |a, b| {
+                        if index == a {
+                            Some(&new_chunkdata)
+                        } else {
+                            generated_chunkdata
+                                .iter()
+                                .find(|a| a.location == surrounding_chunks[b])
                         }
+                    };
+                    if let Some(chunk) = *chunk_index {
+                        let (mesh, indices) = generate_chunk_mesh(
+                            chunk_locations[index],
+                            generated_chunkdata[chunk].contents,
+                            [
+                                get_chunk(1, 0),
+                                get_chunk(0, if index == 1 { 0 } else { 1 }),
+                                get_chunk(3, if index < 2 { 1 } else { 2 }),
+                                get_chunk(2, 2),
+                            ],
+                        );
+                        returning_arc.lock().unwrap().push((mesh, indices, chunk))
                     }
-                    returning_arc
-                        .lock()
-                        .unwrap()
-                        .push((mesh, index_buffer, index));
                 }
+                returning_arc
+                    .lock()
+                    .unwrap()
+                    .push((mesh, index_buffer, index));
             }
         });
+        let noise = noise::OpenSimplex::new();
         Self {
             surface,
             device,
@@ -480,6 +436,7 @@ impl State {
             generated_chunk_buffers,
             generating_chunks,
             returned_buffers,
+            noise,
         }
     }
 
@@ -529,33 +486,79 @@ impl State {
             (self.camera.position.x / CHUNK_WIDTH as f32).floor() as i32,
             (self.camera.position.z / CHUNK_DEPTH as f32).floor() as i32,
         ];
-        let generated_chunkdata = self.generated_chunkdata.lock().unwrap();
+        let mut generated_chunkdata = self.generated_chunkdata.lock().unwrap();
         if generated_chunkdata
             .iter()
             .all(|chunk| chunk.location != chunk_location)
         {
+            let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
+                .map(|x| {
+                    (0..CHUNK_DEPTH)
+                        .map(|z| {
+                            (((chunk::noise_at(
+                                &self.noise,
+                                x as i32,
+                                z as i32,
+                                chunk_location,
+                                LARGE_SCALE,
+                                0.0,
+                            ) + PI)
+                                * 16.0)
+                                + (chunk::noise_at(
+                                    &self.noise,
+                                    x as i32,
+                                    z as i32,
+                                    chunk_location,
+                                    SMALL_SCALE,
+                                    10.0,
+                                ) * 5.0)) as i32
+                        })
+                        .collect::<Vec<i32>>()
+                })
+                .collect();
+            let chunk_contents: [[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH] = (0
+                ..CHUNK_WIDTH)
+                .map(|x| {
+                    (0..CHUNK_HEIGHT)
+                        .map(|y| {
+                            (0..CHUNK_DEPTH)
+                                .map(|z| ((y as i32) < heightmap[x][z]) as u16)
+                                .collect::<Vec<u16>>()
+                                .try_into()
+                                .unwrap()
+                        })
+                        .collect::<Vec<[u16; CHUNK_DEPTH]>>()
+                        .try_into()
+                        .unwrap()
+                })
+                .collect::<Vec<[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]>>()
+                .try_into()
+                .unwrap();
+            generated_chunkdata.push(ChunkData {
+                contents: chunk_contents,
+                location: chunk_location,
+            });
             self.generating_chunks
                 .lock()
                 .unwrap()
-                .push((chunk_location, generated_chunkdata.len()));
-            let new_chunk_buffers = ChunkBuffers {
+                .push((chunk_location, generated_chunkdata.len() - 1));
+            self.generated_chunk_buffers.push(ChunkBuffers {
                 vertex: self
                     .device
                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some("Vertex Buffer"),
-                        contents: bytemuck::cast_slice::<f32, u8>(&[]),
+                        contents: &[],
                         usage: wgpu::BufferUsages::VERTEX,
                     }),
                 index: self
                     .device
                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some("Index Buffer"),
-                        contents: bytemuck::cast_slice::<f32, u8>(&[]),
+                        contents: &[],
                         usage: wgpu::BufferUsages::INDEX,
                     }),
                 num_indices: 0,
-            };
-            self.generated_chunk_buffers.push(new_chunk_buffers)
+            })
         }
         for (mesh, indices, index) in self.returned_buffers.lock().unwrap().drain(..) {
             self.generated_chunk_buffers[index] = ChunkBuffers {
