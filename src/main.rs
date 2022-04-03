@@ -8,7 +8,6 @@ use sdl2::{
     video::{FullscreenType, Window},
 };
 use std::{
-    convert::TryInto,
     f64::consts::PI,
     sync::{Arc, Mutex},
     thread,
@@ -309,26 +308,17 @@ impl State {
             })
             .collect();
         // Generate chunk:
-        let chunk: [[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH] = (0..CHUNK_WIDTH)
-            .map(|x| {
-                (0..CHUNK_HEIGHT)
-                    .map(|y| {
-                        (0..CHUNK_DEPTH)
-                            .map(|z| ((y as i32) < heightmap[x][z]) as u16)
-                            .collect::<Vec<u16>>()
-                            .try_into()
-                            .unwrap()
-                    })
-                    .collect::<Vec<[u16; CHUNK_DEPTH]>>()
-                    .try_into()
-                    .unwrap()
-            })
-            .collect::<Vec<[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]>>()
-            .try_into()
-            .unwrap();
-        let (mesh, chunk_indices) = generate_chunk_mesh([0, 0], chunk, [None, None, None, None]);
+        let mut chunk = [[[0; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+        for x in 0..CHUNK_WIDTH {
+            for y in 0..CHUNK_HEIGHT {
+                for z in 0..CHUNK_DEPTH {
+                    chunk[x][y][z] = ((y as i32) < heightmap[x][z]) as u16;
+                }
+            }
+        }
+        let (mesh, chunk_indices) = generate_chunk_mesh([0; 2], chunk, [None; 4]);
         let generated_chunkdata = Arc::new(Mutex::new(vec![chunk::ChunkData {
-            location: [0, 0],
+            location: [0; 2],
             contents: chunk,
         }]));
         let generated_chunk_buffers = vec![ChunkBuffers {
@@ -516,24 +506,14 @@ impl State {
                         .collect::<Vec<i32>>()
                 })
                 .collect();
-            let chunk_contents: [[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH] = (0
-                ..CHUNK_WIDTH)
-                .map(|x| {
-                    (0..CHUNK_HEIGHT)
-                        .map(|y| {
-                            (0..CHUNK_DEPTH)
-                                .map(|z| ((y as i32) < heightmap[x][z]) as u16)
-                                .collect::<Vec<u16>>()
-                                .try_into()
-                                .unwrap()
-                        })
-                        .collect::<Vec<[u16; CHUNK_DEPTH]>>()
-                        .try_into()
-                        .unwrap()
-                })
-                .collect::<Vec<[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]>>()
-                .try_into()
-                .unwrap();
+            let mut chunk_contents = [[[0; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+            for x in 0..CHUNK_WIDTH {
+                for y in 0..CHUNK_HEIGHT {
+                    for z in 0..CHUNK_DEPTH {
+                        chunk_contents[x][y][z] = ((y as i32) < heightmap[x][z]) as u16;
+                    }
+                }
+            }
             generated_chunkdata.push(ChunkData {
                 contents: chunk_contents,
                 location: chunk_location,
