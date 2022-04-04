@@ -308,14 +308,17 @@ impl State {
             })
             .collect();
         // Generate chunk:
-        let mut chunk = [[[0; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
-        for x in 0..CHUNK_WIDTH {
-            for y in 0..CHUNK_HEIGHT {
-                for z in 0..CHUNK_DEPTH {
-                    chunk[x][y][z] = ((y as i32) < heightmap[x][z]) as u16;
+        let chunk = {
+            let mut chunk = [[[0; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+            for x in 0..CHUNK_WIDTH {
+                for y in 0..CHUNK_HEIGHT {
+                    for z in 0..CHUNK_DEPTH {
+                        chunk[x][y][z] = ((y as i32) < heightmap[x][z]) as u16;
+                    }
                 }
             }
-        }
+            chunk
+        };
         let (mesh, chunk_indices) = generate_chunk_mesh([0; 2], chunk, [None; 4]);
         let generated_chunkdata = Arc::new(Mutex::new(vec![chunk::ChunkData {
             location: [0; 2],
@@ -506,14 +509,17 @@ impl State {
                         .collect::<Vec<i32>>()
                 })
                 .collect();
-            let mut chunk_contents = [[[0; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
-            for x in 0..CHUNK_WIDTH {
-                for y in 0..CHUNK_HEIGHT {
-                    for z in 0..CHUNK_DEPTH {
-                        chunk_contents[x][y][z] = ((y as i32) < heightmap[x][z]) as u16;
+            let chunk_contents = {
+                let mut chunk_contents = [[[0; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+                for x in 0..CHUNK_WIDTH {
+                    for y in 0..CHUNK_HEIGHT {
+                        for z in 0..CHUNK_DEPTH {
+                            chunk_contents[x][y][z] = ((y as i32) < heightmap[x][z]) as u16;
+                        }
                     }
                 }
-            }
+                chunk_contents
+            };
             generated_chunkdata.push(ChunkData {
                 contents: chunk_contents,
                 location: chunk_location,
