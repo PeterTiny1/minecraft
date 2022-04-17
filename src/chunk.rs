@@ -32,6 +32,35 @@ pub fn noise_at(
     ])
 }
 
+pub fn get_nearest_chunk_location(
+    x: f32,
+    z: f32,
+    generated_chunks: &Vec<ChunkData>,
+) -> Option<[i32; 2]> {
+    let (chunk_x, chunk_y) = (
+        (x / CHUNK_WIDTH as f32).floor() as i32,
+        (z / CHUNK_DEPTH as f32).floor() as i32,
+    );
+    let length = |a, b| (a * a + b * b);
+    let mut collector: Option<[i32; 2]> = None;
+    for i in -16..=16 {
+        for j in -16..=16 {
+            let distance = length(i, j);
+            if distance <= 256
+                && ((collector.is_some()
+                    && distance < length(collector.unwrap()[0], collector.unwrap()[1]))
+                    || collector.is_none())
+                && generated_chunks
+                    .iter()
+                    .all(|chunk| chunk.location != [i + chunk_x, j + chunk_y])
+            {
+                collector = Some([i, j]);
+            }
+        }
+    }
+    collector.and_then(|value: [i32; 2]| Some([value[0] + chunk_x, value[1] + chunk_y]))
+}
+
 pub fn generate_chunk_mesh(
     location: [i32; 2],
     chunk: [[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],

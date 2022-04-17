@@ -8,11 +8,10 @@ use sdl2::{
     video::{FullscreenType, Window},
 };
 use std::{
+    collections::VecDeque,
     f64::consts::PI,
     sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-    vec,
+    thread, vec,
 };
 
 use chunk::{generate_chunk_mesh, ChunkData, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
@@ -99,7 +98,7 @@ struct State {
     depth_texture: texture::Texture,
     generated_chunkdata: Arc<Mutex<Vec<chunk::ChunkData>>>,
     generated_chunk_buffers: Vec<ChunkBuffers>,
-    generating_chunks: Arc<Mutex<Vec<([i32; 2], usize)>>>,
+    generating_chunks: Arc<Mutex<VecDeque<([i32; 2], usize)>>>,
     returned_buffers: Arc<Mutex<Vec<(Vec<Vertex>, Vec<u32>, usize)>>>,
     noise: noise::OpenSimplex,
 }
@@ -337,17 +336,15 @@ impl State {
             }),
             num_indices: chunk_indices.len() as u32,
         }];
-        let generating_chunks: Arc<std::sync::Mutex<Vec<([i32; 2], usize)>>> =
-            Arc::new(Mutex::new(vec![]));
+        let generating_chunks: Arc<std::sync::Mutex<VecDeque<([i32; 2], usize)>>> =
+            Arc::new(Mutex::new(VecDeque::new()));
         let returned_buffers = Arc::new(Mutex::new(vec![]));
         let thread_arc = Arc::clone(&generating_chunks);
         let chunkdata_arc = Arc::clone(&generated_chunkdata);
         let returning_arc = Arc::clone(&returned_buffers);
         // Chunk generator thread
         thread::spawn(move || loop {
-            thread::sleep(Duration::from_millis(3));
-            let mut locked = thread_arc.lock().unwrap();
-            for (chunk_location, index) in locked.drain(..) {
+            if let Some((chunk_location, index)) = thread_arc.lock().unwrap().pop_front() {
                 let generated_chunkdata = chunkdata_arc.lock().unwrap();
                 let chunk_contents = generated_chunkdata[index].contents;
                 let [x, y] = chunk_location;
@@ -475,15 +472,18 @@ impl State {
             0,
             bytemuck::cast_slice(&[self.uniforms]),
         );
-        let chunk_location = [
-            (self.camera.position.x / CHUNK_WIDTH as f32).floor() as i32,
-            (self.camera.position.z / CHUNK_DEPTH as f32).floor() as i32,
-        ];
         let mut generated_chunkdata = self.generated_chunkdata.lock().unwrap();
-        if generated_chunkdata
-            .iter()
-            .all(|chunk| chunk.location != chunk_location)
+        let chunk_location = chunk::get_nearest_chunk_location(
+            self.camera.position.x,
+            self.camera.position.z,
+            &generated_chunkdata,
+        );
+        if chunk_location.is_some()
+            && generated_chunkdata
+                .iter()
+                .all(|chunk| chunk.location != chunk_location.unwrap())
         {
+            let chunk_location = chunk_location.unwrap();
             let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
                 .map(|x| {
                     (0..CHUNK_DEPTH)
@@ -527,7 +527,7 @@ impl State {
             self.generating_chunks
                 .lock()
                 .unwrap()
-                .push((chunk_location, generated_chunkdata.len() - 1));
+                .push_back((chunk_location, generated_chunkdata.len() - 1));
             self.generated_chunk_buffers.push(ChunkBuffers {
                 vertex: self
                     .device
