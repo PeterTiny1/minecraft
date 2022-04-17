@@ -23,6 +23,8 @@ use wgpu::util::DeviceExt;
 
 use noise::{NoiseFn, OpenSimplex};
 
+const MAX_DEPTH: f32 = 128.0;
+
 #[derive(Debug)]
 struct ChunkBuffers {
     index: wgpu::Buffer,
@@ -238,7 +240,7 @@ impl State {
             config.height,
             90.0_f32.to_radians(),
             0.1,
-            256.0,
+            MAX_DEPTH,
         );
         let camera_controller = camera::CameraController::new(4.0, 0.05);
         let mut uniforms = Uniforms::new();

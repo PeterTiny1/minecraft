@@ -1,6 +1,6 @@
 use noise::{NoiseFn, OpenSimplex};
 
-use crate::Vertex;
+use crate::{Vertex, MAX_DEPTH};
 
 pub const CHUNK_WIDTH: usize = 32;
 pub const CHUNK_HEIGHT: usize = 256;
@@ -17,6 +17,8 @@ const TOP_RIGHT: [f32; 2] = [0.0, 0.5];
 const BOTTOM_LEFT: [f32; 2] = [0.5, 0.0];
 const BOTTOM_RIGHT: [f32; 2] = [0.5, 0.5];
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
+const MAX_DISTANCE_X: i32 = MAX_DEPTH as i32 / CHUNK_WIDTH as i32 + 1;
+const MAX_DISTANCE_Y: i32 = MAX_DEPTH as i32 / CHUNK_DEPTH as i32 + 1;
 
 pub fn noise_at(
     noise: &OpenSimplex,
@@ -43,10 +45,10 @@ pub fn get_nearest_chunk_location(
     );
     let length = |a, b| (a * a + b * b);
     let mut collector: Option<[i32; 2]> = None;
-    for i in -16..=16 {
-        for j in -16..=16 {
+    for i in -MAX_DISTANCE_X..=MAX_DISTANCE_X {
+        for j in -MAX_DISTANCE_Y..=MAX_DISTANCE_Y {
             let distance = length(i, j);
-            if distance <= 256
+            if distance <= MAX_DEPTH as i32
                 && ((collector.is_some()
                     && distance < length(collector.unwrap()[0], collector.unwrap()[1]))
                     || collector.is_none())
