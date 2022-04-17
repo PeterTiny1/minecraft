@@ -406,7 +406,6 @@ impl State {
                     .push((mesh, index_buffer, index));
             }
         });
-        let noise = noise::OpenSimplex::new();
         Self {
             surface,
             device,
