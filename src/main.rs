@@ -9,7 +9,7 @@ use sdl2::{
 };
 use std::{
     collections::VecDeque,
-    f64::consts::PI,
+    f64::consts::FRAC_PI_2,
     sync::{Arc, Mutex},
     thread, vec,
 };
@@ -23,7 +23,7 @@ use wgpu::util::DeviceExt;
 
 use noise::{NoiseFn, OpenSimplex};
 
-const MAX_DEPTH: f32 = 128.0;
+const MAX_DEPTH: f32 = 192.0;
 
 #[derive(Debug)]
 struct ChunkBuffers {
@@ -80,6 +80,7 @@ impl Uniforms {
 
 const LARGE_SCALE: f64 = 50.0;
 const SMALL_SCALE: f64 = 20.0;
+const LARGE_HEIGHT: f64 = 30.0;
 
 struct State {
     surface: wgpu::Surface,
@@ -299,7 +300,8 @@ impl State {
             .map(|x| {
                 (0..CHUNK_DEPTH)
                     .map(|y| {
-                        ((noise.get([x as f64 / LARGE_SCALE, y as f64 / LARGE_SCALE]) + PI) * 16.0
+                        ((noise.get([x as f64 / LARGE_SCALE, y as f64 / LARGE_SCALE]) + FRAC_PI_2)
+                            * LARGE_HEIGHT
                             + (noise.get([
                                 x as f64 / SMALL_SCALE + 10.0,
                                 y as f64 / SMALL_SCALE + 10.0,
@@ -314,7 +316,13 @@ impl State {
             for x in 0..CHUNK_WIDTH {
                 for y in 0..CHUNK_HEIGHT {
                     for z in 0..CHUNK_DEPTH {
-                        chunk[x][y][z] = ((y as i32) < heightmap[x][z]) as u16;
+                        chunk[x][y][z] = if (y as i32) < heightmap[x][z] {
+                            1
+                        } else if y as i32 == heightmap[x][z] {
+                            2
+                        } else {
+                            0
+                        };
                     }
                 }
             }
@@ -496,8 +504,8 @@ impl State {
                                 chunk_location,
                                 LARGE_SCALE,
                                 0.0,
-                            ) + PI)
-                                * 16.0)
+                            ) + FRAC_PI_2)
+                                * LARGE_HEIGHT)
                                 + (chunk::noise_at(
                                     &self.noise,
                                     x as i32,
@@ -515,7 +523,13 @@ impl State {
                 for x in 0..CHUNK_WIDTH {
                     for y in 0..CHUNK_HEIGHT {
                         for z in 0..CHUNK_DEPTH {
-                            chunk_contents[x][y][z] = ((y as i32) < heightmap[x][z]) as u16;
+                            chunk_contents[x][y][z] = if (y as i32) < heightmap[x][z] {
+                                1
+                            } else if y as i32 == heightmap[x][z] {
+                                2
+                            } else {
+                                0
+                            };
                         }
                     }
                 }
