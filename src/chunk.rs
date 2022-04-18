@@ -19,6 +19,11 @@ const BOTTOM_RIGHT: [f32; 2] = [0.5, 0.5];
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
 const MAX_DISTANCE_X: i32 = MAX_DEPTH as i32 / CHUNK_WIDTH as i32 + 1;
 const MAX_DISTANCE_Y: i32 = MAX_DEPTH as i32 / CHUNK_DEPTH as i32 + 1;
+const TOP_BRIGHTNESS: f32 = 1.0;
+const BOTTOM_BRIGHTNESS: f32 = 0.3;
+const SIDE_BRIGHTNESS: f32 = 0.6;
+const FRONT_BRIGHTNESS: f32 = 0.7;
+const BACK_BRIGHTNESS: f32 = 0.5;
 
 pub fn noise_at(
     noise: &OpenSimplex,
@@ -87,18 +92,22 @@ pub fn generate_chunk_mesh(
                             Vertex {
                                 position: [rel_x, 1.0 + y_f32, zplusone],
                                 tex_coords: TOP_LEFT,
+                                brightness: FRONT_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [rel_x, y_f32, zplusone],
                                 tex_coords: TOP_RIGHT,
+                                brightness: FRONT_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [1.0 + rel_x, y_f32, zplusone],
                                 tex_coords: BOTTOM_RIGHT,
+                                brightness: FRONT_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [1.0 + rel_x, 1.0 + y_f32, zplusone],
                                 tex_coords: BOTTOM_LEFT,
+                                brightness: FRONT_BRIGHTNESS,
                             },
                         ]);
                     }
@@ -113,18 +122,22 @@ pub fn generate_chunk_mesh(
                             Vertex {
                                 position: [xplusone, 1.0 + y_f32, 1.0 + rel_z],
                                 tex_coords: TOP_LEFT,
+                                brightness: SIDE_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [xplusone, y_f32, 1.0 + rel_z],
                                 tex_coords: TOP_RIGHT,
+                                brightness: SIDE_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [xplusone, y_f32, rel_z],
                                 tex_coords: BOTTOM_RIGHT,
+                                brightness: SIDE_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [xplusone, 1.0 + y_f32, rel_z],
                                 tex_coords: BOTTOM_LEFT,
+                                brightness: SIDE_BRIGHTNESS,
                             },
                         ]);
                     }
@@ -139,18 +152,22 @@ pub fn generate_chunk_mesh(
                             Vertex {
                                 position: [1.0 + rel_x, 1.0 + y_f32, rel_z],
                                 tex_coords: TOP_LEFT,
+                                brightness: BACK_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [1.0 + rel_x, y_f32, rel_z],
                                 tex_coords: TOP_RIGHT,
+                                brightness: BACK_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [rel_x, y_f32, rel_z],
                                 tex_coords: BOTTOM_RIGHT,
+                                brightness: BACK_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [rel_x, 1.0 + y_f32, rel_z],
                                 tex_coords: BOTTOM_LEFT,
+                                brightness: BACK_BRIGHTNESS,
                             },
                         ]);
                     }
@@ -166,18 +183,22 @@ pub fn generate_chunk_mesh(
                             Vertex {
                                 position: [rel_x, 1.0 + y_f32, rel_z],
                                 tex_coords: TOP_LEFT,
+                                brightness: SIDE_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [rel_x, y_f32, rel_z],
                                 tex_coords: TOP_RIGHT,
+                                brightness: SIDE_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [rel_x, y_f32, 1.0 + rel_z],
                                 tex_coords: BOTTOM_RIGHT,
+                                brightness: SIDE_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [rel_x, 1.0 + y_f32, 1.0 + rel_z],
                                 tex_coords: BOTTOM_LEFT,
+                                brightness: SIDE_BRIGHTNESS,
                             },
                         ]);
                     }
@@ -189,18 +210,22 @@ pub fn generate_chunk_mesh(
                             Vertex {
                                 position: [rel_x, yplusone, rel_z],
                                 tex_coords: TOP_LEFT,
+                                brightness: TOP_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [rel_x, yplusone, 1.0 + rel_z],
                                 tex_coords: TOP_RIGHT,
+                                brightness: TOP_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [1.0 + rel_x, yplusone, 1.0 + rel_z],
                                 tex_coords: BOTTOM_RIGHT,
+                                brightness: TOP_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [1.0 + rel_x, yplusone, rel_z],
                                 tex_coords: BOTTOM_LEFT,
+                                brightness: TOP_BRIGHTNESS,
                             },
                         ]);
                     }
@@ -212,18 +237,22 @@ pub fn generate_chunk_mesh(
                             Vertex {
                                 position: [1.0 + rel_x, y_f32, rel_z],
                                 tex_coords: TOP_LEFT,
+                                brightness: BOTTOM_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
                                 tex_coords: TOP_RIGHT,
+                                brightness: BOTTOM_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [rel_x, y_f32, 1.0 + rel_z],
                                 tex_coords: BOTTOM_RIGHT,
+                                brightness: BOTTOM_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [rel_x, y_f32, rel_z],
                                 tex_coords: BOTTOM_LEFT,
+                                brightness: BOTTOM_BRIGHTNESS,
                             },
                         ]);
                     }
