@@ -3,6 +3,10 @@ use std::{f32::consts::FRAC_PI_2, time::Duration};
 use sdl2::keyboard::Keycode;
 use vek::{Mat4, Quaternion, Vec3};
 
+use crate::chunk::{ChunkData, CHUNK_DEPTH, CHUNK_WIDTH};
+
+const GRAVITY: f32 = 9.807;
+
 #[derive(Debug)]
 pub struct Camera {
     pub position: Vec3<f32>,
@@ -79,6 +83,7 @@ pub struct CameraController {
     scroll: f32,
     speed: f32,
     sensitivity: f32,
+    velocity: Vec3<f32>,
 }
 
 impl CameraController {
@@ -95,6 +100,9 @@ impl CameraController {
             scroll: 0.0,
             speed,
             sensitivity,
+            velocity: Vec3 {
+                ..Default::default()
+            },
         }
     }
 
@@ -138,13 +146,47 @@ impl CameraController {
         self.scroll = (delta * 200) as f32;
     }
 
-    pub fn update_camera(&mut self, camera: &mut Camera, dt: Duration) {
+    pub fn update_camera(&mut self, camera: &mut Camera, dt: Duration, world: &Vec<ChunkData>) {
         let dt = dt.as_secs_f32();
         let (yaw_sin, yaw_cos) = camera.yaw.sin_cos();
         let forward = Vec3::new(yaw_cos, 0.0, yaw_sin).normalized();
         let right = Vec3::new(-yaw_sin, 0.0, yaw_cos).normalized();
-        camera.position += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;
-        camera.position += right * (self.amount_right - self.amount_left) * self.speed * dt;
+        self.velocity += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;
+        self.velocity += right * (self.amount_right - self.amount_left) * self.speed * dt;
+        self.velocity.y -= GRAVITY * dt;
+        self.velocity.x -= (self.velocity.x * (1. - 0.1)) * dt;
+        self.velocity.z -= (self.velocity.z * (1. - 0.1)) * dt;
+        camera.position += self.velocity * dt;
+        let camera_chunkcoord = [
+            (camera.position.x / CHUNK_WIDTH as f32).floor() as i32,
+            (camera.position.z / CHUNK_DEPTH as f32).floor() as i32,
+        ];
+        let in_chunk = world
+            .iter()
+            .find(|chunk| chunk.location == camera_chunkcoord);
+        if let Some(chunk) = in_chunk {
+            for (x, column) in chunk.contents.iter().enumerate() {
+                for (y, row) in column.iter().enumerate() {
+                    for (z, &block) in row.iter().enumerate() {
+                        if block != 0
+                            && camera.position.x
+                                >= (chunk.location[0] * CHUNK_WIDTH as i32 + x as i32) as f32
+                            && camera.position.x
+                                < (chunk.location[0] * CHUNK_WIDTH as i32 + x as i32 + 1) as f32
+                            && camera.position.z
+                                >= (chunk.location[1] * CHUNK_DEPTH as i32 + z as i32) as f32
+                            && camera.position.z
+                                < (chunk.location[1] * CHUNK_DEPTH as i32 + z as i32 + 1) as f32
+                            && camera.position.y > (y) as f32
+                            && camera.position.y <= (y + 1) as f32 + 1.5
+                        {
+                            camera.position.y = (y + 1) as f32 + 1.5;
+                            self.velocity.y = 0.0;
+                        }
+                    }
+                }
+            }
+        }
 
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
         let scrollward =
@@ -152,7 +194,8 @@ impl CameraController {
         camera.position += scrollward * self.scroll * self.speed * self.sensitivity * dt;
         self.scroll = 0.0;
 
-        camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;
+        // camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;
+        self.velocity.y += (self.amount_up - self.amount_down) * self.speed * dt * 5.0;
 
         camera.yaw += (self.rotate_horizontal) * self.sensitivity / 10.0;
         camera.pitch += (self.rotate_vertical) * self.sensitivity / 10.0;

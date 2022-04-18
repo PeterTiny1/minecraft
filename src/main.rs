@@ -238,7 +238,7 @@ impl State {
             label: Some("diffuse_bind_group"),
         });
         let camera = camera::Camera::new(
-            (0.0, 51.5, 8.0),
+            (0.0, 64.5, 8.0),
             -45.0_f32.to_radians(),
             -20.0_f32.to_radians(),
         );
@@ -479,7 +479,9 @@ impl State {
     }
 
     fn update(&mut self, dt: std::time::Duration) {
-        self.camera_controller.update_camera(&mut self.camera, dt);
+        let mut generated_chunkdata = self.generated_chunkdata.lock().unwrap();
+        self.camera_controller
+            .update_camera(&mut self.camera, dt, &generated_chunkdata);
         self.uniforms
             .update_view_proj(&self.camera, &self.projection);
         self.queue.write_buffer(
@@ -487,7 +489,6 @@ impl State {
             0,
             bytemuck::cast_slice(&[self.uniforms]),
         );
-        let mut generated_chunkdata = self.generated_chunkdata.lock().unwrap();
         let chunk_location = chunk::get_nearest_chunk_location(
             self.camera.position.x,
             self.camera.position.z,
