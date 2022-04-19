@@ -154,8 +154,8 @@ impl CameraController {
         self.velocity += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;
         self.velocity += right * (self.amount_right - self.amount_left) * self.speed * dt;
         self.velocity.y -= GRAVITY * dt;
-        self.velocity.x -= (self.velocity.x * (1. - 0.1)) * dt;
-        self.velocity.z -= (self.velocity.z * (1. - 0.1)) * dt;
+        self.velocity.x -= (self.velocity.x) * dt;
+        self.velocity.z -= (self.velocity.z) * dt;
         camera.position += self.velocity * dt;
         let camera_chunkcoord = [
             (camera.position.x / CHUNK_WIDTH as f32).floor() as i32,
@@ -169,13 +169,13 @@ impl CameraController {
                 for (y, row) in column.iter().enumerate() {
                     for (z, &block) in row.iter().enumerate() {
                         if block != 0
-                            && camera.position.x
+                            && camera.position.x + 0.3
                                 >= (chunk.location[0] * CHUNK_WIDTH as i32 + x as i32) as f32
-                            && camera.position.x
+                            && camera.position.x - 0.3
                                 < (chunk.location[0] * CHUNK_WIDTH as i32 + x as i32 + 1) as f32
-                            && camera.position.z
+                            && camera.position.z + 0.3
                                 >= (chunk.location[1] * CHUNK_DEPTH as i32 + z as i32) as f32
-                            && camera.position.z
+                            && camera.position.z - 0.3
                                 < (chunk.location[1] * CHUNK_DEPTH as i32 + z as i32 + 1) as f32
                             && camera.position.y > (y) as f32
                             && camera.position.y <= (y + 1) as f32 + 1.5
