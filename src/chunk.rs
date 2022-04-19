@@ -203,31 +203,170 @@ pub fn generate_chunk_mesh(
                         ]);
                     }
                     // top face
-                    if y == chunk[x].len() - 1 || chunk[x][y + 1][z] == 0 {
+                    if y == CHUNK_HEIGHT - 1 || chunk[x][y + 1][z] == 0 {
                         indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                         let yplusone = y_f32 + 1.0;
-                        vertices.append(&mut vec![
-                            Vertex {
-                                position: [rel_x, yplusone, rel_z],
-                                tex_coords: TOP_LEFT,
-                                brightness: TOP_BRIGHTNESS,
-                            },
-                            Vertex {
-                                position: [rel_x, yplusone, 1.0 + rel_z],
-                                tex_coords: TOP_RIGHT,
-                                brightness: TOP_BRIGHTNESS,
-                            },
-                            Vertex {
-                                position: [1.0 + rel_x, yplusone, 1.0 + rel_z],
-                                tex_coords: BOTTOM_RIGHT,
-                                brightness: TOP_BRIGHTNESS,
-                            },
-                            Vertex {
-                                position: [1.0 + rel_x, yplusone, rel_z],
-                                tex_coords: BOTTOM_LEFT,
-                                brightness: TOP_BRIGHTNESS,
-                            },
-                        ]);
+                        if y == CHUNK_HEIGHT - 2 {
+                            vertices.append(&mut vec![
+                                Vertex {
+                                    position: [rel_x, yplusone, rel_z],
+                                    tex_coords: TOP_LEFT,
+                                    brightness: TOP_BRIGHTNESS,
+                                },
+                                Vertex {
+                                    position: [rel_x, yplusone, 1.0 + rel_z],
+                                    tex_coords: TOP_RIGHT,
+                                    brightness: TOP_BRIGHTNESS,
+                                },
+                                Vertex {
+                                    position: [1.0 + rel_x, yplusone, 1.0 + rel_z],
+                                    tex_coords: BOTTOM_RIGHT,
+                                    brightness: TOP_BRIGHTNESS,
+                                },
+                                Vertex {
+                                    position: [1.0 + rel_x, yplusone, rel_z],
+                                    tex_coords: BOTTOM_LEFT,
+                                    brightness: TOP_BRIGHTNESS,
+                                },
+                            ]);
+                        } else {
+                            vertices.append(&mut vec![
+                                Vertex {
+                                    position: [rel_x, yplusone, rel_z],
+                                    tex_coords: TOP_LEFT,
+                                    brightness: TOP_BRIGHTNESS
+                                        - if (x == 0
+                                            && surrounding_chunks[1].map_or(false, |chunk| {
+                                                chunk.contents[CHUNK_WIDTH - 1][y + 1][z] != 0
+                                                    || (z != 0
+                                                        && chunk.contents[CHUNK_WIDTH - 1][y + 1]
+                                                            [z - 1]
+                                                            != 0)
+                                            }))
+                                            || (x != 0
+                                                && (chunk[x - 1][y + 1][z] != 0
+                                                    || (z == 0
+                                                        && surrounding_chunks[3].map_or(
+                                                            false,
+                                                            |chunk| {
+                                                                chunk.contents[x - 1][y + 1]
+                                                                    [CHUNK_DEPTH - 1]
+                                                                    != 0
+                                                            },
+                                                        ))
+                                                    || (z != 0 && chunk[x - 1][y + 1][z - 1] != 0)))
+                                            || (z == 0
+                                                && surrounding_chunks[3].map_or(false, |chunk| {
+                                                    chunk.contents[x][y + 1][CHUNK_DEPTH - 1] != 0
+                                                }))
+                                            || (z != 0 && chunk[x][y + 1][z - 1] != 0)
+                                        {
+                                            0.3
+                                        } else {
+                                            0.0
+                                        },
+                                },
+                                Vertex {
+                                    position: [rel_x, yplusone, 1.0 + rel_z],
+                                    tex_coords: TOP_RIGHT,
+                                    brightness: TOP_BRIGHTNESS
+                                        - if (x == 0
+                                            && surrounding_chunks[1].map_or(false, |chunk| {
+                                                chunk.contents[CHUNK_WIDTH - 1][y + 1][z] != 0
+                                                    || (z != CHUNK_DEPTH - 1
+                                                        && chunk.contents[CHUNK_WIDTH - 1][y + 1]
+                                                            [z + 1]
+                                                            != 0)
+                                            }))
+                                            || (x != 0
+                                                && (chunk[x - 1][y + 1][z] != 0
+                                                    || ((z == CHUNK_DEPTH - 1
+                                                        && surrounding_chunks[2].map_or(
+                                                            false,
+                                                            |chunk| {
+                                                                chunk.contents[x - 1][y + 1][0] != 0
+                                                            },
+                                                        ))
+                                                        || (z != CHUNK_DEPTH - 1
+                                                            && chunk[x - 1][y + 1][z + 1] != 0))))
+                                            || (z == CHUNK_DEPTH - 1
+                                                && surrounding_chunks[2].map_or(false, |chunk| {
+                                                    chunk.contents[x][y + 1][0] != 0
+                                                }))
+                                            || (z != CHUNK_DEPTH - 1 && chunk[x][y + 1][z + 1] != 0)
+                                        {
+                                            0.3
+                                        } else {
+                                            0.0
+                                        },
+                                },
+                                Vertex {
+                                    position: [1.0 + rel_x, yplusone, 1.0 + rel_z],
+                                    tex_coords: BOTTOM_RIGHT,
+                                    brightness: TOP_BRIGHTNESS
+                                        - if (x == CHUNK_WIDTH - 1
+                                            && surrounding_chunks[0].map_or(false, |chunk| {
+                                                chunk.contents[0][y + 1][z] != 0
+                                                    || (z != CHUNK_DEPTH - 1
+                                                        && chunk.contents[0][y + 1][z + 1] != 0)
+                                            }))
+                                            || (x != CHUNK_WIDTH - 1
+                                                && (chunk[x + 1][y + 1][z] != 0
+                                                    || (z == CHUNK_DEPTH - 1
+                                                        && surrounding_chunks[2].map_or(
+                                                            false,
+                                                            |chunk| {
+                                                                chunk.contents[x + 1][y + 1][0] != 0
+                                                            },
+                                                        ))
+                                                    || (z != CHUNK_DEPTH - 1
+                                                        && chunk[x + 1][y + 1][z + 1] != 0)))
+                                            || (z == CHUNK_DEPTH - 1
+                                                && surrounding_chunks[2].map_or(false, |chunk| {
+                                                    chunk.contents[x][y + 1][0] != 0
+                                                }))
+                                            || (z != CHUNK_DEPTH - 1 && chunk[x][y + 1][z + 1] != 0)
+                                        {
+                                            0.3
+                                        } else {
+                                            0.0
+                                        },
+                                },
+                                Vertex {
+                                    position: [1.0 + rel_x, yplusone, rel_z],
+                                    tex_coords: BOTTOM_LEFT,
+                                    brightness: TOP_BRIGHTNESS
+                                        - if (x == CHUNK_WIDTH - 1
+                                            && surrounding_chunks[0].map_or(false, |chunk| {
+                                                chunk.contents[0][y + 1][z] != 0
+                                                    || (z != 0
+                                                        && chunk.contents[0][y + 1][z - 1] != 0)
+                                            }))
+                                            || (x != CHUNK_WIDTH - 1
+                                                && ((z == 0
+                                                    && surrounding_chunks[3].map_or(
+                                                        false,
+                                                        |chunk| {
+                                                            chunk.contents[x + 1][y + 1]
+                                                                [CHUNK_DEPTH - 1]
+                                                                != 0
+                                                        },
+                                                    ))
+                                                    || (z != 0 && chunk[x + 1][y + 1][z - 1] != 0)
+                                                    || chunk[x + 1][y + 1][z] != 0))
+                                            || (z == 0
+                                                && surrounding_chunks[3].map_or(false, |chunk| {
+                                                    chunk.contents[x][y + 1][CHUNK_DEPTH - 1] != 0
+                                                }))
+                                            || (z != 0 && chunk[x][y + 1][z - 1] != 0)
+                                        {
+                                            0.3
+                                        } else {
+                                            0.0
+                                        },
+                                },
+                            ])
+                        }
                     }
                     // bottom face
                     if y == 0 || chunk[x][y - 1][z] == 0 {
