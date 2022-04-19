@@ -1,5 +1,6 @@
 use anyhow::Result;
-use image::GenericImageView;
+use image::{GenericImageView, ImageBuffer, Rgba};
+use itertools::izip;
 
 pub struct Texture {
     pub texture: wgpu::Texture,
@@ -74,10 +75,67 @@ impl Texture {
             height: dimensions.1,
             depth_or_array_layers: 1,
         };
+        let size1 = wgpu::Extent3d {
+            width: dimensions.0 / 2,
+            height: dimensions.1 / 2,
+            depth_or_array_layers: 1,
+        };
+        let size2 = wgpu::Extent3d {
+            width: dimensions.0 / 4,
+            height: dimensions.1 / 4,
+            depth_or_array_layers: 1,
+        };
+        let size3 = wgpu::Extent3d {
+            width: dimensions.0 / 8,
+            height: dimensions.1 / 8,
+            depth_or_array_layers: 1,
+        };
+        let rgba1 = ImageBuffer::from_fn(dimensions.0 / 2, dimensions.1 / 2, |x, y| {
+            Rgba(
+                izip!(
+                    rgba.get_pixel(x * 2, y * 2).0,
+                    rgba.get_pixel(x * 2 + 1, y * 2).0,
+                    rgba.get_pixel(x * 2, y * 2 + 1).0,
+                    rgba.get_pixel(x * 2 + 1, y * 2 + 1).0
+                )
+                .map(|i| ((i.0 as u16 + i.1 as u16 + i.2 as u16 + i.3 as u16) / 4) as u8)
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+            )
+        });
+        let rgba2 = ImageBuffer::from_fn(dimensions.0 / 4, dimensions.1 / 4, |x, y| {
+            Rgba(
+                izip!(
+                    rgba1.get_pixel(x * 2, y * 2).0,
+                    rgba1.get_pixel(x * 2 + 1, y * 2).0,
+                    rgba1.get_pixel(x * 2, y * 2 + 1).0,
+                    rgba1.get_pixel(x * 2 + 1, y * 2 + 1).0
+                )
+                .map(|i| ((i.0 as u16 + i.1 as u16 + i.2 as u16 + i.3 as u16) / 4) as u8)
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+            )
+        });
+        let rgba3 = ImageBuffer::from_fn(dimensions.0 / 8, dimensions.1 / 8, |x, y| {
+            Rgba(
+                izip!(
+                    rgba2.get_pixel(x * 2, y * 2).0,
+                    rgba2.get_pixel(x * 2 + 1, y * 2).0,
+                    rgba2.get_pixel(x * 2, y * 2 + 1).0,
+                    rgba2.get_pixel(x * 2 + 1, y * 2 + 1).0
+                )
+                .map(|i| ((i.0 as u16 + i.1 as u16 + i.2 as u16 + i.3 as u16) / 4) as u8)
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+            )
+        });
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label,
             size,
-            mip_level_count: 1,
+            mip_level_count: 4,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -98,6 +156,51 @@ impl Texture {
                 rows_per_image: std::num::NonZeroU32::new(dimensions.1),
             },
             size,
+        );
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &texture,
+                mip_level: 1,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &rgba1,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: std::num::NonZeroU32::new(4 * dimensions.0 / 2),
+                rows_per_image: std::num::NonZeroU32::new(dimensions.1 / 2),
+            },
+            size1,
+        );
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &texture,
+                mip_level: 2,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &rgba2,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: std::num::NonZeroU32::new(4 * dimensions.0 / 4),
+                rows_per_image: std::num::NonZeroU32::new(dimensions.1 / 4),
+            },
+            size2,
+        );
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &texture,
+                mip_level: 3,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &rgba3,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: std::num::NonZeroU32::new(4 * dimensions.0 / 8),
+                rows_per_image: std::num::NonZeroU32::new(dimensions.1 / 8),
+            },
+            size3,
         );
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
