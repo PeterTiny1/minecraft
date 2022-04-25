@@ -11,6 +11,13 @@ pub const CHUNK_DEPTH: usize = 16;
 #[cfg(not(target_os = "windows"))]
 pub const CHUNK_DEPTH: usize = 32;
 
+const TEXTURE_WIDTH: f32 = 0.5;
+
+const TOP_LEFT: [f32; 2] = [0.0, 0.0];
+const TOP_RIGHT: [f32; 2] = [TEXTURE_WIDTH, 0.0];
+const BOTTOM_LEFT: [f32; 2] = [0.0, TEXTURE_WIDTH];
+const BOTTOM_RIGHT: [f32; 2] = [TEXTURE_WIDTH, TEXTURE_WIDTH];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockType {
     Air,
@@ -23,11 +30,11 @@ impl BlockType {
         match self {
             BlockType::Stone => [[0.0, 0.0]; 6],
             BlockType::Grass => [
-                [0.5, 0.0],
-                [0.0, 0.5],
-                [0.0, 0.5],
-                [0.0, 0.5],
-                [0.0, 0.5],
+                [TEXTURE_WIDTH, 0.0],
+                [0.0, TEXTURE_WIDTH],
+                [0.0, TEXTURE_WIDTH],
+                [0.0, TEXTURE_WIDTH],
+                [0.0, TEXTURE_WIDTH],
                 [0.0, 0.0],
             ],
             _ => panic!("This is not supposed to be called!"),
@@ -41,10 +48,6 @@ pub struct ChunkData {
     pub contents: [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
 }
 
-const TOP_LEFT: [f32; 2] = [0.0, 0.0];
-const TOP_RIGHT: [f32; 2] = [0.5, 0.0];
-const BOTTOM_LEFT: [f32; 2] = [0.0, 0.5];
-const BOTTOM_RIGHT: [f32; 2] = [0.5, 0.5];
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
 const MAX_DISTANCE_X: i32 = MAX_DEPTH as i32 / CHUNK_WIDTH as i32 + 1;
 const MAX_DISTANCE_Y: i32 = MAX_DEPTH as i32 / CHUNK_DEPTH as i32 + 1;
