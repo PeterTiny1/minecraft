@@ -14,7 +14,7 @@ use std::{
     thread, vec,
 };
 
-use chunk::{generate_chunk_mesh, ChunkData, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
+use chunk::{generate_chunk_mesh, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
 use futures::executor::block_on;
 
 use vek::Mat4;
@@ -318,16 +318,16 @@ impl State {
             .collect();
         // Generate chunk:
         let chunk = {
-            let mut chunk = [[[0; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+            let mut chunk = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
             for x in 0..CHUNK_WIDTH {
                 for y in 0..CHUNK_HEIGHT {
                     for z in 0..CHUNK_DEPTH {
                         chunk[x][y][z] = if (y as i32) < heightmap[x][z] {
-                            1
+                            BlockType::Stone
                         } else if y as i32 == heightmap[x][z] {
-                            2
+                            BlockType::Grass
                         } else {
-                            0
+                            BlockType::Air
                         };
                     }
                 }
@@ -526,16 +526,17 @@ impl State {
                 })
                 .collect();
             let chunk_contents = {
-                let mut chunk_contents = [[[0; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+                let mut chunk_contents =
+                    [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
                 for x in 0..CHUNK_WIDTH {
                     for y in 0..CHUNK_HEIGHT {
                         for z in 0..CHUNK_DEPTH {
                             chunk_contents[x][y][z] = if (y as i32) < heightmap[x][z] {
-                                1
+                                BlockType::Stone
                             } else if y as i32 == heightmap[x][z] {
-                                2
+                                BlockType::Grass
                             } else {
-                                0
+                                BlockType::Air
                             };
                         }
                     }

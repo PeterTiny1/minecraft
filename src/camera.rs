@@ -3,7 +3,7 @@ use std::{f32::consts::FRAC_PI_2, time::Duration};
 use sdl2::keyboard::Keycode;
 use vek::{Mat4, Quaternion, Vec3};
 
-use crate::chunk::{ChunkData, CHUNK_DEPTH, CHUNK_WIDTH};
+use crate::chunk::{BlockType, ChunkData, CHUNK_DEPTH, CHUNK_WIDTH};
 
 const GRAVITY: f32 = 9.807;
 
@@ -168,7 +168,7 @@ impl CameraController {
             for (x, column) in chunk.contents.iter().enumerate() {
                 for (y, row) in column.iter().enumerate() {
                     for (z, &block) in row.iter().enumerate() {
-                        if block != 0
+                        if block != BlockType::Air
                             && camera.position.x + 0.3
                                 >= (chunk.location[0] * CHUNK_WIDTH as i32 + x as i32) as f32
                             && camera.position.x - 0.3

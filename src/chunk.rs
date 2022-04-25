@@ -11,10 +11,17 @@ pub const CHUNK_DEPTH: usize = 16;
 #[cfg(not(target_os = "windows"))]
 pub const CHUNK_DEPTH: usize = 32;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockType {
+    Air,
+    Stone,
+    Grass,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ChunkData {
     pub location: [i32; 2],
-    pub contents: [[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
+    pub contents: [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
 }
 
 const TOP_LEFT: [f32; 2] = [0.0, 0.0];
@@ -75,14 +82,14 @@ pub fn get_nearest_chunk_location(
 
 pub fn generate_chunk_mesh(
     location: [i32; 2],
-    chunk: [[[u16; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
+    chunk: [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
     surrounding_chunks: [Option<&ChunkData>; 4], // north, south, east, west for... reasons...
 ) -> (Vec<Vertex>, Vec<u32>) {
     let (mut vertices, mut indices) = (vec![], vec![]);
     for x in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH {
-                if chunk[x][y][z] == 0 {
+                if chunk[x][y][z] == BlockType::Air {
                     continue;
                 }
                 let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH as i32)) as f32;
@@ -90,8 +97,9 @@ pub fn generate_chunk_mesh(
                 let y_f32 = y as f32;
                 // first face
                 if (z == CHUNK_DEPTH - 1
-                    && surrounding_chunks[2].map_or(true, |chunk| chunk.contents[x][y][0] == 0))
-                    || (z != CHUNK_DEPTH - 1 && chunk[x][y][z + 1] == 0)
+                    && surrounding_chunks[2]
+                        .map_or(true, |chunk| chunk.contents[x][y][0] == BlockType::Air))
+                    || (z != CHUNK_DEPTH - 1 && chunk[x][y][z + 1] == BlockType::Air)
                 {
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     let zplusone = 1.0 + rel_z;
@@ -102,9 +110,12 @@ pub fn generate_chunk_mesh(
                             brightness: if (x == 0
                                 && surrounding_chunks[1].map_or(false, |chunk| {
                                     z != CHUNK_DEPTH - 1
-                                        && chunk.contents[CHUNK_WIDTH - 1][y][z + 1] != 0
+                                        && chunk.contents[CHUNK_WIDTH - 1][y][z + 1]
+                                            != BlockType::Air
                                 }))
-                                || (x != 0 && z != CHUNK_DEPTH - 1 && chunk[x - 1][y][z + 1] != 0)
+                                || (x != 0
+                                    && z != CHUNK_DEPTH - 1
+                                    && chunk[x - 1][y][z + 1] != BlockType::Air)
                             {
                                 0.5
                             } else {
@@ -114,7 +125,13 @@ pub fn generate_chunk_mesh(
                         Vertex {
                             position: [rel_x, y_f32, zplusone],
                             tex_coords: BOTTOM_LEFT,
-                            brightness: if y != 0 && chunk[x][y - 1][z] != 0 {
+                            brightness: if y != 0
+                                && ((z != CHUNK_DEPTH - 1
+                                    && chunk[x][y - 1][z + 1] != BlockType::Air)
+                                    || (z == CHUNK_DEPTH - 1
+                                        && surrounding_chunks[2].map_or(false, |chunk| {
+                                            chunk.contents[x][y - 1][0] != BlockType::Air
+                                        }))) {
                                 0.5
                             } else {
                                 FRONT_BRIGHTNESS
@@ -123,7 +140,13 @@ pub fn generate_chunk_mesh(
                         Vertex {
                             position: [1.0 + rel_x, y_f32, zplusone],
                             tex_coords: BOTTOM_RIGHT,
-                            brightness: if y != 0 && chunk[x][y - 1][z] != 0 {
+                            brightness: if y != 0
+                                && ((z != CHUNK_DEPTH - 1
+                                    && chunk[x][y - 1][z + 1] != BlockType::Air)
+                                    || (z == CHUNK_DEPTH - 1
+                                        && surrounding_chunks[2].map_or(false, |chunk| {
+                                            chunk.contents[x][y - 1][0] != BlockType::Air
+                                        }))) {
                                 0.5
                             } else {
                                 FRONT_BRIGHTNESS
@@ -134,11 +157,12 @@ pub fn generate_chunk_mesh(
                             tex_coords: TOP_RIGHT,
                             brightness: if (x == CHUNK_WIDTH - 1
                                 && surrounding_chunks[0].map_or(false, |chunk| {
-                                    z != CHUNK_DEPTH - 1 && chunk.contents[0][y][z + 1] != 0
+                                    z != CHUNK_DEPTH - 1
+                                        && chunk.contents[0][y][z + 1] != BlockType::Air
                                 }))
                                 || (x != CHUNK_WIDTH - 1
                                     && z != CHUNK_DEPTH - 1
-                                    && chunk[x + 1][y][z + 1] != 0)
+                                    && chunk[x + 1][y][z + 1] != BlockType::Air)
                             {
                                 0.5
                             } else {
@@ -149,8 +173,9 @@ pub fn generate_chunk_mesh(
                 }
                 // second face
                 if (x == CHUNK_WIDTH - 1
-                    && surrounding_chunks[0].map_or(true, |chunk| chunk.contents[0][y][z] == 0))
-                    || (x != CHUNK_WIDTH - 1 && chunk[x + 1][y][z] == 0)
+                    && surrounding_chunks[0]
+                        .map_or(true, |chunk| chunk.contents[0][y][z] == BlockType::Air))
+                    || (x != CHUNK_WIDTH - 1 && chunk[x + 1][y][z] == BlockType::Air)
                 {
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     let xplusone = 1.0 + rel_x;
@@ -160,11 +185,12 @@ pub fn generate_chunk_mesh(
                             tex_coords: TOP_LEFT,
                             brightness: if (x == CHUNK_WIDTH - 1
                                 && surrounding_chunks[0].map_or(false, |chunk| {
-                                    z != CHUNK_WIDTH - 1 && chunk.contents[0][y][z + 1] != 0
+                                    z != CHUNK_WIDTH - 1
+                                        && chunk.contents[0][y][z + 1] != BlockType::Air
                                 }))
                                 || (x != CHUNK_WIDTH - 1
                                     && z != CHUNK_WIDTH - 1
-                                    && chunk[x + 1][y][z + 1] != 0)
+                                    && chunk[x + 1][y][z + 1] != BlockType::Air)
                             {
                                 0.5
                             } else {
@@ -174,7 +200,7 @@ pub fn generate_chunk_mesh(
                         Vertex {
                             position: [xplusone, y_f32, 1.0 + rel_z],
                             tex_coords: BOTTOM_LEFT,
-                            brightness: if y != 0 && chunk[x][y - 1][z] != 0 {
+                            brightness: if y != 0 && chunk[x][y - 1][z] != BlockType::Air {
                                 0.5
                             } else {
                                 SIDE_BRIGHTNESS
@@ -183,7 +209,7 @@ pub fn generate_chunk_mesh(
                         Vertex {
                             position: [xplusone, y_f32, rel_z],
                             tex_coords: BOTTOM_RIGHT,
-                            brightness: if y != 0 && chunk[x][y - 1][z] != 0 {
+                            brightness: if y != 0 && chunk[x][y - 1][z] != BlockType::Air {
                                 0.5
                             } else {
                                 SIDE_BRIGHTNESS
@@ -194,9 +220,11 @@ pub fn generate_chunk_mesh(
                             tex_coords: TOP_RIGHT,
                             brightness: if (x == CHUNK_WIDTH - 1
                                 && surrounding_chunks[1].map_or(false, |chunk| {
-                                    z != 0 && chunk.contents[0][y][z - 1] == 0
+                                    z != 0 && chunk.contents[0][y][z - 1] != BlockType::Air
                                 }))
-                                || (x != CHUNK_WIDTH - 1 && z != 0 && chunk[x + 1][y][z - 1] != 0)
+                                || (x != CHUNK_WIDTH - 1
+                                    && z != 0
+                                    && chunk[x + 1][y][z - 1] != BlockType::Air)
                             {
                                 0.5
                             } else {
@@ -207,9 +235,10 @@ pub fn generate_chunk_mesh(
                 }
                 // third face
                 if (z == 0
-                    && surrounding_chunks[3]
-                        .map_or(true, |chunk| chunk.contents[x][y].last().unwrap() == &0_u16))
-                    || (z != 0 && chunk[x][y][z - 1] == 0)
+                    && surrounding_chunks[3].map_or(true, |chunk| {
+                        chunk.contents[x][y].last().unwrap() == &BlockType::Air
+                    }))
+                    || (z != 0 && chunk[x][y][z - 1] == BlockType::Air)
                 {
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     vertices.append(&mut vec![
@@ -221,7 +250,7 @@ pub fn generate_chunk_mesh(
                         Vertex {
                             position: [1.0 + rel_x, y_f32, rel_z],
                             tex_coords: BOTTOM_LEFT,
-                            brightness: if y != 0 && chunk[x][y - 1][z] != 0 {
+                            brightness: if y != 0 && chunk[x][y - 1][z] != BlockType::Air {
                                 0.5
                             } else {
                                 BACK_BRIGHTNESS
@@ -230,7 +259,7 @@ pub fn generate_chunk_mesh(
                         Vertex {
                             position: [rel_x, y_f32, rel_z],
                             tex_coords: BOTTOM_RIGHT,
-                            brightness: if y != 0 && chunk[x][y - 1][z] != 0 {
+                            brightness: if y != 0 && chunk[x][y - 1][z] != BlockType::Air {
                                 0.5
                             } else {
                                 BACK_BRIGHTNESS
@@ -245,9 +274,10 @@ pub fn generate_chunk_mesh(
                 }
                 // fourth face
                 if (x == 0
-                    && surrounding_chunks[1]
-                        .map_or(true, |chunk| chunk.contents.last().unwrap()[y][z] == 0))
-                    || (x != 0 && chunk[x - 1][y][z] == 0)
+                    && surrounding_chunks[1].map_or(true, |chunk| {
+                        chunk.contents.last().unwrap()[y][z] == BlockType::Air
+                    }))
+                    || (x != 0 && chunk[x - 1][y][z] == BlockType::Air)
                 {
                     indices.extend(&mut QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     vertices.append(&mut vec![
@@ -274,7 +304,7 @@ pub fn generate_chunk_mesh(
                     ]);
                 }
                 // top face
-                if y == CHUNK_HEIGHT - 1 || chunk[x][y + 1][z] == 0 {
+                if y == CHUNK_HEIGHT - 1 || chunk[x][y + 1][z] == BlockType::Air {
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     let yplusone = y_f32 + 1.0;
                     if y == CHUNK_HEIGHT - 2 {
@@ -307,24 +337,26 @@ pub fn generate_chunk_mesh(
                                 tex_coords: TOP_LEFT,
                                 brightness: if (x == 0
                                     && surrounding_chunks[1].map_or(false, |chunk| {
-                                        chunk.contents[CHUNK_WIDTH - 1][y + 1][z] != 0
+                                        chunk.contents[CHUNK_WIDTH - 1][y + 1][z] != BlockType::Air
                                             || (z != 0
                                                 && chunk.contents[CHUNK_WIDTH - 1][y + 1][z - 1]
-                                                    != 0)
+                                                    != BlockType::Air)
                                     }))
                                     || (x != 0
-                                        && (chunk[x - 1][y + 1][z] != 0
+                                        && (chunk[x - 1][y + 1][z] != BlockType::Air
                                             || (z == 0
                                                 && surrounding_chunks[3].map_or(false, |chunk| {
                                                     chunk.contents[x - 1][y + 1][CHUNK_DEPTH - 1]
-                                                        != 0
+                                                        != BlockType::Air
                                                 }))
-                                            || (z != 0 && chunk[x - 1][y + 1][z - 1] != 0)))
+                                            || (z != 0
+                                                && chunk[x - 1][y + 1][z - 1] != BlockType::Air)))
                                     || (z == 0
                                         && surrounding_chunks[3].map_or(false, |chunk| {
-                                            chunk.contents[x][y + 1][CHUNK_DEPTH - 1] != 0
+                                            chunk.contents[x][y + 1][CHUNK_DEPTH - 1]
+                                                != BlockType::Air
                                         }))
-                                    || (z != 0 && chunk[x][y + 1][z - 1] != 0)
+                                    || (z != 0 && chunk[x][y + 1][z - 1] != BlockType::Air)
                                 {
                                     0.5
                                 } else {
@@ -336,25 +368,30 @@ pub fn generate_chunk_mesh(
                                 tex_coords: BOTTOM_LEFT,
                                 brightness: if (x == 0
                                     && surrounding_chunks[1].map_or(false, |chunk| {
-                                        chunk.contents[CHUNK_WIDTH - 1][y + 1][z] != 0
+                                        chunk.contents[CHUNK_WIDTH - 1][y + 1][z] != BlockType::Air
                                             || (z != CHUNK_DEPTH - 1
                                                 && chunk.contents[CHUNK_WIDTH - 1][y + 1][z + 1]
-                                                    != 0)
+                                                    != BlockType::Air)
                                     }))
                                     || (x != 0
-                                        && (chunk[x - 1][y + 1][z] != 0
+                                        && (chunk[x - 1][y + 1][z] != BlockType::Air
                                             || ((z == CHUNK_DEPTH - 1
-                                                && surrounding_chunks[2]
-                                                    .map_or(false, |chunk| {
-                                                        chunk.contents[x - 1][y + 1][0] != 0
-                                                    }))
+                                                && surrounding_chunks[2].map_or(
+                                                    false,
+                                                    |chunk| {
+                                                        chunk.contents[x - 1][y + 1][0]
+                                                            != BlockType::Air
+                                                    },
+                                                ))
                                                 || (z != CHUNK_DEPTH - 1
-                                                    && chunk[x - 1][y + 1][z + 1] != 0))))
+                                                    && chunk[x - 1][y + 1][z + 1]
+                                                        != BlockType::Air))))
                                     || (z == CHUNK_DEPTH - 1
                                         && surrounding_chunks[2].map_or(false, |chunk| {
-                                            chunk.contents[x][y + 1][0] != 0
+                                            chunk.contents[x][y + 1][0] != BlockType::Air
                                         }))
-                                    || (z != CHUNK_DEPTH - 1 && chunk[x][y + 1][z + 1] != 0)
+                                    || (z != CHUNK_DEPTH - 1
+                                        && chunk[x][y + 1][z + 1] != BlockType::Air)
                                 {
                                     0.5
                                 } else {
@@ -366,23 +403,26 @@ pub fn generate_chunk_mesh(
                                 tex_coords: BOTTOM_RIGHT,
                                 brightness: if (x == CHUNK_WIDTH - 1
                                     && surrounding_chunks[0].map_or(false, |chunk| {
-                                        chunk.contents[0][y + 1][z] != 0
+                                        chunk.contents[0][y + 1][z] != BlockType::Air
                                             || (z != CHUNK_DEPTH - 1
-                                                && chunk.contents[0][y + 1][z + 1] != 0)
+                                                && chunk.contents[0][y + 1][z + 1]
+                                                    != BlockType::Air)
                                     }))
                                     || (x != CHUNK_WIDTH - 1
-                                        && (chunk[x + 1][y + 1][z] != 0
+                                        && (chunk[x + 1][y + 1][z] != BlockType::Air
                                             || (z == CHUNK_DEPTH - 1
                                                 && surrounding_chunks[2].map_or(false, |chunk| {
-                                                    chunk.contents[x + 1][y + 1][0] != 0
+                                                    chunk.contents[x + 1][y + 1][0]
+                                                        != BlockType::Air
                                                 }))
                                             || (z != CHUNK_DEPTH - 1
-                                                && chunk[x + 1][y + 1][z + 1] != 0)))
+                                                && chunk[x + 1][y + 1][z + 1] != BlockType::Air)))
                                     || (z == CHUNK_DEPTH - 1
                                         && surrounding_chunks[2].map_or(false, |chunk| {
-                                            chunk.contents[x][y + 1][0] != 0
+                                            chunk.contents[x][y + 1][0] != BlockType::Air
                                         }))
-                                    || (z != CHUNK_DEPTH - 1 && chunk[x][y + 1][z + 1] != 0)
+                                    || (z != CHUNK_DEPTH - 1
+                                        && chunk[x][y + 1][z + 1] != BlockType::Air)
                                 {
                                     0.5
                                 } else {
@@ -394,21 +434,26 @@ pub fn generate_chunk_mesh(
                                 tex_coords: TOP_RIGHT,
                                 brightness: if (x == CHUNK_WIDTH - 1
                                     && surrounding_chunks[0].map_or(false, |chunk| {
-                                        chunk.contents[0][y + 1][z] != 0
-                                            || (z != 0 && chunk.contents[0][y + 1][z - 1] != 0)
+                                        chunk.contents[0][y + 1][z] != BlockType::Air
+                                            || (z != 0
+                                                && chunk.contents[0][y + 1][z - 1]
+                                                    != BlockType::Air)
                                     }))
                                     || (x != CHUNK_WIDTH - 1
                                         && ((z == 0
                                             && surrounding_chunks[3].map_or(false, |chunk| {
-                                                chunk.contents[x + 1][y + 1][CHUNK_DEPTH - 1] != 0
+                                                chunk.contents[x + 1][y + 1][CHUNK_DEPTH - 1]
+                                                    != BlockType::Air
                                             }))
-                                            || (z != 0 && chunk[x + 1][y + 1][z - 1] != 0)
-                                            || chunk[x + 1][y + 1][z] != 0))
+                                            || (z != 0
+                                                && chunk[x + 1][y + 1][z - 1] != BlockType::Air)
+                                            || chunk[x + 1][y + 1][z] != BlockType::Air))
                                     || (z == 0
                                         && surrounding_chunks[3].map_or(false, |chunk| {
-                                            chunk.contents[x][y + 1][CHUNK_DEPTH - 1] != 0
+                                            chunk.contents[x][y + 1][CHUNK_DEPTH - 1]
+                                                != BlockType::Air
                                         }))
-                                    || (z != 0 && chunk[x][y + 1][z - 1] != 0)
+                                    || (z != 0 && chunk[x][y + 1][z - 1] != BlockType::Air)
                                 {
                                     0.5
                                 } else {
@@ -419,7 +464,7 @@ pub fn generate_chunk_mesh(
                     }
                 }
                 // bottom face
-                if y == 0 || chunk[x][y - 1][z] == 0 {
+                if y == 0 || chunk[x][y - 1][z] == BlockType::Air {
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     vertices.append(&mut vec![
                         // start of bottom
