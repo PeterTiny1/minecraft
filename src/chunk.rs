@@ -18,6 +18,23 @@ pub enum BlockType {
     Grass,
 }
 
+impl BlockType {
+    fn get_offset(&self) -> [[f32; 2]; 6] {
+        match self {
+            BlockType::Stone => [[0.0, 0.0]; 6],
+            BlockType::Grass => [
+                [0.5, 0.0],
+                [0.0, 0.5],
+                [0.0, 0.5],
+                [0.0, 0.5],
+                [0.0, 0.5],
+                [0.0, 0.0],
+            ],
+            _ => panic!("This is not supposed to be called!"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ChunkData {
     pub location: [i32; 2],
@@ -25,8 +42,8 @@ pub struct ChunkData {
 }
 
 const TOP_LEFT: [f32; 2] = [0.0, 0.0];
-const TOP_RIGHT: [f32; 2] = [0.0, 0.5];
-const BOTTOM_LEFT: [f32; 2] = [0.5, 0.0];
+const TOP_RIGHT: [f32; 2] = [0.5, 0.0];
+const BOTTOM_LEFT: [f32; 2] = [0.0, 0.5];
 const BOTTOM_RIGHT: [f32; 2] = [0.5, 0.5];
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
 const MAX_DISTANCE_X: i32 = MAX_DEPTH as i32 / CHUNK_WIDTH as i32 + 1;
@@ -92,6 +109,7 @@ pub fn generate_chunk_mesh(
                 if chunk[x][y][z] == BlockType::Air {
                     continue;
                 }
+                let tex_offsets = chunk[x][y][z].get_offset();
                 let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH as i32)) as f32;
                 let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH as i32)) as f32;
                 let y_f32 = y as f32;
@@ -101,12 +119,13 @@ pub fn generate_chunk_mesh(
                         .map_or(true, |chunk| chunk.contents[x][y][0] == BlockType::Air))
                     || (z != CHUNK_DEPTH - 1 && chunk[x][y][z + 1] == BlockType::Air)
                 {
+                    let tex_offset = tex_offsets[1];
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     let zplusone = 1.0 + rel_z;
                     vertices.append(&mut vec![
                         Vertex {
                             position: [rel_x, 1.0 + y_f32, zplusone],
-                            tex_coords: TOP_LEFT,
+                            tex_coords: [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
                             brightness: if (x == 0
                                 && surrounding_chunks[1].map_or(false, |chunk| {
                                     z != CHUNK_DEPTH - 1
@@ -124,7 +143,10 @@ pub fn generate_chunk_mesh(
                         },
                         Vertex {
                             position: [rel_x, y_f32, zplusone],
-                            tex_coords: BOTTOM_LEFT,
+                            tex_coords: [
+                                BOTTOM_LEFT[0] + tex_offset[0],
+                                BOTTOM_LEFT[1] + tex_offset[1],
+                            ],
                             brightness: if y != 0
                                 && ((z != CHUNK_DEPTH - 1
                                     && chunk[x][y - 1][z + 1] != BlockType::Air)
@@ -139,7 +161,10 @@ pub fn generate_chunk_mesh(
                         },
                         Vertex {
                             position: [1.0 + rel_x, y_f32, zplusone],
-                            tex_coords: BOTTOM_RIGHT,
+                            tex_coords: [
+                                BOTTOM_RIGHT[0] + tex_offset[0],
+                                BOTTOM_RIGHT[1] + tex_offset[1],
+                            ],
                             brightness: if y != 0
                                 && ((z != CHUNK_DEPTH - 1
                                     && chunk[x][y - 1][z + 1] != BlockType::Air)
@@ -154,7 +179,10 @@ pub fn generate_chunk_mesh(
                         },
                         Vertex {
                             position: [1.0 + rel_x, 1.0 + y_f32, zplusone],
-                            tex_coords: TOP_RIGHT,
+                            tex_coords: [
+                                TOP_RIGHT[0] + tex_offset[0],
+                                TOP_RIGHT[1] + tex_offset[1],
+                            ],
                             brightness: if (x == CHUNK_WIDTH - 1
                                 && surrounding_chunks[0].map_or(false, |chunk| {
                                     z != CHUNK_DEPTH - 1
@@ -177,12 +205,13 @@ pub fn generate_chunk_mesh(
                         .map_or(true, |chunk| chunk.contents[0][y][z] == BlockType::Air))
                     || (x != CHUNK_WIDTH - 1 && chunk[x + 1][y][z] == BlockType::Air)
                 {
+                    let tex_offset = tex_offsets[2];
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     let xplusone = 1.0 + rel_x;
                     vertices.append(&mut vec![
                         Vertex {
                             position: [xplusone, 1.0 + y_f32, 1.0 + rel_z],
-                            tex_coords: TOP_LEFT,
+                            tex_coords: [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
                             brightness: if (x == CHUNK_WIDTH - 1
                                 && surrounding_chunks[0].map_or(false, |chunk| {
                                     z != CHUNK_WIDTH - 1
@@ -199,7 +228,10 @@ pub fn generate_chunk_mesh(
                         },
                         Vertex {
                             position: [xplusone, y_f32, 1.0 + rel_z],
-                            tex_coords: BOTTOM_LEFT,
+                            tex_coords: [
+                                BOTTOM_LEFT[0] + tex_offset[0],
+                                BOTTOM_LEFT[1] + tex_offset[1],
+                            ],
                             brightness: if y != 0 && chunk[x][y - 1][z] != BlockType::Air {
                                 0.5
                             } else {
@@ -208,7 +240,10 @@ pub fn generate_chunk_mesh(
                         },
                         Vertex {
                             position: [xplusone, y_f32, rel_z],
-                            tex_coords: BOTTOM_RIGHT,
+                            tex_coords: [
+                                BOTTOM_RIGHT[0] + tex_offset[0],
+                                BOTTOM_RIGHT[1] + tex_offset[1],
+                            ],
                             brightness: if y != 0 && chunk[x][y - 1][z] != BlockType::Air {
                                 0.5
                             } else {
@@ -217,7 +252,10 @@ pub fn generate_chunk_mesh(
                         },
                         Vertex {
                             position: [xplusone, 1.0 + y_f32, rel_z],
-                            tex_coords: TOP_RIGHT,
+                            tex_coords: [
+                                TOP_RIGHT[0] + tex_offset[0],
+                                TOP_RIGHT[1] + tex_offset[1],
+                            ],
                             brightness: if (x == CHUNK_WIDTH - 1
                                 && surrounding_chunks[1].map_or(false, |chunk| {
                                     z != 0 && chunk.contents[0][y][z - 1] != BlockType::Air
@@ -240,16 +278,20 @@ pub fn generate_chunk_mesh(
                     }))
                     || (z != 0 && chunk[x][y][z - 1] == BlockType::Air)
                 {
+                    let tex_offset = tex_offsets[3];
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     vertices.append(&mut vec![
                         Vertex {
                             position: [1.0 + rel_x, 1.0 + y_f32, rel_z],
-                            tex_coords: TOP_LEFT,
+                            tex_coords: [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
                             brightness: BACK_BRIGHTNESS,
                         },
                         Vertex {
                             position: [1.0 + rel_x, y_f32, rel_z],
-                            tex_coords: BOTTOM_LEFT,
+                            tex_coords: [
+                                BOTTOM_LEFT[0] + tex_offset[0],
+                                BOTTOM_LEFT[1] + tex_offset[1],
+                            ],
                             brightness: if y != 0 && chunk[x][y - 1][z] != BlockType::Air {
                                 0.5
                             } else {
@@ -258,7 +300,10 @@ pub fn generate_chunk_mesh(
                         },
                         Vertex {
                             position: [rel_x, y_f32, rel_z],
-                            tex_coords: BOTTOM_RIGHT,
+                            tex_coords: [
+                                BOTTOM_RIGHT[0] + tex_offset[0],
+                                BOTTOM_RIGHT[1] + tex_offset[1],
+                            ],
                             brightness: if y != 0 && chunk[x][y - 1][z] != BlockType::Air {
                                 0.5
                             } else {
@@ -267,7 +312,10 @@ pub fn generate_chunk_mesh(
                         },
                         Vertex {
                             position: [rel_x, 1.0 + y_f32, rel_z],
-                            tex_coords: TOP_RIGHT,
+                            tex_coords: [
+                                TOP_RIGHT[0] + tex_offset[0],
+                                TOP_RIGHT[1] + tex_offset[1],
+                            ],
                             brightness: BACK_BRIGHTNESS,
                         },
                     ]);
@@ -279,54 +327,77 @@ pub fn generate_chunk_mesh(
                     }))
                     || (x != 0 && chunk[x - 1][y][z] == BlockType::Air)
                 {
+                    let tex_offset = tex_offsets[4];
                     indices.extend(&mut QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     vertices.append(&mut vec![
                         Vertex {
                             position: [rel_x, 1.0 + y_f32, rel_z],
-                            tex_coords: TOP_LEFT,
+                            tex_coords: [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
                             brightness: SIDE_BRIGHTNESS,
                         },
                         Vertex {
                             position: [rel_x, y_f32, rel_z],
-                            tex_coords: BOTTOM_LEFT,
+                            tex_coords: [
+                                BOTTOM_LEFT[0] + tex_offset[0],
+                                BOTTOM_LEFT[1] + tex_offset[1],
+                            ],
                             brightness: SIDE_BRIGHTNESS,
                         },
                         Vertex {
                             position: [rel_x, y_f32, 1.0 + rel_z],
-                            tex_coords: BOTTOM_RIGHT,
+                            tex_coords: [
+                                BOTTOM_RIGHT[0] + tex_offset[0],
+                                BOTTOM_RIGHT[1] + tex_offset[1],
+                            ],
                             brightness: SIDE_BRIGHTNESS,
                         },
                         Vertex {
                             position: [rel_x, 1.0 + y_f32, 1.0 + rel_z],
-                            tex_coords: TOP_RIGHT,
+                            tex_coords: [
+                                TOP_RIGHT[0] + tex_offset[0],
+                                TOP_RIGHT[1] + tex_offset[1],
+                            ],
                             brightness: SIDE_BRIGHTNESS,
                         },
                     ]);
                 }
                 // top face
                 if y == CHUNK_HEIGHT - 1 || chunk[x][y + 1][z] == BlockType::Air {
+                    let tex_offset = tex_offsets[0];
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     let yplusone = y_f32 + 1.0;
                     if y == CHUNK_HEIGHT - 2 {
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [rel_x, yplusone, rel_z],
-                                tex_coords: TOP_LEFT,
+                                tex_coords: [
+                                    TOP_LEFT[0] + tex_offset[0],
+                                    TOP_LEFT[1] + tex_offset[1],
+                                ],
                                 brightness: TOP_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [rel_x, yplusone, 1.0 + rel_z],
-                                tex_coords: BOTTOM_LEFT,
+                                tex_coords: [
+                                    BOTTOM_LEFT[0] + tex_offset[0],
+                                    BOTTOM_LEFT[1] + tex_offset[1],
+                                ],
                                 brightness: TOP_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [1.0 + rel_x, yplusone, 1.0 + rel_z],
-                                tex_coords: BOTTOM_RIGHT,
+                                tex_coords: [
+                                    BOTTOM_RIGHT[0] + tex_offset[0],
+                                    BOTTOM_RIGHT[1] + tex_offset[1],
+                                ],
                                 brightness: TOP_BRIGHTNESS,
                             },
                             Vertex {
                                 position: [1.0 + rel_x, yplusone, rel_z],
-                                tex_coords: TOP_RIGHT,
+                                tex_coords: [
+                                    TOP_RIGHT[0] + tex_offset[0],
+                                    TOP_RIGHT[1] + tex_offset[1],
+                                ],
                                 brightness: TOP_BRIGHTNESS,
                             },
                         ]);
@@ -334,7 +405,10 @@ pub fn generate_chunk_mesh(
                         vertices.append(&mut vec![
                             Vertex {
                                 position: [rel_x, yplusone, rel_z],
-                                tex_coords: TOP_LEFT,
+                                tex_coords: [
+                                    TOP_LEFT[0] + tex_offset[0],
+                                    TOP_LEFT[1] + tex_offset[1],
+                                ],
                                 brightness: if (x == 0
                                     && surrounding_chunks[1].map_or(false, |chunk| {
                                         chunk.contents[CHUNK_WIDTH - 1][y + 1][z] != BlockType::Air
@@ -365,7 +439,10 @@ pub fn generate_chunk_mesh(
                             },
                             Vertex {
                                 position: [rel_x, yplusone, 1.0 + rel_z],
-                                tex_coords: BOTTOM_LEFT,
+                                tex_coords: [
+                                    BOTTOM_LEFT[0] + tex_offset[0],
+                                    BOTTOM_LEFT[1] + tex_offset[1],
+                                ],
                                 brightness: if (x == 0
                                     && surrounding_chunks[1].map_or(false, |chunk| {
                                         chunk.contents[CHUNK_WIDTH - 1][y + 1][z] != BlockType::Air
@@ -400,7 +477,10 @@ pub fn generate_chunk_mesh(
                             },
                             Vertex {
                                 position: [1.0 + rel_x, yplusone, 1.0 + rel_z],
-                                tex_coords: BOTTOM_RIGHT,
+                                tex_coords: [
+                                    BOTTOM_RIGHT[0] + tex_offset[0],
+                                    BOTTOM_RIGHT[1] + tex_offset[1],
+                                ],
                                 brightness: if (x == CHUNK_WIDTH - 1
                                     && surrounding_chunks[0].map_or(false, |chunk| {
                                         chunk.contents[0][y + 1][z] != BlockType::Air
@@ -431,7 +511,10 @@ pub fn generate_chunk_mesh(
                             },
                             Vertex {
                                 position: [1.0 + rel_x, yplusone, rel_z],
-                                tex_coords: TOP_RIGHT,
+                                tex_coords: [
+                                    TOP_RIGHT[0] + tex_offset[0],
+                                    TOP_RIGHT[1] + tex_offset[1],
+                                ],
                                 brightness: if (x == CHUNK_WIDTH - 1
                                     && surrounding_chunks[0].map_or(false, |chunk| {
                                         chunk.contents[0][y + 1][z] != BlockType::Air
@@ -465,27 +548,37 @@ pub fn generate_chunk_mesh(
                 }
                 // bottom face
                 if y == 0 || chunk[x][y - 1][z] == BlockType::Air {
+                    let tex_offset = tex_offsets[5];
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     vertices.append(&mut vec![
                         // start of bottom
                         Vertex {
                             position: [1.0 + rel_x, y_f32, rel_z],
-                            tex_coords: TOP_LEFT,
+                            tex_coords: [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
                             brightness: BOTTOM_BRIGHTNESS,
                         },
                         Vertex {
                             position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                            tex_coords: BOTTOM_LEFT,
+                            tex_coords: [
+                                BOTTOM_LEFT[0] + tex_offset[0],
+                                BOTTOM_LEFT[1] + tex_offset[1],
+                            ],
                             brightness: BOTTOM_BRIGHTNESS,
                         },
                         Vertex {
                             position: [rel_x, y_f32, 1.0 + rel_z],
-                            tex_coords: BOTTOM_RIGHT,
+                            tex_coords: [
+                                BOTTOM_RIGHT[0] + tex_offset[0],
+                                BOTTOM_RIGHT[1] + tex_offset[1],
+                            ],
                             brightness: BOTTOM_BRIGHTNESS,
                         },
                         Vertex {
                             position: [rel_x, y_f32, rel_z],
-                            tex_coords: TOP_RIGHT,
+                            tex_coords: [
+                                TOP_RIGHT[0] + tex_offset[0],
+                                TOP_RIGHT[1] + tex_offset[1],
+                            ],
                             brightness: BOTTOM_BRIGHTNESS,
                         },
                     ]);
