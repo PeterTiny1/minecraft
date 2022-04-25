@@ -311,7 +311,7 @@ impl State {
                             + (noise.get([
                                 x as f64 / SMALL_SCALE + 10.0,
                                 y as f64 / SMALL_SCALE + 10.0,
-                            ]) * 5.0)) as i32
+                            ]) * 20.0)) as i32
                     })
                     .collect()
             })
@@ -520,7 +520,7 @@ impl State {
                                     chunk_location,
                                     SMALL_SCALE,
                                     10.0,
-                                ) * 5.0)) as i32
+                                ) * 20.0)) as i32
                         })
                         .collect::<Vec<i32>>()
                 })
