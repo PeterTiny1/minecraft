@@ -1,5 +1,6 @@
 mod camera;
 mod chunk;
+mod physics;
 mod texture;
 
 use sdl2::{

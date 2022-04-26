@@ -3,7 +3,10 @@ use std::{f32::consts::FRAC_PI_2, time::Duration};
 use sdl2::keyboard::Keycode;
 use vek::{Mat4, Quaternion, Vec3};
 
-use crate::chunk::{BlockType, ChunkData, CHUNK_DEPTH, CHUNK_WIDTH};
+use crate::{
+    chunk::{BlockType, ChunkData, CHUNK_DEPTH, CHUNK_WIDTH},
+    physics,
+};
 
 const GRAVITY: f32 = 9.807;
 
@@ -169,16 +172,12 @@ impl CameraController {
                 for (y, row) in column.iter().enumerate() {
                     for (z, &block) in row.iter().enumerate() {
                         if block != BlockType::Air
-                            && camera.position.x + 0.3
-                                >= (chunk.location[0] * CHUNK_WIDTH as i32 + x as i32) as f32
-                            && camera.position.x - 0.3
-                                < (chunk.location[0] * CHUNK_WIDTH as i32 + x as i32 + 1) as f32
-                            && camera.position.z + 0.3
-                                >= (chunk.location[1] * CHUNK_DEPTH as i32 + z as i32) as f32
-                            && camera.position.z - 0.3
-                                < (chunk.location[1] * CHUNK_DEPTH as i32 + z as i32 + 1) as f32
-                            && camera.position.y > (y) as f32
-                            && camera.position.y <= (y + 1) as f32 + 1.5
+                            && physics::is_collision_with_block(
+                                camera.position,
+                                chunk.location[0] * CHUNK_WIDTH as i32 + x as i32,
+                                y as i32,
+                                chunk.location[1] * CHUNK_DEPTH as i32 + z as i32,
+                            )
                         {
                             camera.position.y = (y + 1) as f32 + 1.5;
                             self.velocity.y = 0.0;
