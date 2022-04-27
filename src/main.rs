@@ -326,7 +326,7 @@ impl State {
                         chunk[x][y][z] = if (y as i32) < heightmap[x][z] {
                             BlockType::Stone
                         } else if y as i32 == heightmap[x][z] {
-                            BlockType::Grass
+                            BlockType::GrassBlock
                         } else {
                             BlockType::Air
                         };
@@ -535,7 +535,7 @@ impl State {
                             chunk_contents[x][y][z] = if (y as i32) < heightmap[x][z] {
                                 BlockType::Stone
                             } else if y as i32 == heightmap[x][z] {
-                                BlockType::Grass
+                                BlockType::GrassBlock
                             } else {
                                 BlockType::Air
                             };

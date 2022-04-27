@@ -22,14 +22,14 @@ const BOTTOM_RIGHT: [f32; 2] = [TEXTURE_WIDTH, TEXTURE_WIDTH];
 pub enum BlockType {
     Air,
     Stone,
-    Grass,
+    GrassBlock,
 }
 
 impl BlockType {
     fn get_offset(&self) -> [[f32; 2]; 6] {
         match self {
             BlockType::Stone => [[0.0, 0.0]; 6],
-            BlockType::Grass => [
+            BlockType::GrassBlock => [
                 [TEXTURE_WIDTH, 0.0],
                 [0.0, TEXTURE_WIDTH],
                 [0.0, TEXTURE_WIDTH],
