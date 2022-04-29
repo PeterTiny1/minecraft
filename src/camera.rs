@@ -4,7 +4,7 @@ use sdl2::keyboard::Keycode;
 use vek::{Mat4, Quaternion, Vec3};
 
 use crate::{
-    chunk::{BlockType, ChunkData, CHUNK_DEPTH, CHUNK_WIDTH},
+    chunk::{ChunkData, CHUNK_DEPTH, CHUNK_WIDTH},
     physics,
 };
 
@@ -171,7 +171,7 @@ impl CameraController {
             for (x, column) in chunk.contents.iter().enumerate() {
                 for (y, row) in column.iter().enumerate() {
                     for (z, &block) in row.iter().enumerate() {
-                        if block != BlockType::Air
+                        if block.is_solid()
                             && physics::is_collision_with_block(
                                 camera.position,
                                 chunk.location[0] * CHUNK_WIDTH as i32 + x as i32,

@@ -33,5 +33,7 @@ var t_diffuse: texture_2d<f32>;
 var s_diffuse: sampler;
 [[stage(fragment)]]
 fn fs_main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
-    return mix(vec4<f32>(0.1, 0.2, 0.3, 1.0), textureSample(t_diffuse, s_diffuse, in.tex_coords) * vec4<f32>(vec3<f32>(in.brightness), 1.0), vec4<f32>(clamp((-in.clip_position.z + 1.) * 1000.0, 0.0, 1.0)));
+    let texture_sample = textureSample(t_diffuse, s_diffuse, in.tex_coords);
+    if (texture_sample.a <= 0.001) { discard; }
+    return mix(vec4<f32>(0.1, 0.2, 0.3, 1.0), texture_sample * vec4<f32>(vec3<f32>(in.brightness), 1.0), vec4<f32>(clamp((-in.clip_position.z + 1.) * 1000.0, 0.0, 1.0)));
 }

@@ -90,48 +90,46 @@ impl Texture {
             height: dimensions.1 / 8,
             depth_or_array_layers: 1,
         };
-        let rgba1 = ImageBuffer::from_fn(dimensions.0 / 2, dimensions.1 / 2, |x, y| {
-            Rgba(
-                izip!(
-                    rgba.get_pixel(x * 2, y * 2).0,
-                    rgba.get_pixel(x * 2 + 1, y * 2).0,
-                    rgba.get_pixel(x * 2, y * 2 + 1).0,
-                    rgba.get_pixel(x * 2 + 1, y * 2 + 1).0
+        let downscale_function = |texture: ImageBuffer<Rgba<u8>, Vec<u8>>| {
+            move |x, y| {
+                Rgba(
+                    izip!(
+                        texture.get_pixel(x * 2, y * 2).0,
+                        texture.get_pixel(x * 2 + 1, y * 2).0,
+                        texture.get_pixel(x * 2, y * 2 + 1).0,
+                        texture.get_pixel(x * 2 + 1, y * 2 + 1).0
+                    )
+                    .enumerate()
+                    .map(|(index, i)| {
+                        if index != 3 {
+                            ((i.0 as u16 + i.1 as u16 + i.2 as u16 + i.3 as u16) / 4) as u8
+                        } else {
+                            (((i.0 as f32 + i.1 as f32 + i.2 as f32 + i.3 as f32) / (4.0 * 256.0))
+                                .round()
+                                * 256.0) as u8
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap(),
                 )
-                .map(|i| ((i.0 as u16 + i.1 as u16 + i.2 as u16 + i.3 as u16) / 4) as u8)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-            )
-        });
-        let rgba2 = ImageBuffer::from_fn(dimensions.0 / 4, dimensions.1 / 4, |x, y| {
-            Rgba(
-                izip!(
-                    rgba1.get_pixel(x * 2, y * 2).0,
-                    rgba1.get_pixel(x * 2 + 1, y * 2).0,
-                    rgba1.get_pixel(x * 2, y * 2 + 1).0,
-                    rgba1.get_pixel(x * 2 + 1, y * 2 + 1).0
-                )
-                .map(|i| ((i.0 as u16 + i.1 as u16 + i.2 as u16 + i.3 as u16) / 4) as u8)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-            )
-        });
-        let rgba3 = ImageBuffer::from_fn(dimensions.0 / 8, dimensions.1 / 8, |x, y| {
-            Rgba(
-                izip!(
-                    rgba2.get_pixel(x * 2, y * 2).0,
-                    rgba2.get_pixel(x * 2 + 1, y * 2).0,
-                    rgba2.get_pixel(x * 2, y * 2 + 1).0,
-                    rgba2.get_pixel(x * 2 + 1, y * 2 + 1).0
-                )
-                .map(|i| ((i.0 as u16 + i.1 as u16 + i.2 as u16 + i.3 as u16) / 4) as u8)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-            )
-        });
+            }
+        };
+        let rgba1 = ImageBuffer::from_fn(
+            dimensions.0 / 2,
+            dimensions.1 / 2,
+            downscale_function(rgba.clone()),
+        );
+        let rgba2 = ImageBuffer::from_fn(
+            dimensions.0 / 4,
+            dimensions.1 / 4,
+            downscale_function(rgba1.clone()),
+        );
+        let rgba3 = ImageBuffer::from_fn(
+            dimensions.0 / 8,
+            dimensions.1 / 8,
+            downscale_function(rgba2.clone()),
+        );
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label,
             size,

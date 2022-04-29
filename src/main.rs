@@ -327,6 +327,10 @@ impl State {
                             BlockType::Stone
                         } else if y as i32 == heightmap[x][z] {
                             BlockType::GrassBlock
+                        } else if y as i32 == heightmap[x][z] + 1
+                            && noise.get([x as f64, z as f64, y as f64]) > 0.4
+                        {
+                            BlockType::Grass
                         } else {
                             BlockType::Air
                         };
@@ -536,6 +540,10 @@ impl State {
                                 BlockType::Stone
                             } else if y as i32 == heightmap[x][z] {
                                 BlockType::GrassBlock
+                            } else if y as i32 == heightmap[x][z] + 1
+                                && self.noise.get([x as f64, z as f64, y as f64]) > 0.4
+                            {
+                                BlockType::Grass
                             } else {
                                 BlockType::Air
                             };
