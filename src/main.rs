@@ -24,7 +24,7 @@ use wgpu::util::DeviceExt;
 
 use noise::{NoiseFn, OpenSimplex};
 
-const MAX_DEPTH: f32 = 192.0;
+const MAX_DEPTH: f32 = 256.0;
 
 #[derive(Debug)]
 struct ChunkBuffers {
@@ -87,7 +87,7 @@ impl Uniforms {
 
 const LARGE_SCALE: f64 = 50.0;
 const SMALL_SCALE: f64 = 20.0;
-const LARGE_HEIGHT: f64 = 30.0;
+const LARGE_HEIGHT: f64 = 100.0;
 
 struct State {
     surface: wgpu::Surface,

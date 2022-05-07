@@ -358,7 +358,7 @@ pub fn generate_chunk_mesh(
                 // third face
                 if (z == 0
                     && surrounding_chunks[3].map_or(true, |chunk| {
-                        chunk.contents[x][y].last().unwrap() == &BlockType::Air
+                        !chunk.contents[x][y][CHUNK_DEPTH - 1].is_solid()
                     }))
                     || (z != 0 && !chunk[x][y][z - 1].is_solid())
                 {
