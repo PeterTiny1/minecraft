@@ -13,7 +13,7 @@ pub const CHUNK_DEPTH: usize = 16;
 #[cfg(not(target_os = "windows"))]
 pub const CHUNK_DEPTH: usize = 32;
 
-const TEXTURE_WIDTH: f32 = 0.5;
+const TEXTURE_WIDTH: f32 = 0.25;
 
 const TOP_LEFT: [f32; 2] = [0.0, 0.0];
 const TOP_RIGHT: [f32; 2] = [TEXTURE_WIDTH, 0.0];
@@ -34,13 +34,13 @@ impl BlockType {
             BlockType::Stone => [[0.0, 0.0]; 6],
             BlockType::GrassBlock => [
                 [TEXTURE_WIDTH, 0.0],
-                [0.0, TEXTURE_WIDTH],
-                [0.0, TEXTURE_WIDTH],
-                [0.0, TEXTURE_WIDTH],
-                [0.0, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH * 2.0, 0.0],
+                [TEXTURE_WIDTH * 2.0, 0.0],
+                [TEXTURE_WIDTH * 2.0, 0.0],
+                [TEXTURE_WIDTH * 2.0, 0.0],
                 [0.0, 0.0],
             ],
-            BlockType::Grass => [[0.5, 0.5]; 6],
+            BlockType::Grass => [[TEXTURE_WIDTH * 3.0, 0.0]; 6],
             _ => panic!("This is not supposed to be called!"),
         }
     }
