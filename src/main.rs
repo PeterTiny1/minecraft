@@ -10,7 +10,6 @@ use sdl2::{
 };
 use std::{
     collections::VecDeque,
-    f64::consts::FRAC_PI_2,
     sync::{Arc, Mutex},
     thread, vec,
 };
@@ -87,7 +86,8 @@ impl Uniforms {
 
 const LARGE_SCALE: f64 = 50.0;
 const SMALL_SCALE: f64 = 20.0;
-const LARGE_HEIGHT: f64 = 100.0;
+const LARGE_HEIGHT: f64 = 40.0;
+const TERRAIN_HEIGHT: f64 = 0.6;
 
 struct State {
     surface: wgpu::Surface,
@@ -307,7 +307,8 @@ impl State {
             .map(|x| {
                 (0..CHUNK_DEPTH)
                     .map(|y| {
-                        ((noise.get([x as f64 / LARGE_SCALE, y as f64 / LARGE_SCALE]) + FRAC_PI_2)
+                        ((noise.get([x as f64 / LARGE_SCALE, y as f64 / LARGE_SCALE])
+                            + TERRAIN_HEIGHT)
                             * LARGE_HEIGHT
                             + (noise.get([
                                 x as f64 / SMALL_SCALE + 10.0,
@@ -516,7 +517,7 @@ impl State {
                                 chunk_location,
                                 LARGE_SCALE,
                                 0.0,
-                            ) + FRAC_PI_2)
+                            ) + TERRAIN_HEIGHT)
                                 * LARGE_HEIGHT)
                                 + (chunk::noise_at(
                                     &self.noise,
