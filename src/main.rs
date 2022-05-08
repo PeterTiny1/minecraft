@@ -87,7 +87,7 @@ impl Uniforms {
 const LARGE_SCALE: f64 = 50.0;
 const SMALL_SCALE: f64 = 20.0;
 const LARGE_HEIGHT: f64 = 40.0;
-const TERRAIN_HEIGHT: f64 = 0.6;
+const TERRAIN_HEIGHT: f64 = 0.7;
 
 struct State {
     surface: wgpu::Surface,
@@ -621,9 +621,9 @@ impl State {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
+                            r: 0.2,
+                            g: 0.3,
+                            b: 0.4,
                             a: 1.0,
                         }),
                         store: true,
