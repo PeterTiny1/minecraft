@@ -1,6 +1,8 @@
-use std::f32::consts::FRAC_1_SQRT_2;
+use std::{collections::HashMap, f32::consts::FRAC_1_SQRT_2};
 
 use noise::{NoiseFn, OpenSimplex};
+use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 use crate::{Vertex, MAX_DEPTH};
 #[cfg(target_os = "windows")]
@@ -20,7 +22,7 @@ const TOP_RIGHT: [f32; 2] = [TEXTURE_WIDTH, 0.0];
 const BOTTOM_LEFT: [f32; 2] = [0.0, TEXTURE_WIDTH];
 const BOTTOM_RIGHT: [f32; 2] = [TEXTURE_WIDTH, TEXTURE_WIDTH];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BlockType {
     Air,
     Stone,
@@ -52,9 +54,11 @@ impl BlockType {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[serde_as]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ChunkData {
-    pub location: [i32; 2],
+    // pub location: [i32; 2],
+    #[serde_as(as = "[[[_; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH]")]
     pub contents: [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
 }
 
@@ -80,15 +84,39 @@ pub fn noise_at(
     ])
 }
 
+fn _chunk_at_block(
+    generated_chunks: &HashMap<[i32; 2], ChunkData>,
+    x: i32,
+    z: i32,
+) -> Option<ChunkData> {
+    let chunk_x = x.div_euclid(CHUNK_WIDTH as i32);
+    let chunk_z = z.div_euclid(CHUNK_DEPTH as i32);
+    generated_chunks.get(&[chunk_x, chunk_z]).cloned()
+}
+
+fn _get_block(
+    generated_chunks: &HashMap<[i32; 2], ChunkData>,
+    x: i32,
+    y: i32,
+    z: i32,
+) -> Option<BlockType> {
+    let chunk = _chunk_at_block(generated_chunks, x, z)?;
+    let x = (x - (x.div_euclid(CHUNK_WIDTH as i32) * 16)) as usize;
+    let z = (z - (z.div_euclid(CHUNK_DEPTH as i32) * 16)) as usize;
+    if y >= 0 && (y as usize) < CHUNK_HEIGHT {
+        Some(chunk.contents[x][y as usize][z])
+    } else {
+        None
+    }
+}
+
 pub fn get_nearest_chunk_location(
     x: f32,
     z: f32,
-    generated_chunks: &Vec<ChunkData>,
+    generated_chunks: &HashMap<[i32; 2], ChunkData>,
 ) -> Option<[i32; 2]> {
-    let (chunk_x, chunk_y) = (
-        (x / CHUNK_WIDTH as f32).floor() as i32,
-        (z / CHUNK_DEPTH as f32).floor() as i32,
-    );
+    let chunk_x = (x as i32).div_euclid(CHUNK_WIDTH as i32);
+    let chunk_z = (z as i32).div_euclid(CHUNK_WIDTH as i32);
     let length = |a, b| (a * a + b * b);
     let mut collector: Option<[i32; 2]> = None;
     for i in -MAX_DISTANCE_X..=MAX_DISTANCE_X {
@@ -98,15 +126,13 @@ pub fn get_nearest_chunk_location(
                 && ((collector.is_some()
                     && distance < length(collector.unwrap()[0], collector.unwrap()[1]))
                     || collector.is_none())
-                && generated_chunks
-                    .iter()
-                    .all(|chunk| chunk.location != [i + chunk_x, j + chunk_y])
+                && !generated_chunks.contains_key(&[i + chunk_x, j + chunk_z])
             {
                 collector = Some([i, j]);
             }
         }
     }
-    collector.and_then(|value: [i32; 2]| Some([value[0] + chunk_x, value[1] + chunk_y]))
+    collector.and_then(|value: [i32; 2]| Some([value[0] + chunk_x, value[1] + chunk_z]))
 }
 
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];

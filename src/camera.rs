@@ -1,4 +1,4 @@
-use std::{f32::consts::FRAC_PI_2, time::Duration};
+use std::{collections::HashMap, f32::consts::FRAC_PI_2, time::Duration};
 
 use sdl2::keyboard::Keycode;
 use vek::{Mat4, Quaternion, Vec3};
@@ -149,7 +149,12 @@ impl CameraController {
         self.scroll = (delta * 200) as f32;
     }
 
-    pub fn update_camera(&mut self, camera: &mut Camera, dt: Duration, world: &Vec<ChunkData>) {
+    pub fn update_camera(
+        &mut self,
+        camera: &mut Camera,
+        dt: Duration,
+        world: &HashMap<[i32; 2], ChunkData>,
+    ) {
         let dt = dt.as_secs_f32();
         let (yaw_sin, yaw_cos) = camera.yaw.sin_cos();
         let forward = Vec3::new(yaw_cos, 0.0, yaw_sin).normalized();
@@ -164,9 +169,7 @@ impl CameraController {
             (camera.position.x / CHUNK_WIDTH as f32).floor() as i32,
             (camera.position.z / CHUNK_DEPTH as f32).floor() as i32,
         ];
-        let in_chunk = world
-            .iter()
-            .find(|chunk| chunk.location == camera_chunkcoord);
+        let in_chunk = world.get(&camera_chunkcoord);
         if let Some(chunk) = in_chunk {
             for (x, column) in chunk.contents.iter().enumerate() {
                 for (y, row) in column.iter().enumerate() {
@@ -174,9 +177,9 @@ impl CameraController {
                         if block.is_solid()
                             && physics::is_collision_with_block(
                                 camera.position,
-                                chunk.location[0] * CHUNK_WIDTH as i32 + x as i32,
+                                camera_chunkcoord[0] * CHUNK_WIDTH as i32 + x as i32,
                                 y as i32,
-                                chunk.location[1] * CHUNK_DEPTH as i32 + z as i32,
+                                camera_chunkcoord[1] * CHUNK_DEPTH as i32 + z as i32,
                             )
                         {
                             camera.position.y = (y + 1) as f32 + 1.5;

@@ -9,7 +9,10 @@ use sdl2::{
     video::{FullscreenType, Window},
 };
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
+    fs::File,
+    io::BufReader,
+    path::Path,
     sync::{Arc, Mutex},
     thread, vec,
 };
@@ -106,10 +109,10 @@ struct State {
     mouse_pressed: bool,
     // right_pressed: bool,
     depth_texture: texture::Texture,
-    generated_chunkdata: Arc<Mutex<Vec<chunk::ChunkData>>>,
-    generated_chunk_buffers: Vec<ChunkBuffers>,
-    generating_chunks: Arc<Mutex<VecDeque<([i32; 2], usize)>>>,
-    returned_buffers: Arc<Mutex<Vec<(Vec<Vertex>, Vec<u32>, usize)>>>,
+    generated_chunkdata: Arc<Mutex<HashMap<[i32; 2], chunk::ChunkData>>>,
+    generated_chunk_buffers: HashMap<[i32; 2], ChunkBuffers>,
+    generating_chunks: Arc<Mutex<VecDeque<[i32; 2]>>>,
+    returned_buffers: Arc<Mutex<Vec<(Vec<Vertex>, Vec<u32>, [i32; 2])>>>,
     noise: noise::OpenSimplex,
 }
 
@@ -303,23 +306,29 @@ impl State {
             )
         };
         let noise = OpenSimplex::new();
-        let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
-            .map(|x| {
-                (0..CHUNK_DEPTH)
-                    .map(|y| {
-                        ((noise.get([x as f64 / LARGE_SCALE, y as f64 / LARGE_SCALE])
-                            + TERRAIN_HEIGHT)
-                            * LARGE_HEIGHT
-                            + (noise.get([
-                                x as f64 / SMALL_SCALE + 10.0,
-                                y as f64 / SMALL_SCALE + 10.0,
-                            ]) * 20.0)) as i32
-                    })
-                    .collect()
-            })
-            .collect();
-        // Generate chunk:
-        let chunk = {
+        let path = Path::new("0,0.bin");
+        let chunk = if let Ok(input) = File::open(path) {
+            let buf_reader = BufReader::new(input);
+            bincode::deserialize::<ChunkData>(buf_reader.buffer())
+                .expect("Corrupted file, please delete \"0,0.bin\"")
+                .contents
+        } else {
+            let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
+                .map(|x| {
+                    (0..CHUNK_DEPTH)
+                        .map(|y| {
+                            ((noise.get([x as f64 / LARGE_SCALE, y as f64 / LARGE_SCALE])
+                                + TERRAIN_HEIGHT)
+                                * LARGE_HEIGHT
+                                + (noise.get([
+                                    x as f64 / SMALL_SCALE + 10.0,
+                                    y as f64 / SMALL_SCALE + 10.0,
+                                ]) * 20.0)) as i32
+                        })
+                        .collect()
+                })
+                .collect();
+            // Generate chunk:
             let mut chunk = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
             for x in 0..CHUNK_WIDTH {
                 for y in 0..CHUNK_HEIGHT {
@@ -341,24 +350,27 @@ impl State {
             chunk
         };
         let (mesh, chunk_indices) = generate_chunk_mesh([0; 2], chunk, [None; 4]);
-        let generated_chunkdata = Arc::new(Mutex::new(vec![chunk::ChunkData {
-            location: [0; 2],
-            contents: chunk,
-        }]));
-        let generated_chunk_buffers = vec![ChunkBuffers {
-            vertex: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(&mesh),
-                usage: wgpu::BufferUsages::VERTEX,
-            }),
-            index: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(&chunk_indices),
-                usage: wgpu::BufferUsages::INDEX,
-            }),
-            num_indices: chunk_indices.len() as u32,
-        }];
-        let generating_chunks: Arc<std::sync::Mutex<VecDeque<([i32; 2], usize)>>> =
+        let generated_chunkdata = Arc::new(Mutex::new(HashMap::from([(
+            [0; 2],
+            chunk::ChunkData { contents: chunk },
+        )])));
+        let generated_chunk_buffers = HashMap::from([(
+            [0_i32; 2],
+            ChunkBuffers {
+                vertex: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&mesh),
+                    usage: wgpu::BufferUsages::VERTEX,
+                }),
+                index: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&chunk_indices),
+                    usage: wgpu::BufferUsages::INDEX,
+                }),
+                num_indices: chunk_indices.len() as u32,
+            },
+        )]);
+        let generating_chunks: Arc<std::sync::Mutex<VecDeque<[i32; 2]>>> =
             Arc::new(Mutex::new(VecDeque::new()));
         let returned_buffers = Arc::new(Mutex::new(vec![]));
         let thread_arc = Arc::clone(&generating_chunks);
@@ -366,23 +378,22 @@ impl State {
         let returning_arc = Arc::clone(&returned_buffers);
         // Chunk generator thread
         thread::spawn(move || loop {
-            if let Some((chunk_location, index)) = thread_arc.lock().unwrap().pop_front() {
+            if let Some(chunk_location) = thread_arc.lock().unwrap().pop_front() {
                 let generated_chunkdata = chunkdata_arc.lock().unwrap();
-                let chunk_contents = generated_chunkdata[index].contents;
+                let chunk_contents = generated_chunkdata[&chunk_location].contents;
                 let [x, y] = chunk_location;
                 let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
-                let get_chunk_index = |location| {
-                    generated_chunkdata
-                        .iter()
-                        .position(|a| a.location == location)
-                };
-                let neighbouring_chunks: [Option<usize>; 4] =
-                    chunk_locations.map(|loc| get_chunk_index(loc));
+                // let get_chunk_index = |location| {
+                //     generated_chunkdata
+                //         .iter()
+                //         .position(|a| a.location == location)
+                // };
+                // let neighbouring_chunks: [Option<usize>; 4] =
+                //     chunk_locations.map(|loc| get_chunk_index(loc));
                 let (mesh, index_buffer) = generate_chunk_mesh(
                     chunk_location,
                     chunk_contents,
-                    neighbouring_chunks
-                        .map(|chunk| chunk.and_then(|chunk| generated_chunkdata.get(chunk))),
+                    chunk_locations.map(|chunk| generated_chunkdata.get(&chunk)),
                 );
                 let further_chunks = [
                     [[x + 2, y], [x + 1, y + 1], [x + 1, y - 1]],
@@ -391,25 +402,22 @@ impl State {
                     [[x + 1, y - 1], [x - 1, y - 1], [x, y - 2]],
                 ];
                 let new_chunkdata = chunk::ChunkData {
-                    location: chunk_location,
                     contents: chunk_contents,
                 };
                 for (index, (chunk_index, surrounding_chunks)) in
-                    neighbouring_chunks.iter().zip(further_chunks).enumerate()
+                    chunk_locations.iter().zip(further_chunks).enumerate()
                 {
                     let get_chunk = |a, b| {
                         if index == a {
                             Some(&new_chunkdata)
                         } else {
-                            generated_chunkdata
-                                .iter()
-                                .find(|a| a.location == surrounding_chunks[b])
+                            generated_chunkdata.get(&surrounding_chunks[b])
                         }
                     };
-                    if let Some(chunk) = *chunk_index {
+                    if let Some(chunk) = generated_chunkdata.get(chunk_index) {
                         let (mesh, indices) = generate_chunk_mesh(
                             chunk_locations[index],
-                            generated_chunkdata[chunk].contents,
+                            chunk.contents,
                             [
                                 get_chunk(1, 0),
                                 get_chunk(0, if index == 1 { 0 } else { 1 }),
@@ -417,13 +425,16 @@ impl State {
                                 get_chunk(2, 2),
                             ],
                         );
-                        returning_arc.lock().unwrap().push((mesh, indices, chunk))
+                        returning_arc
+                            .lock()
+                            .unwrap()
+                            .push((mesh, indices, *chunk_index))
                     }
                 }
                 returning_arc
                     .lock()
                     .unwrap()
-                    .push((mesh, index_buffer, index));
+                    .push((mesh, index_buffer, chunk_location));
             }
         });
         Self {
@@ -500,11 +511,7 @@ impl State {
             self.camera.position.z,
             &generated_chunkdata,
         );
-        if chunk_location.is_some()
-            && generated_chunkdata
-                .iter()
-                .all(|chunk| chunk.location != chunk_location.unwrap())
-        {
+        if chunk_location.is_some() && !generated_chunkdata.contains_key(&chunk_location.unwrap()) {
             let chunk_location = chunk_location.unwrap();
             let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
                 .map(|x| {
@@ -556,50 +563,58 @@ impl State {
                 }
                 chunk_contents
             };
-            generated_chunkdata.push(ChunkData {
-                contents: chunk_contents,
-                location: chunk_location,
-            });
+            generated_chunkdata.insert(
+                chunk_location,
+                ChunkData {
+                    contents: chunk_contents,
+                },
+            );
             self.generating_chunks
                 .lock()
                 .unwrap()
-                .push_back((chunk_location, generated_chunkdata.len() - 1));
-            self.generated_chunk_buffers.push(ChunkBuffers {
-                vertex: self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Vertex Buffer"),
-                        contents: &[],
-                        usage: wgpu::BufferUsages::VERTEX,
-                    }),
-                index: self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Index Buffer"),
-                        contents: &[],
-                        usage: wgpu::BufferUsages::INDEX,
-                    }),
-                num_indices: 0,
-            })
+                .push_back(chunk_location);
+            // self.generated_chunk_buffers.insert(
+            //     chunk_location,
+            //     ChunkBuffers {
+            //         vertex: self
+            //             .device
+            //             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            //                 label: Some("Vertex Buffer"),
+            //                 contents: &[],
+            //                 usage: wgpu::BufferUsages::VERTEX,
+            //             }),
+            //         index: self
+            //             .device
+            //             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            //                 label: Some("Index Buffer"),
+            //                 contents: &[],
+            //                 usage: wgpu::BufferUsages::INDEX,
+            //             }),
+            //         num_indices: 0,
+            //     },
+            // );
         }
         for (mesh, indices, index) in self.returned_buffers.lock().unwrap().drain(..) {
-            self.generated_chunk_buffers[index] = ChunkBuffers {
-                vertex: self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Vertex Buffer"),
-                        contents: bytemuck::cast_slice(&mesh),
-                        usage: wgpu::BufferUsages::VERTEX,
-                    }),
-                index: self
-                    .device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Index Buffer"),
-                        contents: bytemuck::cast_slice(&indices),
-                        usage: wgpu::BufferUsages::INDEX,
-                    }),
-                num_indices: indices.len() as u32,
-            };
+            self.generated_chunk_buffers.insert(
+                index,
+                ChunkBuffers {
+                    vertex: self
+                        .device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Vertex Buffer"),
+                            contents: bytemuck::cast_slice(&mesh),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        }),
+                    index: self
+                        .device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Index Buffer"),
+                            contents: bytemuck::cast_slice(&indices),
+                            usage: wgpu::BufferUsages::INDEX,
+                        }),
+                    num_indices: indices.len() as u32,
+                },
+            );
         }
     }
 
@@ -641,7 +656,7 @@ impl State {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
-            for chunk in &self.generated_chunk_buffers {
+            for chunk in self.generated_chunk_buffers.values() {
                 render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
                 render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
