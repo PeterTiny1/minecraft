@@ -21,7 +21,6 @@ use chunk::{generate_chunk_mesh, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_HEIGHT
 use futures::executor::block_on;
 
 use vek::Mat4;
-// use rand::{thread_rng, Rng};
 use wgpu::util::DeviceExt;
 
 use noise::{NoiseFn, OpenSimplex};
@@ -383,13 +382,6 @@ impl State {
                 let chunk_contents = generated_chunkdata[&chunk_location].contents;
                 let [x, y] = chunk_location;
                 let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
-                // let get_chunk_index = |location| {
-                //     generated_chunkdata
-                //         .iter()
-                //         .position(|a| a.location == location)
-                // };
-                // let neighbouring_chunks: [Option<usize>; 4] =
-                //     chunk_locations.map(|loc| get_chunk_index(loc));
                 let (mesh, index_buffer) = generate_chunk_mesh(
                     chunk_location,
                     chunk_contents,
@@ -573,26 +565,6 @@ impl State {
                 .lock()
                 .unwrap()
                 .push_back(chunk_location);
-            // self.generated_chunk_buffers.insert(
-            //     chunk_location,
-            //     ChunkBuffers {
-            //         vertex: self
-            //             .device
-            //             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            //                 label: Some("Vertex Buffer"),
-            //                 contents: &[],
-            //                 usage: wgpu::BufferUsages::VERTEX,
-            //             }),
-            //         index: self
-            //             .device
-            //             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            //                 label: Some("Index Buffer"),
-            //                 contents: &[],
-            //                 usage: wgpu::BufferUsages::INDEX,
-            //             }),
-            //         num_indices: 0,
-            //     },
-            // );
         }
         for (mesh, indices, index) in self.returned_buffers.lock().unwrap().drain(..) {
             self.generated_chunk_buffers.insert(
