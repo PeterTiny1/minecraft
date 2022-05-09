@@ -3,6 +3,7 @@ mod chunk;
 mod physics;
 mod texture;
 
+use itertools::Itertools;
 use sdl2::{
     event::{Event, WindowEvent},
     keyboard::Keycode,
@@ -11,7 +12,7 @@ use sdl2::{
 use std::{
     collections::{HashMap, VecDeque},
     fs::File,
-    io::BufReader,
+    io::Write,
     path::Path,
     sync::{Arc, Mutex},
     thread, vec,
@@ -306,11 +307,9 @@ impl State {
         };
         let noise = OpenSimplex::new();
         let path = Path::new("0,0.bin");
-        let chunk = if let Ok(input) = File::open(path) {
-            let buf_reader = BufReader::new(input);
-            bincode::deserialize::<ChunkData>(buf_reader.buffer())
-                .expect("Corrupted file, please delete \"0,0.bin\"")
-                .contents
+        let chunk = if path.exists() {
+            let buffer = std::fs::read(path).unwrap();
+            bincode::deserialize::<ChunkData>(&buffer).unwrap().contents
         } else {
             let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
                 .map(|x| {
@@ -505,32 +504,37 @@ impl State {
         );
         if chunk_location.is_some() && !generated_chunkdata.contains_key(&chunk_location.unwrap()) {
             let chunk_location = chunk_location.unwrap();
-            let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
-                .map(|x| {
-                    (0..CHUNK_DEPTH)
-                        .map(|z| {
-                            (((chunk::noise_at(
-                                &self.noise,
-                                x as i32,
-                                z as i32,
-                                chunk_location,
-                                LARGE_SCALE,
-                                0.0,
-                            ) + TERRAIN_HEIGHT)
-                                * LARGE_HEIGHT)
-                                + (chunk::noise_at(
+            let location = &format!("{}.bin", chunk_location.iter().join(","));
+            let path = Path::new(location);
+            let chunk_contents = if path.exists() {
+                let buffer = std::fs::read(path).unwrap();
+                bincode::deserialize::<ChunkData>(&buffer).unwrap().contents
+            } else {
+                let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
+                    .map(|x| {
+                        (0..CHUNK_DEPTH)
+                            .map(|z| {
+                                (((chunk::noise_at(
                                     &self.noise,
                                     x as i32,
                                     z as i32,
                                     chunk_location,
-                                    SMALL_SCALE,
-                                    10.0,
-                                ) * 20.0)) as i32
-                        })
-                        .collect::<Vec<i32>>()
-                })
-                .collect();
-            let chunk_contents = {
+                                    LARGE_SCALE,
+                                    0.0,
+                                ) + TERRAIN_HEIGHT)
+                                    * LARGE_HEIGHT)
+                                    + (chunk::noise_at(
+                                        &self.noise,
+                                        x as i32,
+                                        z as i32,
+                                        chunk_location,
+                                        SMALL_SCALE,
+                                        10.0,
+                                    ) * 20.0)) as i32
+                            })
+                            .collect::<Vec<i32>>()
+                    })
+                    .collect();
                 let mut chunk_contents =
                     [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
                 for x in 0..CHUNK_WIDTH {
@@ -725,6 +729,13 @@ fn main() {
             Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
             Err(wgpu::SurfaceError::OutOfMemory) => break 'running,
             Err(e) => eprintln!("{:?}", e),
+        }
+    }
+    for (location, data) in state.generated_chunkdata.lock().unwrap().iter() {
+        let location = format!("{}.bin", location.iter().join(","));
+        let path = Path::new(&location);
+        if let Ok(mut file) = File::create(path) {
+            file.write_all(&bincode::serialize(data).unwrap()).unwrap();
         }
     }
 }
