@@ -28,6 +28,8 @@ pub enum BlockType {
     Stone,
     GrassBlock,
     Grass,
+    Wood,
+    Leaf,
 }
 
 impl BlockType {
@@ -42,13 +44,22 @@ impl BlockType {
                 [TEXTURE_WIDTH * 2.0, 0.0],
                 [0.0, 0.0],
             ],
+            BlockType::Wood => [
+                [0.0, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                [0.0, TEXTURE_WIDTH],
+            ],
+            BlockType::Leaf => [[TEXTURE_WIDTH * 2.0, TEXTURE_WIDTH]; 6],
             BlockType::Grass => [[TEXTURE_WIDTH * 3.0, 0.0]; 6],
             _ => panic!("This is not supposed to be called!"),
         }
     }
     pub fn is_solid(&self) -> bool {
         match self {
-            BlockType::Air | BlockType::Grass => false,
+            BlockType::Air | BlockType::Grass | BlockType::Leaf => false,
             _ => true,
         }
     }
@@ -342,7 +353,10 @@ pub fn generate_chunk_mesh(
                                 BOTTOM_LEFT[0] + tex_offset[0],
                                 BOTTOM_LEFT[1] + tex_offset[1],
                             ],
-                            brightness: if y != 0 && chunk[x][y - 1][z].is_solid() {
+                            brightness: if y != 0
+                                && x != CHUNK_WIDTH - 1
+                                && chunk[x + 1][y - 1][z].is_solid()
+                            {
                                 0.5
                             } else {
                                 SIDE_BRIGHTNESS
@@ -354,7 +368,10 @@ pub fn generate_chunk_mesh(
                                 BOTTOM_RIGHT[0] + tex_offset[0],
                                 BOTTOM_RIGHT[1] + tex_offset[1],
                             ],
-                            brightness: if y != 0 && chunk[x][y - 1][z].is_solid() {
+                            brightness: if y != 0
+                                && x != CHUNK_WIDTH - 1
+                                && chunk[x + 1][y - 1][z].is_solid()
+                            {
                                 0.5
                             } else {
                                 SIDE_BRIGHTNESS
@@ -402,7 +419,7 @@ pub fn generate_chunk_mesh(
                                 BOTTOM_LEFT[0] + tex_offset[0],
                                 BOTTOM_LEFT[1] + tex_offset[1],
                             ],
-                            brightness: if y != 0 && chunk[x][y - 1][z].is_solid() {
+                            brightness: if y != 0 && z != 0 && chunk[x][y - 1][z - 1].is_solid() {
                                 0.5
                             } else {
                                 BACK_BRIGHTNESS
@@ -414,7 +431,7 @@ pub fn generate_chunk_mesh(
                                 BOTTOM_RIGHT[0] + tex_offset[0],
                                 BOTTOM_RIGHT[1] + tex_offset[1],
                             ],
-                            brightness: if y != 0 && chunk[x][y - 1][z].is_solid() {
+                            brightness: if y != 0 && z != 0 && chunk[x][y - 1][z - 1].is_solid() {
                                 0.5
                             } else {
                                 BACK_BRIGHTNESS

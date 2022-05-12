@@ -11,6 +11,7 @@ use sdl2::{
 };
 use std::{
     collections::{HashMap, VecDeque},
+    env,
     fs::File,
     io::Write,
     path::Path,
@@ -331,14 +332,25 @@ impl State {
             for x in 0..CHUNK_WIDTH {
                 for y in 0..CHUNK_HEIGHT {
                     for z in 0..CHUNK_DEPTH {
-                        chunk[x][y][z] = if (y as i32) < heightmap[x][z] {
+                        let y_i32 = y as i32;
+                        chunk[x][y][z] = if y_i32 < heightmap[x][z] {
                             BlockType::Stone
-                        } else if y as i32 == heightmap[x][z] {
+                        } else if y_i32 == heightmap[x][z] {
                             BlockType::GrassBlock
-                        } else if y as i32 == heightmap[x][z] + 1
-                            && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
-                        {
-                            BlockType::Grass
+                        } else if y_i32 >= heightmap[x][z] + 1 && y_i32 <= heightmap[x][z] + 5 {
+                            if noise.get([x as f64, heightmap[x][z] as f64, z as f64]) > 0.4 {
+                                if y_i32 == heightmap[x][z] + 5 {
+                                    BlockType::Leaf
+                                } else {
+                                    BlockType::Wood
+                                }
+                            } else if y_i32 == heightmap[x][z] + 1
+                                && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
+                            {
+                                BlockType::Grass
+                            } else {
+                                BlockType::Air
+                            }
                         } else {
                             BlockType::Air
                         };
@@ -540,17 +552,31 @@ impl State {
                 for x in 0..CHUNK_WIDTH {
                     for y in 0..CHUNK_HEIGHT {
                         for z in 0..CHUNK_DEPTH {
-                            chunk_contents[x][y][z] = if (y as i32) < heightmap[x][z] {
+                            let y_i32 = y as i32;
+                            chunk_contents[x][y][z] = if y_i32 < heightmap[x][z] {
                                 BlockType::Stone
-                            } else if y as i32 == heightmap[x][z] {
+                            } else if y_i32 == heightmap[x][z] {
                                 BlockType::GrassBlock
-                            } else if y as i32 == heightmap[x][z] + 1
-                                && self
-                                    .noise
-                                    .get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0])
-                                    > 0.3
-                            {
-                                BlockType::Grass
+                            } else if y_i32 >= heightmap[x][z] + 1 && y_i32 <= heightmap[x][z] + 5 {
+                                if self.noise.get([x as f64, heightmap[x][z] as f64, z as f64])
+                                    > 0.4
+                                {
+                                    if y_i32 == heightmap[x][z] + 5 {
+                                        BlockType::Leaf
+                                    } else {
+                                        BlockType::Wood
+                                    }
+                                } else if y_i32 == heightmap[x][z] + 1
+                                    && self.noise.get([
+                                        x as f64 / 4.0,
+                                        z as f64 / 4.0,
+                                        y as f64 / 4.0,
+                                    ]) > 0.3
+                                {
+                                    BlockType::Grass
+                                } else {
+                                    BlockType::Air
+                                }
                             } else {
                                 BlockType::Air
                             };
@@ -646,6 +672,15 @@ impl State {
 
 fn main() {
     env_logger::init();
+    let mut save = true;
+    let mut args = env::args();
+    let _path = args.next().unwrap();
+    if let Some(arg) = args.next() {
+        match &*arg {
+            "-no-save" => save = false,
+            _ => println!("Invalid argument {arg}!"),
+        }
+    }
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     let mut window = video_subsystem
@@ -731,11 +766,13 @@ fn main() {
             Err(e) => eprintln!("{:?}", e),
         }
     }
-    for (location, data) in state.generated_chunkdata.lock().unwrap().iter() {
-        let location = format!("{}.bin", location.iter().join(","));
-        let path = Path::new(&location);
-        if let Ok(mut file) = File::create(path) {
-            file.write_all(&bincode::serialize(data).unwrap()).unwrap();
+    if save {
+        for (location, data) in state.generated_chunkdata.lock().unwrap().iter() {
+            let location = format!("{}.bin", location.iter().join(","));
+            let path = Path::new(&location);
+            if let Ok(mut file) = File::create(path) {
+                file.write_all(&bincode::serialize(data).unwrap()).unwrap();
+            }
         }
     }
 }
