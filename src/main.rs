@@ -38,11 +38,7 @@ struct ChunkBuffers {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Vertex {
-    position: [f32; 3],
-    tex_coords: [f32; 2],
-    brightness: f32,
-}
+pub struct Vertex([f32; 3], [f32; 2], f32);
 
 impl Vertex {
     fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
