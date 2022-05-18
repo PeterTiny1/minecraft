@@ -453,7 +453,7 @@ pub fn generate_chunk_mesh(
                             ),
                             Vertex(
                                 [1.0 + rel_x, yplusone, 1.0 + rel_z],
-                                add_arrs(TOP_LEFT, tex_offset),
+                                add_arrs(BOTTOM_RIGHT, tex_offset),
                                 TOP_BRIGHTNESS,
                             ),
                             Vertex(
@@ -530,7 +530,7 @@ pub fn generate_chunk_mesh(
                             ),
                             Vertex(
                                 [1.0 + rel_x, yplusone, 1.0 + rel_z],
-                                add_arrs(TOP_LEFT, tex_offset),
+                                add_arrs(BOTTOM_RIGHT, tex_offset),
                                 if (x == CHUNK_WIDTH - 1
                                     && surrounding_chunks[0].map_or(false, |chunk| {
                                         chunk.contents[0][y + 1][z].is_solid()
