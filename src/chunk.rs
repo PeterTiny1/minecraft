@@ -150,6 +150,10 @@ const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
 const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
 const FAR_CORNER: f32 = 0.5 - 0.5 * FRAC_1_SQRT_2;
 
+fn add_arrs(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
+    [a[0] + b[0], a[1] + b[1]]
+}
+
 pub fn generate_chunk_mesh(
     location: [i32; 2],
     chunk: [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
@@ -176,54 +180,42 @@ pub fn generate_chunk_mesh(
                     vertices.append(&mut vec![
                         Vertex(
                             [x + CLOSE_CORNER, y + 1.0, z + CLOSE_CORNER],
-                            [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
+                            add_arrs(TOP_LEFT, tex_offset),
                             1.0,
                         ),
                         Vertex(
                             [x + CLOSE_CORNER, y, z + CLOSE_CORNER],
-                            [
-                                BOTTOM_LEFT[0] + tex_offset[0],
-                                BOTTOM_LEFT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_LEFT, tex_offset),
                             1.0,
                         ),
                         Vertex(
                             [x + FAR_CORNER, y, z + FAR_CORNER],
-                            [
-                                BOTTOM_RIGHT[0] + tex_offset[0],
-                                BOTTOM_RIGHT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_RIGHT, tex_offset),
                             1.0,
                         ),
                         Vertex(
                             [x + FAR_CORNER, y + 1.0, z + FAR_CORNER],
-                            [TOP_RIGHT[0] + tex_offset[0], TOP_RIGHT[1] + tex_offset[1]],
+                            add_arrs(TOP_RIGHT, tex_offset),
                             1.0,
                         ),
                         Vertex(
                             [x + CLOSE_CORNER, y + 1.0, z + FAR_CORNER],
-                            [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
+                            add_arrs(TOP_LEFT, tex_offset),
                             1.0,
                         ),
                         Vertex(
                             [x + CLOSE_CORNER, y, z + FAR_CORNER],
-                            [
-                                BOTTOM_LEFT[0] + tex_offset[0],
-                                BOTTOM_LEFT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_LEFT, tex_offset),
                             1.0,
                         ),
                         Vertex(
                             [x + FAR_CORNER, y, z + CLOSE_CORNER],
-                            [
-                                BOTTOM_RIGHT[0] + tex_offset[0],
-                                BOTTOM_RIGHT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_RIGHT, tex_offset),
                             1.0,
                         ),
                         Vertex(
                             [x + FAR_CORNER, y + 1.0, z + CLOSE_CORNER],
-                            [TOP_RIGHT[0] + tex_offset[0], TOP_RIGHT[1] + tex_offset[1]],
+                            add_arrs(TOP_RIGHT, tex_offset),
                             1.0,
                         ),
                     ]);
@@ -245,7 +237,7 @@ pub fn generate_chunk_mesh(
                     vertices.append(&mut vec![
                         Vertex(
                             [rel_x, 1.0 + y_f32, zplusone],
-                            [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
+                            add_arrs(TOP_LEFT, tex_offset),
                             if (x == 0
                                 && surrounding_chunks[1].map_or(false, |chunk| {
                                     z != CHUNK_DEPTH - 1
@@ -262,10 +254,7 @@ pub fn generate_chunk_mesh(
                         ),
                         Vertex(
                             [rel_x, y_f32, zplusone],
-                            [
-                                BOTTOM_LEFT[0] + tex_offset[0],
-                                BOTTOM_LEFT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_LEFT, tex_offset),
                             if y != 0
                                 && ((z != CHUNK_DEPTH - 1 && chunk[x][y - 1][z + 1].is_solid())
                                     || (z == CHUNK_DEPTH - 1
@@ -280,10 +269,7 @@ pub fn generate_chunk_mesh(
                         ),
                         Vertex(
                             [1.0 + rel_x, y_f32, zplusone],
-                            [
-                                BOTTOM_RIGHT[0] + tex_offset[0],
-                                BOTTOM_RIGHT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_RIGHT, tex_offset),
                             if y != 0
                                 && ((z != CHUNK_DEPTH - 1 && chunk[x][y - 1][z + 1].is_solid())
                                     || (z == CHUNK_DEPTH - 1
@@ -298,7 +284,7 @@ pub fn generate_chunk_mesh(
                         ),
                         Vertex(
                             [1.0 + rel_x, 1.0 + y_f32, zplusone],
-                            [TOP_RIGHT[0] + tex_offset[0], TOP_RIGHT[1] + tex_offset[1]],
+                            add_arrs(TOP_RIGHT, tex_offset),
                             if (x == CHUNK_WIDTH - 1
                                 && surrounding_chunks[0].map_or(false, |chunk| {
                                     z != CHUNK_DEPTH - 1 && chunk.contents[0][y][z + 1].is_solid()
@@ -326,7 +312,7 @@ pub fn generate_chunk_mesh(
                     vertices.append(&mut vec![
                         Vertex(
                             [xplusone, 1.0 + y_f32, 1.0 + rel_z],
-                            [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
+                            add_arrs(TOP_LEFT, tex_offset),
                             if (x == CHUNK_WIDTH - 1
                                 && surrounding_chunks[0].map_or(false, |chunk| {
                                     z != CHUNK_WIDTH - 1 && chunk.contents[0][y][z + 1].is_solid()
@@ -342,10 +328,7 @@ pub fn generate_chunk_mesh(
                         ),
                         Vertex(
                             [xplusone, y_f32, 1.0 + rel_z],
-                            [
-                                BOTTOM_LEFT[0] + tex_offset[0],
-                                BOTTOM_LEFT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_LEFT, tex_offset),
                             if y != 0 && x != CHUNK_WIDTH - 1 && chunk[x + 1][y - 1][z].is_solid() {
                                 0.5
                             } else {
@@ -354,10 +337,7 @@ pub fn generate_chunk_mesh(
                         ),
                         Vertex(
                             [xplusone, y_f32, rel_z],
-                            [
-                                BOTTOM_RIGHT[0] + tex_offset[0],
-                                BOTTOM_RIGHT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_RIGHT, tex_offset),
                             if y != 0 && x != CHUNK_WIDTH - 1 && chunk[x + 1][y - 1][z].is_solid() {
                                 0.5
                             } else {
@@ -366,7 +346,7 @@ pub fn generate_chunk_mesh(
                         ),
                         Vertex(
                             [xplusone, 1.0 + y_f32, rel_z],
-                            [TOP_RIGHT[0] + tex_offset[0], TOP_RIGHT[1] + tex_offset[1]],
+                            add_arrs(TOP_RIGHT, tex_offset),
                             if (x == CHUNK_WIDTH - 1
                                 && surrounding_chunks[1].map_or(false, |chunk| {
                                     z != 0 && chunk.contents[0][y][z - 1].is_solid()
@@ -394,15 +374,12 @@ pub fn generate_chunk_mesh(
                     vertices.append(&mut vec![
                         Vertex(
                             [1.0 + rel_x, 1.0 + y_f32, rel_z],
-                            [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
+                            add_arrs(TOP_LEFT, tex_offset),
                             BACK_BRIGHTNESS,
                         ),
                         Vertex(
                             [1.0 + rel_x, y_f32, rel_z],
-                            [
-                                BOTTOM_LEFT[0] + tex_offset[0],
-                                BOTTOM_LEFT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_LEFT, tex_offset),
                             if y != 0 && z != 0 && chunk[x][y - 1][z - 1].is_solid() {
                                 0.5
                             } else {
@@ -411,10 +388,7 @@ pub fn generate_chunk_mesh(
                         ),
                         Vertex(
                             [rel_x, y_f32, rel_z],
-                            [
-                                BOTTOM_RIGHT[0] + tex_offset[0],
-                                BOTTOM_RIGHT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_RIGHT, tex_offset),
                             if y != 0 && z != 0 && chunk[x][y - 1][z - 1].is_solid() {
                                 0.5
                             } else {
@@ -423,7 +397,7 @@ pub fn generate_chunk_mesh(
                         ),
                         Vertex(
                             [rel_x, 1.0 + y_f32, rel_z],
-                            [TOP_RIGHT[0] + tex_offset[0], TOP_RIGHT[1] + tex_offset[1]],
+                            add_arrs(TOP_RIGHT, tex_offset),
                             BACK_BRIGHTNESS,
                         ),
                     ]);
@@ -440,28 +414,22 @@ pub fn generate_chunk_mesh(
                     vertices.append(&mut vec![
                         Vertex(
                             [rel_x, 1.0 + y_f32, rel_z],
-                            [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
+                            add_arrs(TOP_LEFT, tex_offset),
                             SIDE_BRIGHTNESS,
                         ),
                         Vertex(
                             [rel_x, y_f32, rel_z],
-                            [
-                                BOTTOM_LEFT[0] + tex_offset[0],
-                                BOTTOM_LEFT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_LEFT, tex_offset),
                             SIDE_BRIGHTNESS,
                         ),
                         Vertex(
                             [rel_x, y_f32, 1.0 + rel_z],
-                            [
-                                BOTTOM_RIGHT[0] + tex_offset[0],
-                                BOTTOM_RIGHT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_RIGHT, tex_offset),
                             SIDE_BRIGHTNESS,
                         ),
                         Vertex(
                             [rel_x, 1.0 + y_f32, 1.0 + rel_z],
-                            [TOP_RIGHT[0] + tex_offset[0], TOP_RIGHT[1] + tex_offset[1]],
+                            add_arrs(TOP_RIGHT, tex_offset),
                             SIDE_BRIGHTNESS,
                         ),
                     ]);
@@ -475,28 +443,22 @@ pub fn generate_chunk_mesh(
                         vertices.append(&mut vec![
                             Vertex(
                                 [rel_x, yplusone, rel_z],
-                                [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
+                                add_arrs(TOP_LEFT, tex_offset),
                                 TOP_BRIGHTNESS,
                             ),
                             Vertex(
                                 [rel_x, yplusone, 1.0 + rel_z],
-                                [
-                                    BOTTOM_LEFT[0] + tex_offset[0],
-                                    BOTTOM_LEFT[1] + tex_offset[1],
-                                ],
+                                add_arrs(BOTTOM_LEFT, tex_offset),
                                 TOP_BRIGHTNESS,
                             ),
                             Vertex(
                                 [1.0 + rel_x, yplusone, 1.0 + rel_z],
-                                [
-                                    BOTTOM_RIGHT[0] + tex_offset[0],
-                                    BOTTOM_RIGHT[1] + tex_offset[1],
-                                ],
+                                add_arrs(TOP_LEFT, tex_offset),
                                 TOP_BRIGHTNESS,
                             ),
                             Vertex(
                                 [1.0 + rel_x, yplusone, rel_z],
-                                [TOP_RIGHT[0] + tex_offset[0], TOP_RIGHT[1] + tex_offset[1]],
+                                add_arrs(TOP_RIGHT, tex_offset),
                                 TOP_BRIGHTNESS,
                             ),
                         ]);
@@ -504,7 +466,7 @@ pub fn generate_chunk_mesh(
                         vertices.append(&mut vec![
                             Vertex(
                                 [rel_x, yplusone, rel_z],
-                                [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
+                                add_arrs(TOP_LEFT, tex_offset),
                                 if (x == 0
                                     && surrounding_chunks[1].map_or(false, |chunk| {
                                         chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_solid()
@@ -533,10 +495,7 @@ pub fn generate_chunk_mesh(
                             ),
                             Vertex(
                                 [rel_x, yplusone, 1.0 + rel_z],
-                                [
-                                    BOTTOM_LEFT[0] + tex_offset[0],
-                                    BOTTOM_LEFT[1] + tex_offset[1],
-                                ],
+                                add_arrs(BOTTOM_LEFT, tex_offset),
                                 if (x == 0
                                     && surrounding_chunks[1].map_or(false, |chunk| {
                                         chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_solid()
@@ -571,10 +530,7 @@ pub fn generate_chunk_mesh(
                             ),
                             Vertex(
                                 [1.0 + rel_x, yplusone, 1.0 + rel_z],
-                                [
-                                    BOTTOM_RIGHT[0] + tex_offset[0],
-                                    BOTTOM_RIGHT[1] + tex_offset[1],
-                                ],
+                                add_arrs(TOP_LEFT, tex_offset),
                                 if (x == CHUNK_WIDTH - 1
                                     && surrounding_chunks[0].map_or(false, |chunk| {
                                         chunk.contents[0][y + 1][z].is_solid()
@@ -605,7 +561,7 @@ pub fn generate_chunk_mesh(
                             ),
                             Vertex(
                                 [1.0 + rel_x, yplusone, rel_z],
-                                [TOP_RIGHT[0] + tex_offset[0], TOP_RIGHT[1] + tex_offset[1]],
+                                add_arrs(TOP_RIGHT, tex_offset),
                                 if (x == CHUNK_WIDTH - 1
                                     && surrounding_chunks[0].map_or(false, |chunk| {
                                         chunk.contents[0][y + 1][z].is_solid()
@@ -645,28 +601,22 @@ pub fn generate_chunk_mesh(
                         // start of bottom
                         Vertex(
                             [1.0 + rel_x, y_f32, rel_z],
-                            [TOP_LEFT[0] + tex_offset[0], TOP_LEFT[1] + tex_offset[1]],
+                            add_arrs(TOP_LEFT, tex_offset),
                             BOTTOM_BRIGHTNESS,
                         ),
                         Vertex(
                             [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                            [
-                                BOTTOM_LEFT[0] + tex_offset[0],
-                                BOTTOM_LEFT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_LEFT, tex_offset),
                             BOTTOM_BRIGHTNESS,
                         ),
                         Vertex(
                             [rel_x, y_f32, 1.0 + rel_z],
-                            [
-                                BOTTOM_RIGHT[0] + tex_offset[0],
-                                BOTTOM_RIGHT[1] + tex_offset[1],
-                            ],
+                            add_arrs(BOTTOM_RIGHT, tex_offset),
                             BOTTOM_BRIGHTNESS,
                         ),
                         Vertex(
                             [rel_x, y_f32, rel_z],
-                            [TOP_RIGHT[0] + tex_offset[0], TOP_RIGHT[1] + tex_offset[1]],
+                            add_arrs(TOP_RIGHT, tex_offset),
                             BOTTOM_BRIGHTNESS,
                         ),
                     ]);
