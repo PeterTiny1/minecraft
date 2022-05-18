@@ -162,6 +162,12 @@ impl CameraController {
         self.velocity.x -= (self.velocity.x) * dt;
         self.velocity.z -= (self.velocity.z) * dt;
         camera.position += self.velocity * dt;
+
+        let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
+        let scrollward =
+            Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalized();
+        camera.position += scrollward * self.scroll * self.speed * self.sensitivity * dt;
+
         if get_block(
             world,
             (camera.position.x + 0.3).floor() as i32,
@@ -222,11 +228,6 @@ impl CameraController {
             camera.position.y = (camera.position.y - 1.5).ceil() + 1.5;
             self.velocity.y = 0.0;
         }
-
-        let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
-        let scrollward =
-            Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalized();
-        camera.position += scrollward * self.scroll * self.speed * self.sensitivity * dt;
         self.scroll = 0.0;
 
         // camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;
