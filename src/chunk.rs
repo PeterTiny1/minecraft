@@ -95,7 +95,7 @@ pub fn noise_at(
     ])
 }
 
-fn _chunk_at_block(
+fn chunk_at_block(
     generated_chunks: &HashMap<[i32; 2], ChunkData>,
     x: i32,
     z: i32,
@@ -105,15 +105,15 @@ fn _chunk_at_block(
     generated_chunks.get(&[chunk_x, chunk_z]).cloned()
 }
 
-fn _get_block(
+pub fn get_block(
     generated_chunks: &HashMap<[i32; 2], ChunkData>,
     x: i32,
     y: i32,
     z: i32,
 ) -> Option<BlockType> {
-    let chunk = _chunk_at_block(generated_chunks, x, z)?;
-    let x = (x - (x.div_euclid(CHUNK_WIDTH as i32) * 16)) as usize;
-    let z = (z - (z.div_euclid(CHUNK_DEPTH as i32) * 16)) as usize;
+    let chunk = chunk_at_block(generated_chunks, x, z)?;
+    let x = (x - (x.div_euclid(CHUNK_WIDTH as i32) * CHUNK_WIDTH as i32)) as usize;
+    let z = (z - (z.div_euclid(CHUNK_DEPTH as i32) * CHUNK_DEPTH as i32)) as usize;
     if y >= 0 && (y as usize) < CHUNK_HEIGHT {
         Some(chunk.contents[x][y as usize][z])
     } else {

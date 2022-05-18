@@ -3,10 +3,7 @@ use std::{collections::HashMap, f32::consts::FRAC_PI_2, time::Duration};
 use sdl2::keyboard::Keycode;
 use vek::{Mat4, Quaternion, Vec3};
 
-use crate::{
-    chunk::{ChunkData, CHUNK_DEPTH, CHUNK_WIDTH},
-    physics,
-};
+use crate::chunk::{get_block, ChunkData};
 
 const GRAVITY: f32 = 9.807;
 
@@ -165,29 +162,65 @@ impl CameraController {
         self.velocity.x -= (self.velocity.x) * dt;
         self.velocity.z -= (self.velocity.z) * dt;
         camera.position += self.velocity * dt;
-        let camera_chunkcoord = [
-            (camera.position.x / CHUNK_WIDTH as f32).floor() as i32,
-            (camera.position.z / CHUNK_DEPTH as f32).floor() as i32,
-        ];
-        let in_chunk = world.get(&camera_chunkcoord);
-        if let Some(chunk) = in_chunk {
-            for (x, column) in chunk.contents.iter().enumerate() {
-                for (y, row) in column.iter().enumerate() {
-                    for (z, &block) in row.iter().enumerate() {
-                        if block.is_solid()
-                            && physics::is_collision_with_block(
-                                camera.position,
-                                camera_chunkcoord[0] * CHUNK_WIDTH as i32 + x as i32,
-                                y as i32,
-                                camera_chunkcoord[1] * CHUNK_DEPTH as i32 + z as i32,
-                            )
-                        {
-                            camera.position.y = (y + 1) as f32 + 1.5;
-                            self.velocity.y = 0.0;
-                        }
-                    }
-                }
-            }
+        if get_block(
+            world,
+            (camera.position.x + 0.3).floor() as i32,
+            (camera.position.y - 1.5).floor() as i32,
+            (camera.position.z + 0.3).floor() as i32,
+        )
+        .map_or(false, |block| block.is_solid())
+            || get_block(
+                world,
+                (camera.position.x - 0.3).floor() as i32,
+                (camera.position.y - 1.5).floor() as i32,
+                (camera.position.z + 0.3).floor() as i32,
+            )
+            .map_or(false, |block| block.is_solid())
+            || get_block(
+                world,
+                (camera.position.x - 0.3).floor() as i32,
+                (camera.position.y - 1.5).floor() as i32,
+                (camera.position.z - 0.3).floor() as i32,
+            )
+            .map_or(false, |block| block.is_solid())
+            || get_block(
+                world,
+                (camera.position.x - 0.3).floor() as i32,
+                (camera.position.y - 1.5).floor() as i32,
+                (camera.position.z - 0.3).floor() as i32,
+            )
+            .map_or(false, |block| block.is_solid())
+            || get_block(
+                world,
+                (camera.position.x + 0.3).floor() as i32,
+                (camera.position.y).floor() as i32,
+                (camera.position.z + 0.3).floor() as i32,
+            )
+            .map_or(false, |block| block.is_solid())
+            || get_block(
+                world,
+                (camera.position.x - 0.3).floor() as i32,
+                (camera.position.y).floor() as i32,
+                (camera.position.z + 0.3).floor() as i32,
+            )
+            .map_or(false, |block| block.is_solid())
+            || get_block(
+                world,
+                (camera.position.x - 0.3).floor() as i32,
+                (camera.position.y).floor() as i32,
+                (camera.position.z - 0.3).floor() as i32,
+            )
+            .map_or(false, |block| block.is_solid())
+            || get_block(
+                world,
+                (camera.position.x - 0.3).floor() as i32,
+                (camera.position.y).floor() as i32,
+                (camera.position.z - 0.3).floor() as i32,
+            )
+            .map_or(false, |block| block.is_solid())
+        {
+            camera.position.y = (camera.position.y - 1.5).ceil() + 1.5;
+            self.velocity.y = 0.0;
         }
 
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
