@@ -100,9 +100,7 @@ impl CameraController {
             scroll: 0.0,
             speed,
             sensitivity,
-            velocity: Vec3 {
-                ..Default::default()
-            },
+            velocity: Vec3::default(),
         }
     }
 
