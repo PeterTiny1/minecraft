@@ -750,7 +750,7 @@ fn main() {
                     state.mouse_pressed = true;
                 }
                 Event::MouseButtonUp { .. } => {
-                    state.mouse_pressed = true;
+                    state.mouse_pressed = false;
                 }
                 Event::Quit { .. } => break 'running,
                 _ => {}
