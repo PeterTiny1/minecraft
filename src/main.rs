@@ -125,7 +125,7 @@ fn create_render_pipeline(
     let shader = device.create_shader_module(&shader);
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(&format!("{:?}", shader)),
-        layout: Some(&layout),
+        layout: Some(layout),
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: "vs_main",
@@ -334,7 +334,7 @@ impl State {
                             BlockType::Stone
                         } else if y_i32 == heightmap[x][z] {
                             BlockType::GrassBlock
-                        } else if y_i32 >= heightmap[x][z] + 1 && y_i32 <= heightmap[x][z] + 5 {
+                        } else if y_i32 > heightmap[x][z] && y_i32 <= heightmap[x][z] + 5 {
                             if noise.get([x as f64, heightmap[x][z] as f64, z as f64]) > 0.4 {
                                 if y_i32 == heightmap[x][z] + 5 {
                                     BlockType::Leaf
@@ -554,7 +554,7 @@ impl State {
                                 BlockType::Stone
                             } else if y_i32 == heightmap[x][z] {
                                 BlockType::GrassBlock
-                            } else if y_i32 >= heightmap[x][z] + 1 && y_i32 <= heightmap[x][z] + 5 {
+                            } else if y_i32 > heightmap[x][z] && y_i32 <= heightmap[x][z] + 5 {
                                 if self.noise.get([x as f64, heightmap[x][z] as f64, z as f64])
                                     > 0.4
                                 {
@@ -698,29 +698,33 @@ fn main() {
     'running: loop {
         for event in event_pump.poll_iter() {
             match event {
-                Event::KeyDown { keycode, .. } => {
-                    if let Some(key) = keycode {
-                        if key == Keycode::F11 {
-                            if window.fullscreen_state() == FullscreenType::Desktop {
-                                window
-                                    .set_fullscreen(FullscreenType::Off)
-                                    .expect("Failed to leave fullscreen");
-                            } else {
-                                window
-                                    .set_fullscreen(FullscreenType::Desktop)
-                                    .expect("Failed to make the window fullscreen");
-                            }
-                        } else if key == Keycode::Escape {
-                            break 'running;
+                Event::KeyDown {
+                    keycode: Some(keycode),
+                    ..
+                } => match keycode {
+                    Keycode::F11 => {
+                        if window.fullscreen_state() == FullscreenType::Desktop {
+                            window
+                                .set_fullscreen(FullscreenType::Off)
+                                .expect("Failed to leave fullscreen");
                         } else {
-                            state.keydown(key, window_focused);
+                            window
+                                .set_fullscreen(FullscreenType::Desktop)
+                                .expect("Failed to make the window fullscreen");
                         }
                     }
-                }
-                Event::KeyUp { keycode, .. } => {
-                    if let Some(key) = keycode {
-                        state.keyup(key, window_focused);
+                    Keycode::Escape => {
+                        break 'running;
                     }
+                    _ => {
+                        state.keydown(keycode, window_focused);
+                    }
+                },
+                Event::KeyUp {
+                    keycode: Some(keycode),
+                    ..
+                } => {
+                    state.keyup(keycode, window_focused);
                 }
                 Event::MouseMotion {
                     xrel,

@@ -3,7 +3,10 @@ use std::{collections::HashMap, f32::consts::FRAC_PI_2, time::Duration};
 use sdl2::keyboard::Keycode;
 use vek::{Mat4, Quaternion, Vec3};
 
-use crate::chunk::{get_block, ChunkData};
+use crate::{
+    chunk::{get_block, BlockType, ChunkData},
+    ray::Ray,
+};
 
 const GRAVITY: f32 = 9.807;
 
@@ -164,6 +167,9 @@ impl CameraController {
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
         let scrollward =
             Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalized();
+        let looking_at_block = Ray::new(camera.position, scrollward, 5.0)
+            .find(|e| matches!(get_block(world, e.x, e.y, e.z), Some(b) if b != BlockType::Air));
+        dbg!(looking_at_block);
         camera.position += scrollward * self.scroll * self.speed * self.sensitivity * dt;
 
         if get_block(

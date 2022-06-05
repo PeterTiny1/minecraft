@@ -58,10 +58,7 @@ impl BlockType {
         }
     }
     pub fn is_solid(&self) -> bool {
-        match self {
-            BlockType::Air | BlockType::Grass | BlockType::Leaf => false,
-            _ => true,
-        }
+        !matches!(self, BlockType::Air | BlockType::Grass | BlockType::Leaf)
     }
 }
 
@@ -143,7 +140,7 @@ pub fn get_nearest_chunk_location(
             }
         }
     }
-    collector.and_then(|value: [i32; 2]| Some([value[0] + chunk_x, value[1] + chunk_z]))
+    collector.map(|value: [i32; 2]| [value[0] + chunk_x, value[1] + chunk_z])
 }
 
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];

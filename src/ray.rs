@@ -1,6 +1,6 @@
-use vek::Vec3;
+use vek::{num_traits::Zero, Vec3};
 
-struct Ray {
+pub struct Ray {
     origin: Vec3<f32>,
     direction: Vec3<f32>,
     position: Vec3<f32>,
@@ -9,7 +9,7 @@ struct Ray {
 }
 
 impl Ray {
-    fn new(origin: Vec3<f32>, direction: Vec3<f32>, max_len: f32) -> Self {
+    pub fn new(origin: Vec3<f32>, direction: Vec3<f32>, max_len: f32) -> Self {
         Self {
             origin,
             direction,
@@ -26,27 +26,69 @@ impl Ray {
 impl Iterator for Ray {
     type Item = Vec3<i32>;
     fn next(&mut self) -> Option<Self::Item> {
-        let changex = (if self.direction.x > 0.0 {
-            self.position.x.ceil()
-        } else {
-            self.position.x.floor()
-        } - self.position.x)
-            / self.direction.x
-            * self.direction;
-        let changey = (if self.direction.y > 0.0 {
-            self.position.y.ceil()
-        } else {
-            self.position.y.floor()
-        } - self.position.y)
-            / self.direction.y
-            * self.direction;
-        let changez = (if self.direction.z > 0.0 {
-            self.position.z.ceil()
-        } else {
-            self.position.z.floor()
-        } - self.position.z)
-            / self.direction.z
-            * self.direction;
+        let changex = {
+            let positive = self.direction.x > 0.0;
+            let possible = (if positive {
+                self.position.x.ceil()
+            } else {
+                self.position.x.floor()
+            } - self.position.x)
+                / self.direction.x
+                * self.direction;
+            if possible.is_zero() {
+                1.0 / self.direction.x.abs() * self.direction
+            } else if self.direction.x == 0.0 || possible.iter().any(|i| i.abs() > 1.0) {
+                Vec3 {
+                    x: f32::INFINITY,
+                    y: f32::INFINITY,
+                    z: f32::INFINITY,
+                }
+            } else {
+                possible
+            }
+        };
+        let changey = {
+            let positive = self.direction.y > 0.0;
+            let possible = (if positive {
+                self.position.y.ceil()
+            } else {
+                self.position.y.floor()
+            } - self.position.y)
+                / self.direction.y
+                * self.direction;
+            if possible.is_zero() {
+                1.0 / self.direction.y.abs() * self.direction
+            } else if self.direction.y == 0.0 || possible.iter().any(|i| i.abs() > 1.0) {
+                Vec3 {
+                    x: f32::INFINITY,
+                    y: f32::INFINITY,
+                    z: f32::INFINITY,
+                }
+            } else {
+                possible
+            }
+        };
+        let changez = {
+            let positive = self.direction.z > 0.0;
+            let possible = (if positive {
+                self.position.z.ceil()
+            } else {
+                self.position.z.floor()
+            } - self.position.z)
+                / self.direction.z
+                * self.direction;
+            if possible.is_zero() {
+                1.0 / self.direction.z.abs() * self.direction
+            } else if self.direction.z == 0.0 || possible.iter().any(|i| i.abs() > 1.0) {
+                Vec3 {
+                    x: f32::INFINITY,
+                    y: f32::INFINITY,
+                    z: f32::INFINITY,
+                }
+            } else {
+                possible
+            }
+        };
         let real_change = *[changex, changey, changez]
             .iter()
             .reduce(|acc, item| {
