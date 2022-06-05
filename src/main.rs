@@ -1,6 +1,7 @@
 mod camera;
 mod chunk;
 mod physics;
+pub mod ray;
 mod texture;
 
 use itertools::Itertools;
