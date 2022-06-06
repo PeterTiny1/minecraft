@@ -66,7 +66,7 @@ impl Projection {
         }
     }
     pub fn resize(&mut self, width: u32, height: u32) {
-        self.aspect = width as f32 / height as f32
+        self.aspect = width as f32 / height as f32;
     }
 
     pub fn calc_matrix(&self) -> Mat4<f32> {

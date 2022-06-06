@@ -511,87 +511,88 @@ impl State {
             self.camera.position.z,
             &generated_chunkdata,
         );
-        if chunk_location.is_some() && !generated_chunkdata.contains_key(&chunk_location.unwrap()) {
-            let chunk_location = chunk_location.unwrap();
-            let location = &format!("{}.bin", chunk_location.iter().join(","));
-            let path = Path::new(location);
-            let chunk_contents = if path.exists() {
-                let buffer = std::fs::read(path).unwrap();
-                bincode::deserialize::<ChunkData>(&buffer).unwrap().contents
-            } else {
-                let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
-                    .map(|x| {
-                        (0..CHUNK_DEPTH)
-                            .map(|z| {
-                                (((chunk::noise_at(
-                                    &self.noise,
-                                    x as i32,
-                                    z as i32,
-                                    chunk_location,
-                                    LARGE_SCALE,
-                                    0.0,
-                                ) + TERRAIN_HEIGHT)
-                                    * LARGE_HEIGHT)
-                                    + (chunk::noise_at(
+        if let Some(chunk_location) = chunk_location {
+            if !generated_chunkdata.contains_key(&chunk_location) {
+                let location = &format!("{}.bin", chunk_location.iter().join(","));
+                let path = Path::new(location);
+                let chunk_contents = if path.exists() {
+                    let buffer = std::fs::read(path).unwrap();
+                    bincode::deserialize::<ChunkData>(&buffer).unwrap().contents
+                } else {
+                    let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
+                        .map(|x| {
+                            (0..CHUNK_DEPTH)
+                                .map(|z| {
+                                    (((chunk::noise_at(
                                         &self.noise,
                                         x as i32,
                                         z as i32,
                                         chunk_location,
-                                        SMALL_SCALE,
-                                        10.0,
-                                    ) * 20.0)) as i32
-                            })
-                            .collect::<Vec<i32>>()
-                    })
-                    .collect();
-                let mut chunk_contents =
-                    [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
-                for x in 0..CHUNK_WIDTH {
-                    for y in 0..CHUNK_HEIGHT {
-                        for z in 0..CHUNK_DEPTH {
-                            let y_i32 = y as i32;
-                            chunk_contents[x][y][z] = if y_i32 < heightmap[x][z] {
-                                BlockType::Stone
-                            } else if y_i32 == heightmap[x][z] {
-                                BlockType::GrassBlock
-                            } else if y_i32 > heightmap[x][z] && y_i32 <= heightmap[x][z] + 5 {
-                                if self.noise.get([x as f64, heightmap[x][z] as f64, z as f64])
-                                    > 0.4
-                                {
-                                    if y_i32 == heightmap[x][z] + 5 {
-                                        BlockType::Leaf
+                                        LARGE_SCALE,
+                                        0.0,
+                                    ) + TERRAIN_HEIGHT)
+                                        * LARGE_HEIGHT)
+                                        + (chunk::noise_at(
+                                            &self.noise,
+                                            x as i32,
+                                            z as i32,
+                                            chunk_location,
+                                            SMALL_SCALE,
+                                            10.0,
+                                        ) * 20.0)) as i32
+                                })
+                                .collect::<Vec<i32>>()
+                        })
+                        .collect();
+                    let mut chunk_contents =
+                        [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+                    for x in 0..CHUNK_WIDTH {
+                        for y in 0..CHUNK_HEIGHT {
+                            for z in 0..CHUNK_DEPTH {
+                                let y_i32 = y as i32;
+                                chunk_contents[x][y][z] = if y_i32 < heightmap[x][z] {
+                                    BlockType::Stone
+                                } else if y_i32 == heightmap[x][z] {
+                                    BlockType::GrassBlock
+                                } else if y_i32 > heightmap[x][z] && y_i32 <= heightmap[x][z] + 5 {
+                                    if self.noise.get([x as f64, heightmap[x][z] as f64, z as f64])
+                                        > 0.4
+                                    {
+                                        if y_i32 == heightmap[x][z] + 5 {
+                                            BlockType::Leaf
+                                        } else {
+                                            BlockType::Wood
+                                        }
+                                    } else if y_i32 == heightmap[x][z] + 1
+                                        && self.noise.get([
+                                            x as f64 / 4.0,
+                                            z as f64 / 4.0,
+                                            y as f64 / 4.0,
+                                        ]) > 0.3
+                                    {
+                                        BlockType::Grass
                                     } else {
-                                        BlockType::Wood
+                                        BlockType::Air
                                     }
-                                } else if y_i32 == heightmap[x][z] + 1
-                                    && self.noise.get([
-                                        x as f64 / 4.0,
-                                        z as f64 / 4.0,
-                                        y as f64 / 4.0,
-                                    ]) > 0.3
-                                {
-                                    BlockType::Grass
                                 } else {
                                     BlockType::Air
-                                }
-                            } else {
-                                BlockType::Air
-                            };
+                                };
+                            }
                         }
                     }
-                }
-                chunk_contents
-            };
-            generated_chunkdata.insert(
-                chunk_location,
-                ChunkData {
-                    contents: chunk_contents,
-                },
-            );
-            self.generating_chunks
-                .lock()
-                .unwrap()
-                .push_back(chunk_location);
+                    chunk_contents
+                };
+                generated_chunkdata.insert(
+                    chunk_location,
+                    ChunkData {
+                        contents: chunk_contents,
+                    },
+                );
+                self.generating_chunks
+                    .lock()
+                    .unwrap()
+                    .push_back(chunk_location);
+            }
         }
         for (mesh, indices, index) in self.returned_buffers.lock().unwrap().drain(..) {
             self.generated_chunk_buffers.insert(
