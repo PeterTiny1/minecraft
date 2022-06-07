@@ -23,12 +23,22 @@ const BOTTOM_LEFT: [f32; 2] = [0.0, TEXTURE_WIDTH];
 const BOTTOM_RIGHT: [f32; 2] = [TEXTURE_WIDTH, TEXTURE_WIDTH];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Rotation {
+    Up,
+    Down,
+    North,
+    East,
+    South,
+    West,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BlockType {
     Air,
     Stone,
     GrassBlock,
     Grass,
-    Wood,
+    Wood(Rotation),
     Leaf,
 }
 
@@ -44,14 +54,21 @@ impl BlockType {
                 [TEXTURE_WIDTH * 2.0, 0.0],
                 [0.0, 0.0],
             ],
-            BlockType::Wood => [
-                [0.0, TEXTURE_WIDTH],
-                [TEXTURE_WIDTH, TEXTURE_WIDTH],
-                [TEXTURE_WIDTH, TEXTURE_WIDTH],
-                [TEXTURE_WIDTH, TEXTURE_WIDTH],
-                [TEXTURE_WIDTH, TEXTURE_WIDTH],
-                [0.0, TEXTURE_WIDTH],
-            ],
+            BlockType::Wood(rotation) => match rotation {
+                Rotation::Up => [
+                    [0.0, TEXTURE_WIDTH],
+                    [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                    [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                    [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                    [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                    [0.0, TEXTURE_WIDTH],
+                ],
+                Rotation::Down => todo!(),
+                Rotation::North => todo!(),
+                Rotation::East => todo!(),
+                Rotation::South => todo!(),
+                Rotation::West => todo!(),
+            },
             BlockType::Leaf => [[TEXTURE_WIDTH * 2.0, TEXTURE_WIDTH]; 6],
             BlockType::Grass => [[TEXTURE_WIDTH * 3.0, 0.0]; 6],
             _ => panic!("This is not supposed to be called!"),

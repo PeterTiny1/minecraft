@@ -20,7 +20,9 @@ use std::{
     thread, vec,
 };
 
-use chunk::{generate_chunk_mesh, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
+use chunk::{
+    generate_chunk_mesh, BlockType, ChunkData, Rotation, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH,
+};
 use futures::executor::block_on;
 
 use vek::Mat4;
@@ -339,7 +341,7 @@ impl State {
                                 if y_i32 == heightmap[x][z] + 5 {
                                     BlockType::Leaf
                                 } else {
-                                    BlockType::Wood
+                                    BlockType::Wood(Rotation::Up)
                                 }
                             } else if y_i32 == heightmap[x][z] + 1
                                 && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
@@ -561,7 +563,7 @@ impl State {
                                         if y_i32 == heightmap[x][z] + 5 {
                                             BlockType::Leaf
                                         } else {
-                                            BlockType::Wood
+                                            BlockType::Wood(Rotation::Up)
                                         }
                                     } else if y_i32 == heightmap[x][z] + 1
                                         && self.noise.get([
