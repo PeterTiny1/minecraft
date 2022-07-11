@@ -7,7 +7,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-image = "0.24"
 env_logger = "0.9"
 log = "0.4"
 wgpu = "0.12"
@@ -20,6 +19,11 @@ itertools = "0.10"
 serde = {version = "1.0", features = ["derive"]}
 serde_with = "1.14"
 bincode="1.3"
+
+[dependencies.image]
+version = "0.24"
+default-features = false
+features= ["png"]
 
 [dependencies.sdl2]
 version="0.35.2"
