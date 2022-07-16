@@ -596,6 +596,20 @@ impl State {
                     .push_back(chunk_location);
             }
         }
+        if let Some(location) = self.camera_controller.looking_at_block {
+            let chunk_x = location.x.div_euclid(CHUNK_WIDTH as i32);
+            let chunk_z = location.z.div_euclid(CHUNK_DEPTH as i32);
+            generated_chunkdata
+                .get_mut(&[chunk_x, chunk_z])
+                .unwrap()
+                .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
+                [location.z as usize % CHUNK_DEPTH] = BlockType::Air;
+
+            self.generating_chunks
+                .lock()
+                .unwrap()
+                .push_back([chunk_x, chunk_z]);
+        }
         for (mesh, indices, index) in self.returned_buffers.lock().unwrap().drain(..) {
             self.generated_chunk_buffers.insert(
                 index,

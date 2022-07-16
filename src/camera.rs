@@ -86,6 +86,7 @@ pub struct CameraController {
     scroll: f32,
     speed: f32,
     sensitivity: f32,
+    pub looking_at_block: Option<Vec3<i32>>,
     velocity: Vec3<f32>,
 }
 
@@ -103,6 +104,7 @@ impl CameraController {
             scroll: 0.0,
             speed,
             sensitivity,
+            looking_at_block: None,
             velocity: Vec3::default(),
         }
     }
@@ -169,7 +171,7 @@ impl CameraController {
             Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalized();
         let looking_at_block = Ray::new(camera.position, scrollward, 5.0)
             .find(|e| matches!(get_block(world, e.x, e.y, e.z), Some(b) if b != BlockType::Air));
-        dbg!(looking_at_block);
+        self.looking_at_block = looking_at_block;
         camera.position += scrollward * self.scroll * self.speed * self.sensitivity * dt;
 
         if get_block(
