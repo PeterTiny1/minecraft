@@ -9,6 +9,7 @@ pub struct Ray {
 }
 
 impl Ray {
+    #[must_use]
     pub fn new(origin: Vec3<f32>, direction: Vec3<f32>, max_len: f32) -> Self {
         Self {
             origin,

@@ -104,8 +104,8 @@ pub fn noise_at(
     offset: f64,
 ) -> f64 {
     noise.get([
-        (x + (chunk_location[0] * CHUNK_WIDTH as i32)) as f64 / scale + offset,
-        (z + (chunk_location[1] * CHUNK_DEPTH as i32)) as f64 / scale + offset,
+        f64::from(x + (chunk_location[0] * CHUNK_WIDTH as i32)) / scale + offset,
+        f64::from(z + (chunk_location[1] * CHUNK_DEPTH as i32)) / scale + offset,
     ])
 }
 
@@ -116,7 +116,7 @@ fn chunk_at_block(
 ) -> Option<ChunkData> {
     let chunk_x = x.div_euclid(CHUNK_WIDTH as i32);
     let chunk_z = z.div_euclid(CHUNK_DEPTH as i32);
-    generated_chunks.get(&[chunk_x, chunk_z]).cloned()
+    generated_chunks.get(&[chunk_x, chunk_z]).copied()
 }
 
 pub fn get_block(

@@ -337,7 +337,7 @@ impl State {
                         } else if y_i32 == heightmap[x][z] {
                             BlockType::GrassBlock
                         } else if y_i32 > heightmap[x][z] && y_i32 <= heightmap[x][z] + 5 {
-                            if noise.get([x as f64, heightmap[x][z] as f64, z as f64]) > 0.4 {
+                            if noise.get([x as f64, f64::from(heightmap[x][z]), z as f64]) > 0.4 {
                                 if y_i32 == heightmap[x][z] + 5 {
                                     BlockType::Leaf
                                 } else {
@@ -515,7 +515,9 @@ impl State {
         );
         let mut generating_chunks = self.generating_chunks.lock().unwrap();
         if let Some(chunk_location) = chunk_location {
-            if let std::collections::hash_map::Entry::Vacant(e) = generated_chunkdata.entry(chunk_location) {
+            if let std::collections::hash_map::Entry::Vacant(e) =
+                generated_chunkdata.entry(chunk_location)
+            {
                 let location = &format!("{}.bin", chunk_location.iter().join(","));
                 let path = Path::new(location);
                 let chunk_contents = if path.exists() {
@@ -558,8 +560,11 @@ impl State {
                                 } else if y_i32 == heightmap[x][z] {
                                     BlockType::GrassBlock
                                 } else if y_i32 > heightmap[x][z] && y_i32 <= heightmap[x][z] + 5 {
-                                    if self.noise.get([x as f64, heightmap[x][z] as f64, z as f64])
-                                        > 0.4
+                                    if self.noise.get([
+                                        x as f64,
+                                        f64::from(heightmap[x][z]),
+                                        z as f64,
+                                    ]) > 0.4
                                     {
                                         if y_i32 == heightmap[x][z] + 5 {
                                             BlockType::Leaf
@@ -586,8 +591,8 @@ impl State {
                     chunk_contents
                 };
                 e.insert(ChunkData {
-                        contents: chunk_contents,
-                    });
+                    contents: chunk_contents,
+                });
                 generating_chunks.push_back(chunk_location);
             }
         }

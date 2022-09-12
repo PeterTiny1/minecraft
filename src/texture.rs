@@ -102,9 +102,11 @@ impl Texture {
                     .enumerate()
                     .map(|(index, i)| {
                         if index != 3 {
-                            ((i.0 as u16 + i.1 as u16 + i.2 as u16 + i.3 as u16) / 4) as u8
+                            ((u16::from(i.0) + u16::from(i.1) + u16::from(i.2) + u16::from(i.3))
+                                / 4) as u8
                         } else {
-                            (((i.0 as f32 + i.1 as f32 + i.2 as f32 + i.3 as f32) / (4.0 * 256.0))
+                            (((f32::from(i.0) + f32::from(i.1) + f32::from(i.2) + f32::from(i.3))
+                                / (4.0 * 256.0))
                                 .round()
                                 * 256.0) as u8
                         }
