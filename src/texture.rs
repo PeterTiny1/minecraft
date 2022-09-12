@@ -1,5 +1,4 @@
-use anyhow::Result;
-use image::{GenericImageView, ImageBuffer, Rgba};
+use image::{GenericImageView, ImageBuffer, ImageError, Rgba};
 use itertools::izip;
 
 pub struct Texture {
@@ -57,7 +56,7 @@ impl Texture {
         queue: &wgpu::Queue,
         bytes: &[u8],
         label: &str,
-    ) -> Result<Self> {
+    ) -> Result<Self, ImageError> {
         let img = image::load_from_memory(bytes)?;
         Ok(Self::from_image(device, queue, &img, Some(label)))
     }
