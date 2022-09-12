@@ -124,7 +124,7 @@ fn create_render_pipeline(
     vertex_layouts: &[wgpu::VertexBufferLayout],
     shader: wgpu::ShaderModuleDescriptor,
 ) -> wgpu::RenderPipeline {
-    let shader = device.create_shader_module(&shader);
+    let shader = device.create_shader_module(shader);
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(&format!("{:?}", shader)),
         layout: Some(layout),
@@ -136,14 +136,14 @@ fn create_render_pipeline(
         fragment: Some(wgpu::FragmentState {
             module: &shader,
             entry_point: "fs_main",
-            targets: &[wgpu::ColorTargetState {
+            targets: &[Some(wgpu::ColorTargetState {
                 format: color_format,
                 blend: Some(wgpu::BlendState {
                     alpha: wgpu::BlendComponent::REPLACE,
                     color: wgpu::BlendComponent::REPLACE,
                 }),
                 write_mask: wgpu::ColorWrites::ALL,
-            }],
+            })],
         }),
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
@@ -196,7 +196,7 @@ impl State {
             .unwrap();
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface.get_preferred_format(&adapter).unwrap(),
+            format: surface.get_supported_formats(&adapter)[0],
             width: size.0,
             height: size.1,
             present_mode: wgpu::PresentMode::Fifo,
@@ -242,7 +242,7 @@ impl State {
             label: Some("diffuse_bind_group"),
         });
         let camera = camera::Camera::new(
-            (0.0, 64.5, 8.0),
+            (0.2, 64.5, 8.2),
             -45.0_f32.to_radians(),
             -20.0_f32.to_radians(),
         );
@@ -513,6 +513,7 @@ impl State {
             self.camera.position.z,
             &generated_chunkdata,
         );
+        let mut generating_chunks = self.generating_chunks.lock().unwrap();
         if let Some(chunk_location) = chunk_location {
             if !generated_chunkdata.contains_key(&chunk_location) {
                 let location = &format!("{}.bin", chunk_location.iter().join(","));
@@ -590,10 +591,7 @@ impl State {
                         contents: chunk_contents,
                     },
                 );
-                self.generating_chunks
-                    .lock()
-                    .unwrap()
-                    .push_back(chunk_location);
+                generating_chunks.push_back(chunk_location);
             }
         }
         if let Some(location) = self.camera_controller.looking_at_block {
@@ -604,11 +602,10 @@ impl State {
                 .unwrap()
                 .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
                 [location.z as usize % CHUNK_DEPTH] = BlockType::Air;
-
-            self.generating_chunks
-                .lock()
-                .unwrap()
-                .push_back([chunk_x, chunk_z]);
+            // chunk::get_block(&generated_chunkdata, location.x, location.y, location.z);
+            if !generating_chunks.contains(&[chunk_x, chunk_z]) {
+                generating_chunks.push_back([chunk_x, chunk_z]);
+            }
         }
         for (mesh, indices, index) in self.returned_buffers.lock().unwrap().drain(..) {
             self.generated_chunk_buffers.insert(
@@ -647,7 +644,7 @@ impl State {
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
-                color_attachments: &[wgpu::RenderPassColorAttachment {
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -659,7 +656,7 @@ impl State {
                         }),
                         store: true,
                     },
-                }],
+                })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
@@ -686,12 +683,12 @@ impl State {
 
 fn main() {
     env_logger::init();
-    let mut save = true;
+    let mut save = false;
     let mut args = env::args();
     let _path = args.next().unwrap();
     if let Some(arg) = args.next() {
         match &*arg {
-            "-no-save" => save = false,
+            "-save" => save = true,
             _ => println!("Invalid argument {arg}!"),
         }
     }

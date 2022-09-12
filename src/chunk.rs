@@ -52,7 +52,7 @@ impl BlockType {
                 [TEXTURE_WIDTH * 2.0, 0.0],
                 [TEXTURE_WIDTH * 2.0, 0.0],
                 [TEXTURE_WIDTH * 2.0, 0.0],
-                [0.0, 0.0],
+                [TEXTURE_WIDTH * 3.0, TEXTURE_WIDTH],
             ],
             BlockType::Wood(rotation) => match rotation {
                 Rotation::Up => [
