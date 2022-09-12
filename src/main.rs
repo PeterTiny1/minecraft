@@ -358,7 +358,7 @@ impl State {
             }
             chunk
         };
-        let (mesh, chunk_indices) = generate_chunk_mesh([0; 2], chunk, [None; 4]);
+        let (mesh, chunk_indices) = generate_chunk_mesh([0; 2], &chunk, [None; 4]);
         let generated_chunkdata = Arc::new(Mutex::new(HashMap::from([(
             [0; 2],
             chunk::ChunkData { contents: chunk },
@@ -394,7 +394,7 @@ impl State {
                 let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
                 let (mesh, index_buffer) = generate_chunk_mesh(
                     chunk_location,
-                    chunk_contents,
+                    &chunk_contents,
                     chunk_locations.map(|chunk| generated_chunkdata.get(&chunk)),
                 );
                 let further_chunks = [
@@ -419,7 +419,7 @@ impl State {
                     if let Some(chunk) = generated_chunkdata.get(chunk_index) {
                         let (mesh, indices) = generate_chunk_mesh(
                             chunk_locations[index],
-                            chunk.contents,
+                            &chunk.contents,
                             [
                                 get_chunk(1, 0),
                                 get_chunk(0, if index == 1 { 0 } else { 1 }),
@@ -430,7 +430,7 @@ impl State {
                         returning_arc
                             .lock()
                             .unwrap()
-                            .push((mesh, indices, *chunk_index))
+                            .push((mesh, indices, *chunk_index));
                     }
                 }
                 returning_arc
@@ -758,7 +758,7 @@ fn main() {
                     WindowEvent::FocusGained => window_focused = true,
                     WindowEvent::FocusLost => window_focused = false,
                     WindowEvent::Resized(width, height) => {
-                        state.resize((*width as u32, *height as u32))
+                        state.resize((*width as u32, *height as u32));
                     }
                     _ => {}
                 },

@@ -43,7 +43,7 @@ pub enum BlockType {
 }
 
 impl BlockType {
-    fn get_offset(&self) -> [[f32; 2]; 6] {
+    fn get_offset(self) -> [[f32; 2]; 6] {
         match self {
             BlockType::Stone => [[0.0, 0.0]; 6],
             BlockType::GrassBlock => [
@@ -63,18 +63,14 @@ impl BlockType {
                     [TEXTURE_WIDTH, TEXTURE_WIDTH],
                     [0.0, TEXTURE_WIDTH],
                 ],
-                Rotation::Down => todo!(),
-                Rotation::North => todo!(),
-                Rotation::East => todo!(),
-                Rotation::South => todo!(),
-                Rotation::West => todo!(),
+                _ => todo!(),
             },
             BlockType::Leaf => [[TEXTURE_WIDTH * 2.0, TEXTURE_WIDTH]; 6],
             BlockType::Grass => [[TEXTURE_WIDTH * 3.0, 0.0]; 6],
-            _ => panic!("This is not supposed to be called!"),
+            BlockType::Air => panic!("This is not supposed to be called!"),
         }
     }
-    pub fn is_solid(&self) -> bool {
+    pub fn is_solid(self) -> bool {
         !matches!(self, BlockType::Air | BlockType::Grass | BlockType::Leaf)
     }
 }
@@ -170,7 +166,7 @@ fn add_arrs(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
 
 pub fn generate_chunk_mesh(
     location: [i32; 2],
-    chunk: [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
+    chunk: &[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
     surrounding_chunks: [Option<&ChunkData>; 4], // north, south, east, west for... reasons...
 ) -> (Vec<Vertex>, Vec<u32>) {
     let (mut vertices, mut indices) = (vec![], vec![]);
@@ -179,7 +175,8 @@ pub fn generate_chunk_mesh(
             for z in 0..CHUNK_DEPTH {
                 if chunk[x][y][z] == BlockType::Air {
                     continue;
-                } else if chunk[x][y][z] == BlockType::Grass {
+                }
+                if chunk[x][y][z] == BlockType::Grass {
                     let tex_offset = BlockType::Grass.get_offset()[0];
                     let x = (x as i32 + (location[0] * CHUNK_WIDTH as i32)) as f32;
                     let z = (z as i32 + (location[1] * CHUNK_WIDTH as i32)) as f32;
@@ -604,7 +601,7 @@ pub fn generate_chunk_mesh(
                                     TOP_BRIGHTNESS
                                 },
                             ),
-                        ])
+                        ]);
                     }
                 }
                 // bottom face

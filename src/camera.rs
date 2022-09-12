@@ -180,56 +180,56 @@ impl CameraController {
             (camera.position.y - 1.5).floor() as i32,
             (camera.position.z + 0.3).floor() as i32,
         )
-        .map_or(false, |block| block.is_solid())
+        .map_or(false, BlockType::is_solid)
             || get_block(
                 world,
                 (camera.position.x - 0.3).floor() as i32,
                 (camera.position.y - 1.5).floor() as i32,
                 (camera.position.z + 0.3).floor() as i32,
             )
-            .map_or(false, |block| block.is_solid())
+            .map_or(false, BlockType::is_solid)
             || get_block(
                 world,
                 (camera.position.x - 0.3).floor() as i32,
                 (camera.position.y - 1.5).floor() as i32,
                 (camera.position.z - 0.3).floor() as i32,
             )
-            .map_or(false, |block| block.is_solid())
+            .map_or(false, BlockType::is_solid)
             || get_block(
                 world,
                 (camera.position.x - 0.3).floor() as i32,
                 (camera.position.y - 1.5).floor() as i32,
                 (camera.position.z - 0.3).floor() as i32,
             )
-            .map_or(false, |block| block.is_solid())
+            .map_or(false, BlockType::is_solid)
             || get_block(
                 world,
                 (camera.position.x + 0.3).floor() as i32,
                 (camera.position.y).floor() as i32,
                 (camera.position.z + 0.3).floor() as i32,
             )
-            .map_or(false, |block| block.is_solid())
+            .map_or(false, BlockType::is_solid)
             || get_block(
                 world,
                 (camera.position.x - 0.3).floor() as i32,
                 (camera.position.y).floor() as i32,
                 (camera.position.z + 0.3).floor() as i32,
             )
-            .map_or(false, |block| block.is_solid())
+            .map_or(false, BlockType::is_solid)
             || get_block(
                 world,
                 (camera.position.x - 0.3).floor() as i32,
                 (camera.position.y).floor() as i32,
                 (camera.position.z - 0.3).floor() as i32,
             )
-            .map_or(false, |block| block.is_solid())
+            .map_or(false, BlockType::is_solid)
             || get_block(
                 world,
                 (camera.position.x - 0.3).floor() as i32,
                 (camera.position.y).floor() as i32,
                 (camera.position.z - 0.3).floor() as i32,
             )
-            .map_or(false, |block| block.is_solid())
+            .map_or(false, BlockType::is_solid)
         {
             camera.position.y = (camera.position.y - 1.5).ceil() + 1.5;
             self.velocity.y = 0.0;
