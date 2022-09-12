@@ -27,66 +27,46 @@ impl Iterator for Ray {
     type Item = Vec3<i32>;
     fn next(&mut self) -> Option<Self::Item> {
         let changex = {
-            let positive = self.direction.x >= 0.0;
+            let positive = self.direction.x > 0.0;
             let possible = (if positive {
                 self.position.x.ceil()
-            } else if self.position.x.floor() != self.position.x {
-                self.position.x.floor()
             } else {
-                self.position.x - 1.0
+                self.position.x.floor()
             } - self.position.x)
                 / self.direction.x
                 * self.direction;
             if possible.is_zero() {
-                Vec3 {
-                    x: f32::INFINITY,
-                    y: f32::INFINITY,
-                    z: f32::INFINITY,
-                }
+                1.0 / self.direction.x.abs() * self.direction
             } else {
                 possible
             }
         };
         let changey = {
-            let positive = self.direction.y >= 0.0;
+            let positive = self.direction.y > 0.0;
             let possible = (if positive {
                 self.position.y.ceil()
-            } else if self.position.y.floor() != self.position.y {
-                self.position.y.floor()
             } else {
-                self.position.y - 1.0
+                self.position.y.floor()
             } - self.position.y)
                 / self.direction.y
                 * self.direction;
             if possible.is_zero() {
                 1.0 / self.direction.y.abs() * self.direction
-            } else if self.direction.y == 0.0 {
-                Vec3 {
-                    x: f32::INFINITY,
-                    y: f32::INFINITY,
-                    z: f32::INFINITY,
-                }
             } else {
                 possible
             }
         };
         let changez = {
-            let positive = self.direction.z >= 0.0;
+            let positive = self.direction.z > 0.0;
             let possible = (if positive {
                 self.position.z.ceil()
-            } else if self.position.z.floor() != self.position.z {
-                self.position.z.floor()
             } else {
-                self.position.z - 1.0
+                self.position.z.floor()
             } - self.position.z)
                 / self.direction.z
                 * self.direction;
             if possible.is_zero() {
-                Vec3 {
-                    x: f32::INFINITY,
-                    y: f32::INFINITY,
-                    z: f32::INFINITY,
-                }
+                1.0 / self.direction.z.abs() * self.direction
             } else {
                 possible
             }

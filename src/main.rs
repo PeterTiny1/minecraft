@@ -515,7 +515,7 @@ impl State {
         );
         let mut generating_chunks = self.generating_chunks.lock().unwrap();
         if let Some(chunk_location) = chunk_location {
-            if !generated_chunkdata.contains_key(&chunk_location) {
+            if let std::collections::hash_map::Entry::Vacant(e) = generated_chunkdata.entry(chunk_location) {
                 let location = &format!("{}.bin", chunk_location.iter().join(","));
                 let path = Path::new(location);
                 let chunk_contents = if path.exists() {
@@ -585,12 +585,9 @@ impl State {
                     }
                     chunk_contents
                 };
-                generated_chunkdata.insert(
-                    chunk_location,
-                    ChunkData {
+                e.insert(ChunkData {
                         contents: chunk_contents,
-                    },
-                );
+                    });
                 generating_chunks.push_back(chunk_location);
             }
         }
