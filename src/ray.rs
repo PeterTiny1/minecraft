@@ -26,9 +26,9 @@ impl Ray {
 impl Iterator for Ray {
     type Item = Vec3<i32>;
     fn next(&mut self) -> Option<Self::Item> {
+        let positive_x = self.direction.x > 0.0;
         let changex = {
-            let positive = self.direction.x > 0.0;
-            let possible = (if positive {
+            let possible = (if positive_x {
                 self.position.x.ceil()
             } else {
                 self.position.x.floor()
@@ -41,9 +41,9 @@ impl Iterator for Ray {
                 possible
             }
         };
+        let positive_y = self.direction.y > 0.0;
         let changey = {
-            let positive = self.direction.y > 0.0;
-            let possible = (if positive {
+            let possible = (if positive_y {
                 self.position.y.ceil()
             } else {
                 self.position.y.floor()
@@ -56,9 +56,9 @@ impl Iterator for Ray {
                 possible
             }
         };
+        let positive_z = self.direction.z > 0.0;
         let changez = {
-            let positive = self.direction.z > 0.0;
-            let possible = (if positive {
+            let possible = (if positive_z {
                 self.position.z.ceil()
             } else {
                 self.position.z.floor()
@@ -83,11 +83,11 @@ impl Iterator for Ray {
             .unwrap();
         self.position += real_change;
         if real_change == changex {
-            self.block_position.x += 1;
+            self.block_position.x += if positive_x { 1 } else { -1 };
         } else if real_change == changey {
-            self.block_position.y += 1;
+            self.block_position.y += if positive_y { 1 } else { -1 };
         } else {
-            self.block_position.z += 1;
+            self.block_position.z += if positive_z { 1 } else { -1 };
         }
         if self.magnitude() < self.max_len {
             Some(self.block_position)
