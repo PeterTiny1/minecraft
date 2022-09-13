@@ -87,7 +87,7 @@ impl Iterator for Ray {
             self.block_position.x += if positive_x { 1 } else { -1 };
         } else if real_change == changey {
             self.block_position.y += if positive_y { 1 } else { -1 };
-        } else {
+        } else if real_change == changez {
             self.block_position.z += if positive_z { 1 } else { -1 };
         }
         if self.magnitude() < self.max_len {
