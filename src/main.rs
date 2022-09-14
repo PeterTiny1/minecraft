@@ -89,8 +89,8 @@ impl Uniforms {
 
 const LARGE_SCALE: f64 = 50.0;
 const SMALL_SCALE: f64 = 20.0;
-const LARGE_HEIGHT: f64 = 40.0;
-const TERRAIN_HEIGHT: f64 = 0.7;
+const LARGE_HEIGHT: f64 = 30.0;
+const TERRAIN_HEIGHT: f64 = 0.8;
 
 struct State {
     surface: wgpu::Surface,
@@ -321,7 +321,7 @@ impl State {
                                 + (noise.get([
                                     x as f64 / SMALL_SCALE + 10.0,
                                     y as f64 / SMALL_SCALE + 10.0,
-                                ]) * 20.0)) as i32
+                                ]) * 10.0)) as i32
                         })
                         .collect()
                 })
@@ -544,7 +544,7 @@ impl State {
                                             chunk_location,
                                             SMALL_SCALE,
                                             10.0,
-                                        ) * 20.0)) as i32
+                                        ) * 10.0)) as i32
                                 })
                                 .collect::<Vec<i32>>()
                         })
