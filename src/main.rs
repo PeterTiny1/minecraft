@@ -17,7 +17,9 @@ use std::{
     io::Write,
     path::Path,
     sync::{Arc, Mutex},
-    thread, vec,
+    thread,
+    time::Instant,
+    vec,
 };
 
 use chunk::{
@@ -107,6 +109,7 @@ struct State {
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     mouse_pressed: bool,
+    last_break: Instant,
     // right_pressed: bool,
     depth_texture: texture::Texture,
     generated_chunkdata: Arc<Mutex<HashMap<[i32; 2], chunk::ChunkData>>>,
@@ -461,6 +464,7 @@ impl State {
             generating_chunks,
             returned_buffers,
             noise,
+            last_break: Instant::now(),
         }
     }
 
@@ -597,16 +601,20 @@ impl State {
             }
         }
         if let Some(location) = self.camera_controller.looking_at_block {
-            let chunk_x = location.x.div_euclid(CHUNK_WIDTH as i32);
-            let chunk_z = location.z.div_euclid(CHUNK_DEPTH as i32);
-            generated_chunkdata
-                .get_mut(&[chunk_x, chunk_z])
-                .unwrap()
-                .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
-                [location.z as usize % CHUNK_DEPTH] = BlockType::Air;
-            // chunk::get_block(&generated_chunkdata, location.x, location.y, location.z);
-            if !generating_chunks.contains(&[chunk_x, chunk_z]) {
-                generating_chunks.push_back([chunk_x, chunk_z]);
+            let now = Instant::now();
+            if self.mouse_pressed && (now - self.last_break).as_millis() > 250 {
+                self.last_break = Instant::now();
+                let chunk_x = location.x.div_euclid(CHUNK_WIDTH as i32);
+                let chunk_z = location.z.div_euclid(CHUNK_DEPTH as i32);
+                generated_chunkdata
+                    .get_mut(&[chunk_x, chunk_z])
+                    .unwrap()
+                    .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
+                    [location.z as usize % CHUNK_DEPTH] = BlockType::Air;
+                // chunk::get_block(&generated_chunkdata, location.x, location.y, location.z);
+                if !generating_chunks.contains(&[chunk_x, chunk_z]) {
+                    generating_chunks.push_back([chunk_x, chunk_z]);
+                }
             }
         }
         for (mesh, indices, index) in self.returned_buffers.lock().unwrap().drain(..) {

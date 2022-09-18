@@ -197,7 +197,7 @@ impl CameraController {
             .map_or(false, BlockType::is_solid)
             || get_block(
                 world,
-                (camera.position.x - 0.3).floor() as i32,
+                (camera.position.x + 0.3).floor() as i32,
                 (camera.position.y - 1.5).floor() as i32,
                 (camera.position.z - 0.3).floor() as i32,
             )
@@ -225,7 +225,7 @@ impl CameraController {
             .map_or(false, BlockType::is_solid)
             || get_block(
                 world,
-                (camera.position.x - 0.3).floor() as i32,
+                (camera.position.x + 0.3).floor() as i32,
                 (camera.position.y).floor() as i32,
                 (camera.position.z - 0.3).floor() as i32,
             )
