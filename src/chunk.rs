@@ -15,7 +15,7 @@ pub const CHUNK_DEPTH: usize = 16;
 #[cfg(not(target_os = "windows"))]
 pub const CHUNK_DEPTH: usize = 32;
 
-const TEXTURE_WIDTH: f32 = 0.25;
+const TEXTURE_WIDTH: f32 = 1.0 / 16.0;
 
 const TOP_LEFT: [f32; 2] = [0.0, 0.0];
 const TOP_RIGHT: [f32; 2] = [TEXTURE_WIDTH, 0.0];
@@ -45,32 +45,35 @@ pub enum BlockType {
 impl BlockType {
     fn get_offset(self) -> [[f32; 2]; 6] {
         match self {
-            BlockType::Stone => [[0.0, 0.0]; 6],
+            BlockType::Stone => [[0.0, TEXTURE_WIDTH * 8.0]; 6],
             BlockType::GrassBlock => [
-                [TEXTURE_WIDTH, 0.0],
-                [TEXTURE_WIDTH * 2.0, 0.0],
-                [TEXTURE_WIDTH * 2.0, 0.0],
-                [TEXTURE_WIDTH * 2.0, 0.0],
-                [TEXTURE_WIDTH * 2.0, 0.0],
-                [TEXTURE_WIDTH * 3.0, TEXTURE_WIDTH],
+                [0.0, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                [0.0, 0.0],
             ],
             BlockType::Wood(rotation) => match rotation {
                 Rotation::Up => [
-                    [0.0, TEXTURE_WIDTH],
-                    [TEXTURE_WIDTH, TEXTURE_WIDTH],
-                    [TEXTURE_WIDTH, TEXTURE_WIDTH],
-                    [TEXTURE_WIDTH, TEXTURE_WIDTH],
-                    [TEXTURE_WIDTH, TEXTURE_WIDTH],
-                    [0.0, TEXTURE_WIDTH],
+                    [TEXTURE_WIDTH * 7.0, TEXTURE_WIDTH],
+                    [TEXTURE_WIDTH * 6.0, TEXTURE_WIDTH],
+                    [TEXTURE_WIDTH * 6.0, TEXTURE_WIDTH],
+                    [TEXTURE_WIDTH * 6.0, TEXTURE_WIDTH],
+                    [TEXTURE_WIDTH * 6.0, TEXTURE_WIDTH],
+                    [TEXTURE_WIDTH * 7.0, TEXTURE_WIDTH],
                 ],
                 _ => todo!(),
             },
-            BlockType::Leaf => [[TEXTURE_WIDTH * 2.0, TEXTURE_WIDTH]; 6],
-            BlockType::Grass => [[TEXTURE_WIDTH * 3.0, 0.0]; 6],
+            BlockType::Leaf => [[TEXTURE_WIDTH * 5.0, TEXTURE_WIDTH]; 6],
+            BlockType::Grass => [[TEXTURE_WIDTH * 2.0, TEXTURE_WIDTH]; 6],
             BlockType::Air => panic!("This is not supposed to be called!"),
         }
     }
     pub fn is_solid(self) -> bool {
+        !matches!(self, BlockType::Air | BlockType::Grass)
+    }
+    pub fn is_transparent(self) -> bool {
         !matches!(self, BlockType::Air | BlockType::Grass | BlockType::Leaf)
     }
 }
@@ -239,8 +242,8 @@ pub fn generate_chunk_mesh(
                 // first face
                 if (z == CHUNK_DEPTH - 1
                     && surrounding_chunks[2]
-                        .map_or(true, |chunk| !chunk.contents[x][y][0].is_solid()))
-                    || (z != CHUNK_DEPTH - 1 && !chunk[x][y][z + 1].is_solid())
+                        .map_or(true, |chunk| !chunk.contents[x][y][0].is_transparent()))
+                    || (z != CHUNK_DEPTH - 1 && !chunk[x][y][z + 1].is_transparent())
                 {
                     let tex_offset = tex_offsets[1];
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
@@ -252,11 +255,12 @@ pub fn generate_chunk_mesh(
                             if (x == 0
                                 && surrounding_chunks[1].map_or(false, |chunk| {
                                     z != CHUNK_DEPTH - 1
-                                        && chunk.contents[CHUNK_WIDTH - 1][y][z + 1].is_solid()
+                                        && chunk.contents[CHUNK_WIDTH - 1][y][z + 1]
+                                            .is_transparent()
                                 }))
                                 || (x != 0
                                     && z != CHUNK_DEPTH - 1
-                                    && chunk[x - 1][y][z + 1].is_solid())
+                                    && chunk[x - 1][y][z + 1].is_transparent())
                             {
                                 0.5
                             } else {
@@ -267,10 +271,11 @@ pub fn generate_chunk_mesh(
                             [rel_x, y_f32, zplusone],
                             add_arrs(BOTTOM_LEFT, tex_offset),
                             if y != 0
-                                && ((z != CHUNK_DEPTH - 1 && chunk[x][y - 1][z + 1].is_solid())
+                                && ((z != CHUNK_DEPTH - 1
+                                    && chunk[x][y - 1][z + 1].is_transparent())
                                     || (z == CHUNK_DEPTH - 1
                                         && surrounding_chunks[2].map_or(false, |chunk| {
-                                            chunk.contents[x][y - 1][0].is_solid()
+                                            chunk.contents[x][y - 1][0].is_transparent()
                                         })))
                             {
                                 0.5
@@ -282,10 +287,11 @@ pub fn generate_chunk_mesh(
                             [1.0 + rel_x, y_f32, zplusone],
                             add_arrs(BOTTOM_RIGHT, tex_offset),
                             if y != 0
-                                && ((z != CHUNK_DEPTH - 1 && chunk[x][y - 1][z + 1].is_solid())
+                                && ((z != CHUNK_DEPTH - 1
+                                    && chunk[x][y - 1][z + 1].is_transparent())
                                     || (z == CHUNK_DEPTH - 1
                                         && surrounding_chunks[2].map_or(false, |chunk| {
-                                            chunk.contents[x][y - 1][0].is_solid()
+                                            chunk.contents[x][y - 1][0].is_transparent()
                                         })))
                             {
                                 0.5
@@ -298,11 +304,12 @@ pub fn generate_chunk_mesh(
                             add_arrs(TOP_RIGHT, tex_offset),
                             if (x == CHUNK_WIDTH - 1
                                 && surrounding_chunks[0].map_or(false, |chunk| {
-                                    z != CHUNK_DEPTH - 1 && chunk.contents[0][y][z + 1].is_solid()
+                                    z != CHUNK_DEPTH - 1
+                                        && chunk.contents[0][y][z + 1].is_transparent()
                                 }))
                                 || (x != CHUNK_WIDTH - 1
                                     && z != CHUNK_DEPTH - 1
-                                    && chunk[x + 1][y][z + 1].is_solid())
+                                    && chunk[x + 1][y][z + 1].is_transparent())
                             {
                                 0.5
                             } else {
@@ -314,8 +321,8 @@ pub fn generate_chunk_mesh(
                 // second face
                 if (x == CHUNK_WIDTH - 1
                     && surrounding_chunks[0]
-                        .map_or(true, |chunk| !chunk.contents[0][y][z].is_solid()))
-                    || (x != CHUNK_WIDTH - 1 && !chunk[x + 1][y][z].is_solid())
+                        .map_or(true, |chunk| !chunk.contents[0][y][z].is_transparent()))
+                    || (x != CHUNK_WIDTH - 1 && !chunk[x + 1][y][z].is_transparent())
                 {
                     let tex_offset = tex_offsets[2];
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
@@ -326,11 +333,12 @@ pub fn generate_chunk_mesh(
                             add_arrs(TOP_LEFT, tex_offset),
                             if (x == CHUNK_WIDTH - 1
                                 && surrounding_chunks[0].map_or(false, |chunk| {
-                                    z != CHUNK_WIDTH - 1 && chunk.contents[0][y][z + 1].is_solid()
+                                    z != CHUNK_WIDTH - 1
+                                        && chunk.contents[0][y][z + 1].is_transparent()
                                 }))
                                 || (x != CHUNK_WIDTH - 1
                                     && z != CHUNK_WIDTH - 1
-                                    && chunk[x + 1][y][z + 1].is_solid())
+                                    && chunk[x + 1][y][z + 1].is_transparent())
                             {
                                 0.5
                             } else {
@@ -340,7 +348,10 @@ pub fn generate_chunk_mesh(
                         Vertex(
                             [xplusone, y_f32, 1.0 + rel_z],
                             add_arrs(BOTTOM_LEFT, tex_offset),
-                            if y != 0 && x != CHUNK_WIDTH - 1 && chunk[x + 1][y - 1][z].is_solid() {
+                            if y != 0
+                                && x != CHUNK_WIDTH - 1
+                                && chunk[x + 1][y - 1][z].is_transparent()
+                            {
                                 0.5
                             } else {
                                 SIDE_BRIGHTNESS
@@ -349,7 +360,10 @@ pub fn generate_chunk_mesh(
                         Vertex(
                             [xplusone, y_f32, rel_z],
                             add_arrs(BOTTOM_RIGHT, tex_offset),
-                            if y != 0 && x != CHUNK_WIDTH - 1 && chunk[x + 1][y - 1][z].is_solid() {
+                            if y != 0
+                                && x != CHUNK_WIDTH - 1
+                                && chunk[x + 1][y - 1][z].is_transparent()
+                            {
                                 0.5
                             } else {
                                 SIDE_BRIGHTNESS
@@ -360,11 +374,11 @@ pub fn generate_chunk_mesh(
                             add_arrs(TOP_RIGHT, tex_offset),
                             if (x == CHUNK_WIDTH - 1
                                 && surrounding_chunks[1].map_or(false, |chunk| {
-                                    z != 0 && chunk.contents[0][y][z - 1].is_solid()
+                                    z != 0 && chunk.contents[0][y][z - 1].is_transparent()
                                 }))
                                 || (x != CHUNK_WIDTH - 1
                                     && z != 0
-                                    && chunk[x + 1][y][z - 1].is_solid())
+                                    && chunk[x + 1][y][z - 1].is_transparent())
                             {
                                 0.5
                             } else {
@@ -376,9 +390,9 @@ pub fn generate_chunk_mesh(
                 // third face
                 if (z == 0
                     && surrounding_chunks[3].map_or(true, |chunk| {
-                        !chunk.contents[x][y][CHUNK_DEPTH - 1].is_solid()
+                        !chunk.contents[x][y][CHUNK_DEPTH - 1].is_transparent()
                     }))
-                    || (z != 0 && !chunk[x][y][z - 1].is_solid())
+                    || (z != 0 && !chunk[x][y][z - 1].is_transparent())
                 {
                     let tex_offset = tex_offsets[3];
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
@@ -391,7 +405,7 @@ pub fn generate_chunk_mesh(
                         Vertex(
                             [1.0 + rel_x, y_f32, rel_z],
                             add_arrs(BOTTOM_LEFT, tex_offset),
-                            if y != 0 && z != 0 && chunk[x][y - 1][z - 1].is_solid() {
+                            if y != 0 && z != 0 && chunk[x][y - 1][z - 1].is_transparent() {
                                 0.5
                             } else {
                                 BACK_BRIGHTNESS
@@ -400,7 +414,7 @@ pub fn generate_chunk_mesh(
                         Vertex(
                             [rel_x, y_f32, rel_z],
                             add_arrs(BOTTOM_RIGHT, tex_offset),
-                            if y != 0 && z != 0 && chunk[x][y - 1][z - 1].is_solid() {
+                            if y != 0 && z != 0 && chunk[x][y - 1][z - 1].is_transparent() {
                                 0.5
                             } else {
                                 BACK_BRIGHTNESS
@@ -416,9 +430,9 @@ pub fn generate_chunk_mesh(
                 // fourth face
                 if (x == 0
                     && surrounding_chunks[1].map_or(true, |chunk| {
-                        !chunk.contents.last().unwrap()[y][z].is_solid()
+                        !chunk.contents.last().unwrap()[y][z].is_transparent()
                     }))
-                    || (x != 0 && !chunk[x - 1][y][z].is_solid())
+                    || (x != 0 && !chunk[x - 1][y][z].is_transparent())
                 {
                     let tex_offset = tex_offsets[4];
                     indices.extend(&mut QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
@@ -446,7 +460,7 @@ pub fn generate_chunk_mesh(
                     ]);
                 }
                 // top face
-                if y == CHUNK_HEIGHT - 1 || !chunk[x][y + 1][z].is_solid() {
+                if y == CHUNK_HEIGHT - 1 || !chunk[x][y + 1][z].is_transparent() {
                     let tex_offset = tex_offsets[0];
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     let yplusone = y_f32 + 1.0;
@@ -480,24 +494,26 @@ pub fn generate_chunk_mesh(
                                 add_arrs(TOP_LEFT, tex_offset),
                                 if (x == 0
                                     && surrounding_chunks[1].map_or(false, |chunk| {
-                                        chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_solid()
+                                        chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_transparent()
                                             || (z != 0
                                                 && chunk.contents[CHUNK_WIDTH - 1][y + 1][z - 1]
-                                                    .is_solid())
+                                                    .is_transparent())
                                     }))
                                     || (x != 0
-                                        && (chunk[x - 1][y + 1][z].is_solid()
+                                        && (chunk[x - 1][y + 1][z].is_transparent()
                                             || (z == 0
                                                 && surrounding_chunks[3].map_or(false, |chunk| {
                                                     chunk.contents[x - 1][y + 1][CHUNK_DEPTH - 1]
-                                                        .is_solid()
+                                                        .is_transparent()
                                                 }))
-                                            || (z != 0 && chunk[x - 1][y + 1][z - 1].is_solid())))
+                                            || (z != 0
+                                                && chunk[x - 1][y + 1][z - 1].is_transparent())))
                                     || (z == 0
                                         && surrounding_chunks[3].map_or(false, |chunk| {
-                                            chunk.contents[x][y + 1][CHUNK_DEPTH - 1].is_solid()
+                                            chunk.contents[x][y + 1][CHUNK_DEPTH - 1]
+                                                .is_transparent()
                                         }))
-                                    || (z != 0 && chunk[x][y + 1][z - 1].is_solid())
+                                    || (z != 0 && chunk[x][y + 1][z - 1].is_transparent())
                                 {
                                     0.5
                                 } else {
@@ -509,30 +525,32 @@ pub fn generate_chunk_mesh(
                                 add_arrs(BOTTOM_LEFT, tex_offset),
                                 if (x == 0
                                     && surrounding_chunks[1].map_or(false, |chunk| {
-                                        chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_solid()
+                                        chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_transparent()
                                             || (z != CHUNK_DEPTH - 1
                                                 && chunk.contents[CHUNK_WIDTH - 1][y + 1][z + 1]
-                                                    .is_solid())
+                                                    .is_transparent())
                                     }))
                                     || (x != 0
                                         && y != CHUNK_HEIGHT - 1
-                                        && (chunk[x - 1][y + 1][z].is_solid()
+                                        && (chunk[x - 1][y + 1][z].is_transparent()
                                             || ((z == CHUNK_DEPTH - 1
                                                 && surrounding_chunks[2].map_or(
                                                     false,
                                                     |chunk| {
-                                                        chunk.contents[x - 1][y + 1][0].is_solid()
+                                                        chunk.contents[x - 1][y + 1][0]
+                                                            .is_transparent()
                                                     },
                                                 ))
                                                 || (z != CHUNK_DEPTH - 1
-                                                    && chunk[x - 1][y + 1][z + 1].is_solid()))))
+                                                    && chunk[x - 1][y + 1][z + 1]
+                                                        .is_transparent()))))
                                     || (z == CHUNK_DEPTH - 1
                                         && surrounding_chunks[2].map_or(false, |chunk| {
-                                            chunk.contents[x][y + 1][0].is_solid()
+                                            chunk.contents[x][y + 1][0].is_transparent()
                                         }))
                                     || (z != CHUNK_DEPTH - 1
                                         && y != CHUNK_HEIGHT - 1
-                                        && chunk[x][y + 1][z + 1].is_solid())
+                                        && chunk[x][y + 1][z + 1].is_transparent())
                                 {
                                     0.5
                                 } else {
@@ -544,26 +562,26 @@ pub fn generate_chunk_mesh(
                                 add_arrs(BOTTOM_RIGHT, tex_offset),
                                 if (x == CHUNK_WIDTH - 1
                                     && surrounding_chunks[0].map_or(false, |chunk| {
-                                        chunk.contents[0][y + 1][z].is_solid()
+                                        chunk.contents[0][y + 1][z].is_transparent()
                                             || (z != CHUNK_DEPTH - 1
-                                                && chunk.contents[0][y + 1][z + 1].is_solid())
+                                                && chunk.contents[0][y + 1][z + 1].is_transparent())
                                     }))
                                     || (x != CHUNK_WIDTH - 1
                                         && y != CHUNK_HEIGHT - 1
-                                        && (chunk[x + 1][y + 1][z].is_solid()
+                                        && (chunk[x + 1][y + 1][z].is_transparent()
                                             || (z == CHUNK_DEPTH - 1
                                                 && surrounding_chunks[2].map_or(false, |chunk| {
-                                                    chunk.contents[x + 1][y + 1][0].is_solid()
+                                                    chunk.contents[x + 1][y + 1][0].is_transparent()
                                                 }))
                                             || (z != CHUNK_DEPTH - 1
-                                                && chunk[x + 1][y + 1][z + 1].is_solid())))
+                                                && chunk[x + 1][y + 1][z + 1].is_transparent())))
                                     || (z == CHUNK_DEPTH - 1
                                         && surrounding_chunks[2].map_or(false, |chunk| {
-                                            chunk.contents[x][y + 1][0].is_solid()
+                                            chunk.contents[x][y + 1][0].is_transparent()
                                         }))
                                     || (z != CHUNK_DEPTH - 1
                                         && y != CHUNK_HEIGHT - 1
-                                        && chunk[x][y + 1][z + 1].is_solid())
+                                        && chunk[x][y + 1][z + 1].is_transparent())
                                 {
                                     0.5
                                 } else {
@@ -575,26 +593,28 @@ pub fn generate_chunk_mesh(
                                 add_arrs(TOP_RIGHT, tex_offset),
                                 if (x == CHUNK_WIDTH - 1
                                     && surrounding_chunks[0].map_or(false, |chunk| {
-                                        chunk.contents[0][y + 1][z].is_solid()
+                                        chunk.contents[0][y + 1][z].is_transparent()
                                             || (z != 0
-                                                && chunk.contents[0][y + 1][z - 1].is_solid())
+                                                && chunk.contents[0][y + 1][z - 1].is_transparent())
                                     }))
                                     || (x != CHUNK_WIDTH - 1
                                         && y != CHUNK_HEIGHT - 1
                                         && ((z == 0
                                             && surrounding_chunks[3].map_or(false, |chunk| {
                                                 chunk.contents[x + 1][y + 1][CHUNK_DEPTH - 1]
-                                                    .is_solid()
+                                                    .is_transparent()
                                             }))
-                                            || (z != 0 && chunk[x + 1][y + 1][z - 1].is_solid())
-                                            || chunk[x + 1][y + 1][z].is_solid()))
+                                            || (z != 0
+                                                && chunk[x + 1][y + 1][z - 1].is_transparent())
+                                            || chunk[x + 1][y + 1][z].is_transparent()))
                                     || (z == 0
                                         && surrounding_chunks[3].map_or(false, |chunk| {
-                                            chunk.contents[x][y + 1][CHUNK_DEPTH - 1].is_solid()
+                                            chunk.contents[x][y + 1][CHUNK_DEPTH - 1]
+                                                .is_transparent()
                                         }))
                                     || (z != 0
                                         && y != CHUNK_HEIGHT - 1
-                                        && chunk[x][y + 1][z - 1].is_solid())
+                                        && chunk[x][y + 1][z - 1].is_transparent())
                                 {
                                     0.5
                                 } else {
@@ -605,7 +625,7 @@ pub fn generate_chunk_mesh(
                     }
                 }
                 // bottom face
-                if y == 0 || !chunk[x][y - 1][z].is_solid() {
+                if y == 0 || !chunk[x][y - 1][z].is_transparent() {
                     let tex_offset = tex_offsets[5];
                     indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     vertices.append(&mut vec![

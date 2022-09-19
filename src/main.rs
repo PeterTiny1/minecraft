@@ -72,6 +72,31 @@ impl Vertex {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct UiVertex([f32; 2], [f32; 2]);
+
+impl UiVertex {
+    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<UiVertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x2,
+                },
+            ],
+        }
+    }
+}
+
+#[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Uniforms {
     view_proj: [[f32; 4]; 4],
@@ -87,6 +112,12 @@ impl Uniforms {
     fn update_view_proj(&mut self, camera: &camera::Camera, projection: &camera::Projection) {
         self.view_proj = (projection.calc_matrix() * camera.calc_matrix()).into_col_arrays();
     }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct UiUniform {
+    aspect: f32,
 }
 
 const LARGE_SCALE: f64 = 50.0;
@@ -117,6 +148,12 @@ struct State {
     generating_chunks: Arc<Mutex<VecDeque<[i32; 2]>>>,
     returned_buffers: Arc<Mutex<Vec<(Vec<Vertex>, Vec<u32>, [i32; 2])>>>,
     noise: noise::OpenSimplex,
+    ui_pipeline: wgpu::RenderPipeline,
+    crosshair: (wgpu::Buffer, wgpu::Buffer),
+    crosshair_bind_group: wgpu::BindGroup,
+    ui_uniform_bind_group: wgpu::BindGroup,
+    ui_uniform: UiUniform,
+    ui_uniform_buffer: wgpu::Buffer,
 }
 
 fn create_render_pipeline(
@@ -172,6 +209,13 @@ fn create_render_pipeline(
         multiview: None,
     })
 }
+
+const CROSSHAIR: [UiVertex; 4] = [
+    UiVertex([-0.0625, -0.0625], [0.0, 0.0]),
+    UiVertex([0.0625, -0.0625], [1.0, 0.0]),
+    UiVertex([0.0625, 0.0625], [1.0, 1.0]),
+    UiVertex([-0.0625, 0.0625], [0.0, 1.0]),
+];
 
 impl State {
     async fn new(window: &Window) -> Self {
@@ -229,7 +273,7 @@ impl State {
             });
         let diffuse_bytes = include_bytes!("atlas.png");
         let diffuse_texture =
-            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "atlas.png").unwrap();
+            texture::Texture::from_bytes_mip(&device, &queue, diffuse_bytes, "atlas.png").unwrap();
         let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &texture_bind_group_layout,
             entries: &[
@@ -243,6 +287,24 @@ impl State {
                 },
             ],
             label: Some("diffuse_bind_group"),
+        });
+        let crosshair_bytes = include_bytes!("crosshair.png");
+        let crosshair_texture =
+            texture::Texture::from_bytes(&device, &queue, crosshair_bytes, "crosshair.png")
+                .unwrap();
+        let crosshair_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&crosshair_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&crosshair_texture.sampler),
+                },
+            ],
+            label: Some("crosshair_bind_group"),
         });
         let camera = camera::Camera::new(
             (0.2, 64.5, 8.2),
@@ -286,6 +348,36 @@ impl State {
             }],
             label: Some("uniform_bind_group"),
         });
+        let ui_uniform = UiUniform {
+            aspect: size.0 as f32 / size.1 as f32,
+        };
+        let ui_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[ui_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let ui_uniform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("ui_uniform_bind_group_layout"),
+            });
+        let ui_uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &ui_uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: ui_uniform_buffer.as_entire_binding(),
+            }],
+            label: Some("ui_uniform_bind_group"),
+        });
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
         let render_pipeline_layout =
@@ -305,6 +397,25 @@ impl State {
                 config.format,
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[Vertex::desc()],
+                shader,
+            )
+        };
+        let ui_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Render Pipeline Layout"),
+            bind_group_layouts: &[&texture_bind_group_layout, &ui_uniform_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+        let ui_pipeline = {
+            let shader = wgpu::ShaderModuleDescriptor {
+                label: Some("Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
+            };
+            create_render_pipeline(
+                &device,
+                &ui_pipeline_layout,
+                config.format,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[UiVertex::desc()],
                 shader,
             )
         };
@@ -442,6 +553,18 @@ impl State {
                     .push((mesh, index_buffer, chunk_location));
             }
         });
+        let crosshair = (
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(&CROSSHAIR),
+                usage: wgpu::BufferUsages::VERTEX,
+            }),
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(&[0, 1, 2, 0, 2, 3]),
+                usage: wgpu::BufferUsages::INDEX,
+            }),
+        );
         Self {
             surface,
             device,
@@ -465,12 +588,24 @@ impl State {
             returned_buffers,
             noise,
             last_break: Instant::now(),
+            ui_pipeline,
+            crosshair,
+            crosshair_bind_group,
+            ui_uniform_bind_group,
+            ui_uniform,
+            ui_uniform_buffer,
         }
     }
 
     fn resize(&mut self, new_size: (u32, u32)) {
         if new_size.1 > 0 {
             self.projection.resize(new_size.0, new_size.1);
+            self.ui_uniform.aspect = new_size.0 as f32 / new_size.1 as f32;
+            self.queue.write_buffer(
+                &self.ui_uniform_buffer,
+                0,
+                bytemuck::cast_slice(&[self.ui_uniform]),
+            );
             self.size = new_size;
             self.config.width = new_size.0;
             self.config.height = new_size.1;
@@ -684,6 +819,12 @@ impl State {
                 render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
             }
+            render_pass.set_pipeline(&self.ui_pipeline);
+            render_pass.set_bind_group(0, &self.crosshair_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.ui_uniform_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, self.crosshair.0.slice(..));
+            render_pass.set_index_buffer(self.crosshair.1.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.draw_indexed(0..6, 0, 0..1);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
