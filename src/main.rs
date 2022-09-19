@@ -211,10 +211,10 @@ fn create_render_pipeline(
 }
 
 const CROSSHAIR: [UiVertex; 4] = [
-    UiVertex([-0.0625, -0.0625], [0.0, 0.0]),
-    UiVertex([0.0625, -0.0625], [1.0, 0.0]),
-    UiVertex([0.0625, 0.0625], [1.0, 1.0]),
-    UiVertex([-0.0625, 0.0625], [0.0, 1.0]),
+    UiVertex([-0.03125, -0.03125], [0.0, 0.0]),
+    UiVertex([0.03125, -0.03125], [1.0, 0.0]),
+    UiVertex([0.03125, 0.03125], [1.0, 1.0]),
+    UiVertex([-0.03125, 0.03125], [0.0, 1.0]),
 ];
 
 impl State {
@@ -460,7 +460,11 @@ impl State {
                             } else if y_i32 == heightmap[x][z] + 1
                                 && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
                             {
-                                BlockType::Grass
+                                if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
+                                    BlockType::Flower
+                                } else {
+                                    BlockType::Grass
+                                }
                             } else {
                                 BlockType::Air
                             }
@@ -717,7 +721,11 @@ impl State {
                                             y as f64 / 4.0,
                                         ]) > 0.3
                                     {
-                                        BlockType::Grass
+                                        if self.noise.get([x as f64, y as f64, z as f64]) > 0.3 {
+                                            BlockType::Flower
+                                        } else {
+                                            BlockType::Grass
+                                        }
                                     } else {
                                         BlockType::Air
                                     }

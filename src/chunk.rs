@@ -38,6 +38,7 @@ pub enum BlockType {
     Stone,
     GrassBlock,
     Grass,
+    Flower,
     Wood(Rotation),
     Leaf,
 }
@@ -67,14 +68,18 @@ impl BlockType {
             },
             BlockType::Leaf => [[TEXTURE_WIDTH * 5.0, TEXTURE_WIDTH]; 6],
             BlockType::Grass => [[TEXTURE_WIDTH * 2.0, TEXTURE_WIDTH]; 6],
+            BlockType::Flower => [[TEXTURE_WIDTH * 3.0, TEXTURE_WIDTH]; 6],
             BlockType::Air => panic!("This is not supposed to be called!"),
         }
     }
     pub fn is_solid(self) -> bool {
-        !matches!(self, BlockType::Air | BlockType::Grass)
+        !matches!(self, BlockType::Air | BlockType::Grass | BlockType::Flower)
     }
     pub fn is_transparent(self) -> bool {
-        !matches!(self, BlockType::Air | BlockType::Grass | BlockType::Leaf)
+        !matches!(
+            self,
+            BlockType::Air | BlockType::Grass | BlockType::Leaf | BlockType::Flower
+        )
     }
 }
 
@@ -179,8 +184,8 @@ pub fn generate_chunk_mesh(
                 if chunk[x][y][z] == BlockType::Air {
                     continue;
                 }
-                if chunk[x][y][z] == BlockType::Grass {
-                    let tex_offset = BlockType::Grass.get_offset()[0];
+                if matches!(chunk[x][y][z], BlockType::Grass | BlockType::Flower) {
+                    let tex_offset = chunk[x][y][z].get_offset()[0];
                     let x = (x as i32 + (location[0] * CHUNK_WIDTH as i32)) as f32;
                     let z = (z as i32 + (location[1] * CHUNK_WIDTH as i32)) as f32;
                     let y = y as f32;
