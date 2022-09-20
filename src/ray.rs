@@ -72,10 +72,11 @@ impl Iterator for Ray {
                 possible
             }
         };
-        let real_change = *[changex, changey, changez]
+        let (direction, &real_change) = [changex, changey, changez]
             .iter()
+            .enumerate()
             .reduce(|acc, item| {
-                if item.magnitude() < acc.magnitude() {
+                if item.1.magnitude() < acc.1.magnitude() {
                     item
                 } else {
                     acc
@@ -83,12 +84,11 @@ impl Iterator for Ray {
             })
             .unwrap();
         self.position += real_change;
-        if real_change == changex {
-            self.block_position.x += if positive_x { 1 } else { -1 };
-        } else if real_change == changey {
-            self.block_position.y += if positive_y { 1 } else { -1 };
-        } else if real_change == changez {
-            self.block_position.z += if positive_z { 1 } else { -1 };
+        match direction {
+            0 => self.block_position.x += if positive_x { 1 } else { -1 },
+            1 => self.block_position.y += if positive_y { 1 } else { -1 },
+            2 => self.block_position.z += if positive_z { 1 } else { -1 },
+            _ => (),
         }
         if self.magnitude() < self.max_len {
             Some(self.block_position)
