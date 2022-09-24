@@ -86,7 +86,7 @@ pub struct CameraController {
     scroll: f32,
     speed: f32,
     sensitivity: f32,
-    pub looking_at_block: Option<Vec3<i32>>,
+    pub looking_at_block: Option<(Vec3<i32>, usize)>,
     velocity: Vec3<f32>,
 }
 
@@ -164,76 +164,252 @@ impl CameraController {
         self.velocity.y -= GRAVITY * dt;
         self.velocity.x -= (self.velocity.x) * dt;
         self.velocity.z -= (self.velocity.z) * dt;
-        camera.position += self.velocity * dt;
+        let mut would_collide = Ray::new(
+            camera.position
+                - Vec3 {
+                    x: 0.3,
+                    y: 1.5,
+                    z: 0.3,
+                },
+            self.velocity.normalized(),
+            (self.velocity * dt).magnitude(),
+        )
+        .find(|(b, _)| {
+            if let Some(b) = get_block(world, b.x, b.y, b.z) {
+                b.is_solid()
+            } else {
+                false
+            }
+        });
+        while let Some(collision) = would_collide {
+            match collision.1 {
+                0 => self.velocity.x = 0.0,
+                1 => {
+                    self.velocity.y = 0.0;
+                    camera.position.y = (camera.position.y - 1.5).floor() + 1.5001;
+                }
+                _ => self.velocity.z = 0.0,
+            }
+            would_collide = Ray::new(
+                camera.position
+                    - Vec3 {
+                        x: 0.3,
+                        y: 1.5,
+                        z: 0.3,
+                    },
+                self.velocity.normalized(),
+                (self.velocity * dt).magnitude(),
+            )
+            .find(|(b, _)| {
+                if let Some(b) = get_block(world, b.x, b.y, b.z) {
+                    b.is_solid()
+                } else {
+                    false
+                }
+            })
+        }
 
+        let mut would_collide = Ray::new(
+            camera.position
+                - Vec3 {
+                    x: 0.3,
+                    y: 1.5,
+                    z: -0.3,
+                },
+            self.velocity.normalized(),
+            (self.velocity * dt).magnitude(),
+        )
+        .find(|(b, _)| {
+            if let Some(b) = get_block(world, b.x, b.y, b.z) {
+                b.is_solid()
+            } else {
+                false
+            }
+        });
+        while let Some(collision) = would_collide {
+            match collision.1 {
+                0 => self.velocity.x = 0.0,
+                1 => {
+                    self.velocity.y = 0.0;
+                    camera.position.y = (camera.position.y - 1.5).floor() + 1.5001;
+                }
+                _ => self.velocity.z = 0.0,
+            }
+            would_collide = Ray::new(
+                camera.position
+                    - Vec3 {
+                        x: 0.3,
+                        y: 1.5,
+                        z: -0.3,
+                    },
+                self.velocity.normalized(),
+                (self.velocity * dt).magnitude(),
+            )
+            .find(|(b, _)| {
+                if let Some(b) = get_block(world, b.x, b.y, b.z) {
+                    b.is_solid()
+                } else {
+                    false
+                }
+            })
+        }
+        let mut would_collide = Ray::new(
+            camera.position
+                - Vec3 {
+                    x: -0.3,
+                    y: 1.5,
+                    z: -0.3,
+                },
+            self.velocity.normalized(),
+            (self.velocity * dt).magnitude(),
+        )
+        .find(|(b, _)| {
+            if let Some(b) = get_block(world, b.x, b.y, b.z) {
+                b.is_solid()
+            } else {
+                false
+            }
+        });
+        while let Some(collision) = would_collide {
+            match collision.1 {
+                0 => self.velocity.x = 0.0,
+                1 => {
+                    self.velocity.y = 0.0;
+                    camera.position.y = (camera.position.y - 1.5).floor() + 1.5001;
+                }
+                _ => self.velocity.z = 0.0,
+            }
+            would_collide = Ray::new(
+                camera.position
+                    - Vec3 {
+                        x: -0.3,
+                        y: 1.5,
+                        z: -0.3,
+                    },
+                self.velocity.normalized(),
+                (self.velocity * dt).magnitude(),
+            )
+            .find(|(b, _)| {
+                if let Some(b) = get_block(world, b.x, b.y, b.z) {
+                    b.is_solid()
+                } else {
+                    false
+                }
+            })
+        }
+        let mut would_collide = Ray::new(
+            camera.position
+                - Vec3 {
+                    x: -0.3,
+                    y: 1.5,
+                    z: 0.3,
+                },
+            self.velocity.normalized(),
+            (self.velocity * dt).magnitude(),
+        )
+        .find(|(b, _)| {
+            if let Some(b) = get_block(world, b.x, b.y, b.z) {
+                b.is_solid()
+            } else {
+                false
+            }
+        });
+        while let Some(collision) = would_collide {
+            match collision.1 {
+                0 => self.velocity.x = 0.0,
+                1 => {
+                    self.velocity.y = 0.0;
+                    camera.position.y = (camera.position.y - 1.5).floor() + 1.5001;
+                }
+                _ => self.velocity.z = 0.0,
+            }
+            would_collide = Ray::new(
+                camera.position
+                    - Vec3 {
+                        x: -0.3,
+                        y: 1.5,
+                        z: 0.3,
+                    },
+                self.velocity.normalized(),
+                (self.velocity * dt).magnitude(),
+            )
+            .find(|(b, _)| {
+                if let Some(b) = get_block(world, b.x, b.y, b.z) {
+                    b.is_solid()
+                } else {
+                    false
+                }
+            })
+        }
+        camera.position += self.velocity * dt;
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
         let scrollward =
             Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalized();
-        let looking_at_block = Ray::new(camera.position, scrollward, 5.0)
-            .find(|e| matches!(get_block(world, e.x, e.y, e.z), Some(b) if b != BlockType::Air));
+        let looking_at_block = Ray::new(camera.position, scrollward, 5.0).find(
+            |(e, _)| matches!(get_block(world, e.x, e.y, e.z), Some(b) if b != BlockType::Air),
+        );
         self.looking_at_block = looking_at_block;
         camera.position += scrollward * self.scroll * self.speed * self.sensitivity * dt;
-
-        if get_block(
-            world,
-            (camera.position.x + 0.3).floor() as i32,
-            (camera.position.y - 1.5).floor() as i32,
-            (camera.position.z + 0.3).floor() as i32,
-        )
-        .map_or(false, BlockType::is_solid)
-            || get_block(
-                world,
-                (camera.position.x - 0.3).floor() as i32,
-                (camera.position.y - 1.5).floor() as i32,
-                (camera.position.z + 0.3).floor() as i32,
-            )
-            .map_or(false, BlockType::is_solid)
-            || get_block(
-                world,
-                (camera.position.x - 0.3).floor() as i32,
-                (camera.position.y - 1.5).floor() as i32,
-                (camera.position.z - 0.3).floor() as i32,
-            )
-            .map_or(false, BlockType::is_solid)
-            || get_block(
-                world,
-                (camera.position.x + 0.3).floor() as i32,
-                (camera.position.y - 1.5).floor() as i32,
-                (camera.position.z - 0.3).floor() as i32,
-            )
-            .map_or(false, BlockType::is_solid)
-            || get_block(
-                world,
-                (camera.position.x + 0.3).floor() as i32,
-                (camera.position.y).floor() as i32,
-                (camera.position.z + 0.3).floor() as i32,
-            )
-            .map_or(false, BlockType::is_solid)
-            || get_block(
-                world,
-                (camera.position.x - 0.3).floor() as i32,
-                (camera.position.y).floor() as i32,
-                (camera.position.z + 0.3).floor() as i32,
-            )
-            .map_or(false, BlockType::is_solid)
-            || get_block(
-                world,
-                (camera.position.x - 0.3).floor() as i32,
-                (camera.position.y).floor() as i32,
-                (camera.position.z - 0.3).floor() as i32,
-            )
-            .map_or(false, BlockType::is_solid)
-            || get_block(
-                world,
-                (camera.position.x + 0.3).floor() as i32,
-                (camera.position.y).floor() as i32,
-                (camera.position.z - 0.3).floor() as i32,
-            )
-            .map_or(false, BlockType::is_solid)
-        {
-            camera.position.y = (camera.position.y - 1.5).ceil() + 1.5;
-            self.velocity.y = 0.0;
-        }
+        // if get_block(
+        //     world,
+        //     (camera.position.x + 0.3).floor() as i32,
+        //     (camera.position.y - 1.5).floor() as i32,
+        //     (camera.position.z + 0.3).floor() as i32,
+        // )
+        // .map_or(false, BlockType::is_solid)
+        //     || get_block(
+        //         world,
+        //         (camera.position.x - 0.3).floor() as i32,
+        //         (camera.position.y - 1.5).floor() as i32,
+        //         (camera.position.z + 0.3).floor() as i32,
+        //     )
+        //     .map_or(false, BlockType::is_solid)
+        //     || get_block(
+        //         world,
+        //         (camera.position.x - 0.3).floor() as i32,
+        //         (camera.position.y - 1.5).floor() as i32,
+        //         (camera.position.z - 0.3).floor() as i32,
+        //     )
+        //     .map_or(false, BlockType::is_solid)
+        //     || get_block(
+        //         world,
+        //         (camera.position.x + 0.3).floor() as i32,
+        //         (camera.position.y - 1.5).floor() as i32,
+        //         (camera.position.z - 0.3).floor() as i32,
+        //     )
+        //     .map_or(false, BlockType::is_solid)
+        //     || get_block(
+        //         world,
+        //         (camera.position.x + 0.3).floor() as i32,
+        //         (camera.position.y).floor() as i32,
+        //         (camera.position.z + 0.3).floor() as i32,
+        //     )
+        //     .map_or(false, BlockType::is_solid)
+        //     || get_block(
+        //         world,
+        //         (camera.position.x - 0.3).floor() as i32,
+        //         (camera.position.y).floor() as i32,
+        //         (camera.position.z + 0.3).floor() as i32,
+        //     )
+        //     .map_or(false, BlockType::is_solid)
+        //     || get_block(
+        //         world,
+        //         (camera.position.x - 0.3).floor() as i32,
+        //         (camera.position.y).floor() as i32,
+        //         (camera.position.z - 0.3).floor() as i32,
+        //     )
+        //     .map_or(false, BlockType::is_solid)
+        //     || get_block(
+        //         world,
+        //         (camera.position.x + 0.3).floor() as i32,
+        //         (camera.position.y).floor() as i32,
+        //         (camera.position.z - 0.3).floor() as i32,
+        //     )
+        //     .map_or(false, BlockType::is_solid)
+        // {
+        //     camera.position.y = (camera.position.y - 1.5).ceil() + 1.5;
+        //     self.velocity.y = 0.0;
+        // }
         self.scroll = 0.0;
 
         // camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;

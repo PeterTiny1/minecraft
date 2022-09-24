@@ -25,7 +25,7 @@ impl Ray {
 }
 
 impl Iterator for Ray {
-    type Item = Vec3<i32>;
+    type Item = (Vec3<i32>, usize);
     fn next(&mut self) -> Option<Self::Item> {
         let positive_x = self.direction.x > 0.0;
         let positive_y = self.direction.y > 0.0;
@@ -92,7 +92,7 @@ impl Iterator for Ray {
             _ => (),
         }
         if self.magnitude() < self.max_len {
-            Some(self.block_position)
+            Some((self.block_position, direction))
         } else {
             None
         }

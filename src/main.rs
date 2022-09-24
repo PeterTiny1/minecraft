@@ -743,7 +743,7 @@ impl State {
                 generating_chunks.push_back(chunk_location);
             }
         }
-        if let Some(location) = self.camera_controller.looking_at_block {
+        if let Some((location, _)) = self.camera_controller.looking_at_block {
             let now = Instant::now();
             if self.mouse_pressed && (now - self.last_break).as_millis() > 250 {
                 self.last_break = Instant::now();
