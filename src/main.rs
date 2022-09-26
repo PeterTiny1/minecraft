@@ -8,6 +8,7 @@ use itertools::Itertools;
 use sdl2::{
     event::{Event, WindowEvent},
     keyboard::Keycode,
+    mouse::MouseButton,
     video::{FullscreenType, Window},
 };
 use std::{
@@ -27,7 +28,7 @@ use chunk::{
 };
 use futures::executor::block_on;
 
-use vek::Mat4;
+use vek::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
 use noise::{NoiseFn, OpenSimplex};
@@ -139,7 +140,8 @@ struct State {
     uniforms: Uniforms,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
-    mouse_pressed: bool,
+    left_pressed: bool,
+    right_pressed: bool,
     last_break: Instant,
     // right_pressed: bool,
     depth_texture: texture::Texture,
@@ -577,8 +579,8 @@ impl State {
             size,
             render_pipeline,
             diffuse_bind_group,
-            mouse_pressed: false,
-            // right_pressed: false,
+            left_pressed: false,
+            right_pressed: false,
             camera,
             projection,
             camera_controller,
@@ -743,9 +745,32 @@ impl State {
                 generating_chunks.push_back(chunk_location);
             }
         }
-        if let Some((location, _)) = self.camera_controller.looking_at_block {
+        if let Some((location, previous_step)) = self.camera_controller.looking_at_block {
             let now = Instant::now();
-            if self.mouse_pressed && (now - self.last_break).as_millis() > 250 {
+            if self.right_pressed {
+                let location = location
+                    + match previous_step {
+                        0 => Vec3 { x: 1, y: 0, z: 0 },
+                        1 => Vec3 { x: -1, y: 0, z: 0 },
+                        2 => Vec3 { x: 0, y: 1, z: 0 },
+                        3 => Vec3 { x: 0, y: -1, z: 0 },
+                        4 => Vec3 { x: 0, y: 0, z: 1 },
+                        5 => Vec3 { x: 0, y: 0, z: -1 },
+                        _ => Vec3::zero(),
+                    };
+                if location.y < 256 && location.y > -1 {
+                    let chunk_x = location.x.div_euclid(CHUNK_WIDTH as i32);
+                    let chunk_z = location.z.div_euclid(CHUNK_DEPTH as i32);
+                    generated_chunkdata
+                        .get_mut(&[chunk_x, chunk_z])
+                        .unwrap()
+                        .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
+                        [location.z as usize % CHUNK_DEPTH] = BlockType::Stone;
+                    if !generating_chunks.contains(&[chunk_x, chunk_z]) {
+                        generating_chunks.push_back([chunk_x, chunk_z]);
+                    }
+                }
+            } else if self.left_pressed && (now - self.last_break).as_millis() > 250 {
                 self.last_break = Instant::now();
                 let chunk_x = location.x.div_euclid(CHUNK_WIDTH as i32);
                 let chunk_z = location.z.div_euclid(CHUNK_DEPTH as i32);
@@ -754,7 +779,6 @@ impl State {
                     .unwrap()
                     .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
                     [location.z as usize % CHUNK_DEPTH] = BlockType::Air;
-                // chunk::get_block(&generated_chunkdata, location.x, location.y, location.z);
                 if !generating_chunks.contains(&[chunk_x, chunk_z]) {
                     generating_chunks.push_back([chunk_x, chunk_z]);
                 }
@@ -919,11 +943,19 @@ fn main() {
                     }
                     _ => {}
                 },
-                Event::MouseButtonDown { .. } => {
-                    state.mouse_pressed = true;
+                Event::MouseButtonDown { mouse_btn, .. } => {
+                    if mouse_btn == MouseButton::Left {
+                        state.left_pressed = true;
+                    } else if mouse_btn == MouseButton::Right {
+                        state.right_pressed = true;
+                    }
                 }
-                Event::MouseButtonUp { .. } => {
-                    state.mouse_pressed = false;
+                Event::MouseButtonUp { mouse_btn, .. } => {
+                    if mouse_btn == MouseButton::Left {
+                        state.left_pressed = false;
+                    } else if mouse_btn == MouseButton::Right {
+                        state.right_pressed = false;
+                    }
                 }
                 Event::Quit { .. } => break 'running,
                 _ => {}

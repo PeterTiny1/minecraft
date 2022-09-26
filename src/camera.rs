@@ -184,11 +184,19 @@ impl CameraController {
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 => self.velocity.x = 0.0,
-                1 => {
+                1 => self.velocity.x = 0.0,
+                2 => {
                     self.velocity.y = 0.0;
                     camera.position.y = (camera.position.y - 1.5).floor() + 1.5001;
                 }
-                _ => self.velocity.z = 0.0,
+                3 => {
+                    self.velocity.y = 0.0;
+                }
+                4 => {
+                    self.velocity.z = 0.0;
+                }
+                5 => self.velocity.z = 0.0,
+                _ => {}
             }
             would_collide = Ray::new(
                 camera.position
@@ -229,11 +237,19 @@ impl CameraController {
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 => self.velocity.x = 0.0,
-                1 => {
+                1 => self.velocity.x = 0.0,
+                2 => {
                     self.velocity.y = 0.0;
                     camera.position.y = (camera.position.y - 1.5).floor() + 1.5001;
                 }
-                _ => self.velocity.z = 0.0,
+                3 => {
+                    self.velocity.y = 0.0;
+                }
+                4 => {
+                    self.velocity.z = 0.0;
+                }
+                5 => self.velocity.z = 0.0,
+                _ => {}
             }
             would_collide = Ray::new(
                 camera.position
@@ -273,11 +289,19 @@ impl CameraController {
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 => self.velocity.x = 0.0,
-                1 => {
+                1 => self.velocity.x = 0.0,
+                2 => {
                     self.velocity.y = 0.0;
                     camera.position.y = (camera.position.y - 1.5).floor() + 1.5001;
                 }
-                _ => self.velocity.z = 0.0,
+                3 => {
+                    self.velocity.y = 0.0;
+                }
+                4 => {
+                    self.velocity.z = 0.0;
+                }
+                5 => self.velocity.z = 0.0,
+                _ => {}
             }
             would_collide = Ray::new(
                 camera.position
@@ -317,11 +341,19 @@ impl CameraController {
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 => self.velocity.x = 0.0,
-                1 => {
+                1 => self.velocity.x = 0.0,
+                2 => {
                     self.velocity.y = 0.0;
                     camera.position.y = (camera.position.y - 1.5).floor() + 1.5001;
                 }
-                _ => self.velocity.z = 0.0,
+                3 => {
+                    self.velocity.y = 0.0;
+                }
+                4 => {
+                    self.velocity.z = 0.0;
+                }
+                5 => self.velocity.z = 0.0,
+                _ => {}
             }
             would_collide = Ray::new(
                 camera.position
