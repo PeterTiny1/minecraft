@@ -28,6 +28,3 @@ features= ["png"]
 version="0.35.2"
 default-features = false
 features = ["bundled", "static-link", "raw-window-handle"]
-
-[profile.release]
-codegen-units = 1
