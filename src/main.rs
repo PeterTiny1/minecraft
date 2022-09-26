@@ -315,7 +315,7 @@ impl State {
             config.width,
             config.height,
             90.0_f32.to_radians(),
-            0.1,
+            0.05,
             MAX_DEPTH,
         );
         let camera_controller = camera::CameraController::new(4.0, 0.05);
