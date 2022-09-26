@@ -350,66 +350,6 @@ impl CameraController {
         );
         self.looking_at_block = looking_at_block;
         camera.position += scrollward * self.scroll * self.speed * self.sensitivity * dt;
-        // if get_block(
-        //     world,
-        //     (camera.position.x + 0.3).floor() as i32,
-        //     (camera.position.y - 1.5).floor() as i32,
-        //     (camera.position.z + 0.3).floor() as i32,
-        // )
-        // .map_or(false, BlockType::is_solid)
-        //     || get_block(
-        //         world,
-        //         (camera.position.x - 0.3).floor() as i32,
-        //         (camera.position.y - 1.5).floor() as i32,
-        //         (camera.position.z + 0.3).floor() as i32,
-        //     )
-        //     .map_or(false, BlockType::is_solid)
-        //     || get_block(
-        //         world,
-        //         (camera.position.x - 0.3).floor() as i32,
-        //         (camera.position.y - 1.5).floor() as i32,
-        //         (camera.position.z - 0.3).floor() as i32,
-        //     )
-        //     .map_or(false, BlockType::is_solid)
-        //     || get_block(
-        //         world,
-        //         (camera.position.x + 0.3).floor() as i32,
-        //         (camera.position.y - 1.5).floor() as i32,
-        //         (camera.position.z - 0.3).floor() as i32,
-        //     )
-        //     .map_or(false, BlockType::is_solid)
-        //     || get_block(
-        //         world,
-        //         (camera.position.x + 0.3).floor() as i32,
-        //         (camera.position.y).floor() as i32,
-        //         (camera.position.z + 0.3).floor() as i32,
-        //     )
-        //     .map_or(false, BlockType::is_solid)
-        //     || get_block(
-        //         world,
-        //         (camera.position.x - 0.3).floor() as i32,
-        //         (camera.position.y).floor() as i32,
-        //         (camera.position.z + 0.3).floor() as i32,
-        //     )
-        //     .map_or(false, BlockType::is_solid)
-        //     || get_block(
-        //         world,
-        //         (camera.position.x - 0.3).floor() as i32,
-        //         (camera.position.y).floor() as i32,
-        //         (camera.position.z - 0.3).floor() as i32,
-        //     )
-        //     .map_or(false, BlockType::is_solid)
-        //     || get_block(
-        //         world,
-        //         (camera.position.x + 0.3).floor() as i32,
-        //         (camera.position.y).floor() as i32,
-        //         (camera.position.z - 0.3).floor() as i32,
-        //     )
-        //     .map_or(false, BlockType::is_solid)
-        // {
-        //     camera.position.y = (camera.position.y - 1.5).ceil() + 1.5;
-        //     self.velocity.y = 0.0;
-        // }
         self.scroll = 0.0;
 
         // camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;
