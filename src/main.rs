@@ -23,9 +23,7 @@ use std::{
     vec,
 };
 
-use chunk::{
-    generate_chunk_mesh, BlockType, ChunkData, Rotation, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH,
-};
+use chunk::{generate_chunk, generate_chunk_mesh, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_WIDTH};
 use futures::executor::block_on;
 
 use vek::{Mat4, Vec3};
@@ -121,11 +119,6 @@ struct UiUniform {
     aspect: f32,
 }
 
-const LARGE_SCALE: f64 = 50.0;
-const SMALL_SCALE: f64 = 20.0;
-const LARGE_HEIGHT: f64 = 30.0;
-const TERRAIN_HEIGHT: f64 = 0.8;
-
 struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -180,10 +173,7 @@ fn create_render_pipeline(
             entry_point: "fs_main",
             targets: &[Some(wgpu::ColorTargetState {
                 format: color_format,
-                blend: Some(wgpu::BlendState {
-                    alpha: wgpu::BlendComponent::REPLACE,
-                    color: wgpu::BlendComponent::REPLACE,
-                }),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
@@ -427,56 +417,7 @@ impl State {
             let buffer = std::fs::read(path).unwrap();
             bincode::deserialize::<ChunkData>(&buffer).unwrap().contents
         } else {
-            let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
-                .map(|x| {
-                    (0..CHUNK_DEPTH)
-                        .map(|y| {
-                            ((noise.get([x as f64 / LARGE_SCALE, y as f64 / LARGE_SCALE])
-                                + TERRAIN_HEIGHT)
-                                * LARGE_HEIGHT
-                                + (noise.get([
-                                    x as f64 / SMALL_SCALE + 10.0,
-                                    y as f64 / SMALL_SCALE + 10.0,
-                                ]) * 10.0)) as i32
-                        })
-                        .collect()
-                })
-                .collect();
-            // Generate chunk:
-            let mut chunk = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
-            for x in 0..CHUNK_WIDTH {
-                for y in 0..CHUNK_HEIGHT {
-                    for z in 0..CHUNK_DEPTH {
-                        let y_i32 = y as i32;
-                        chunk[x][y][z] = if y_i32 < heightmap[x][z] {
-                            BlockType::Stone
-                        } else if y_i32 == heightmap[x][z] {
-                            BlockType::GrassBlock
-                        } else if y_i32 > heightmap[x][z] && y_i32 <= heightmap[x][z] + 5 {
-                            if noise.get([x as f64, f64::from(heightmap[x][z]), z as f64]) > 0.4 {
-                                if y_i32 == heightmap[x][z] + 5 {
-                                    BlockType::Leaf
-                                } else {
-                                    BlockType::Wood(Rotation::Up)
-                                }
-                            } else if y_i32 == heightmap[x][z] + 1
-                                && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
-                            {
-                                if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
-                                    BlockType::Flower
-                                } else {
-                                    BlockType::Grass
-                                }
-                            } else {
-                                BlockType::Air
-                            }
-                        } else {
-                            BlockType::Air
-                        };
-                    }
-                }
-            }
-            chunk
+            generate_chunk(&noise, [0, 0])
         };
         let (mesh, chunk_indices) = generate_chunk_mesh([0; 2], &chunk, [None; 4]);
         let generated_chunkdata = Arc::new(Mutex::new(HashMap::from([(
@@ -669,75 +610,7 @@ impl State {
                     let buffer = std::fs::read(path).unwrap();
                     bincode::deserialize::<ChunkData>(&buffer).unwrap().contents
                 } else {
-                    let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
-                        .map(|x| {
-                            (0..CHUNK_DEPTH)
-                                .map(|z| {
-                                    (((chunk::noise_at(
-                                        &self.noise,
-                                        x as i32,
-                                        z as i32,
-                                        chunk_location,
-                                        LARGE_SCALE,
-                                        0.0,
-                                    ) + TERRAIN_HEIGHT)
-                                        * LARGE_HEIGHT)
-                                        + (chunk::noise_at(
-                                            &self.noise,
-                                            x as i32,
-                                            z as i32,
-                                            chunk_location,
-                                            SMALL_SCALE,
-                                            10.0,
-                                        ) * 10.0)) as i32
-                                })
-                                .collect::<Vec<i32>>()
-                        })
-                        .collect();
-                    let mut chunk_contents =
-                        [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
-                    for x in 0..CHUNK_WIDTH {
-                        for y in 0..CHUNK_HEIGHT {
-                            for z in 0..CHUNK_DEPTH {
-                                let y_i32 = y as i32;
-                                chunk_contents[x][y][z] = if y_i32 < heightmap[x][z] {
-                                    BlockType::Stone
-                                } else if y_i32 == heightmap[x][z] {
-                                    BlockType::GrassBlock
-                                } else if y_i32 > heightmap[x][z] && y_i32 <= heightmap[x][z] + 5 {
-                                    if self.noise.get([
-                                        x as f64,
-                                        f64::from(heightmap[x][z]),
-                                        z as f64,
-                                    ]) > 0.4
-                                    {
-                                        if y_i32 == heightmap[x][z] + 5 {
-                                            BlockType::Leaf
-                                        } else {
-                                            BlockType::Wood(Rotation::Up)
-                                        }
-                                    } else if y_i32 == heightmap[x][z] + 1
-                                        && self.noise.get([
-                                            x as f64 / 4.0,
-                                            z as f64 / 4.0,
-                                            y as f64 / 4.0,
-                                        ]) > 0.3
-                                    {
-                                        if self.noise.get([x as f64, y as f64, z as f64]) > 0.3 {
-                                            BlockType::Flower
-                                        } else {
-                                            BlockType::Grass
-                                        }
-                                    } else {
-                                        BlockType::Air
-                                    }
-                                } else {
-                                    BlockType::Air
-                                };
-                            }
-                        }
-                    }
-                    chunk_contents
+                    generate_chunk(&self.noise, chunk_location)
                 };
                 e.insert(ChunkData {
                     contents: chunk_contents,
@@ -846,7 +719,15 @@ impl State {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
-            for chunk in self.generated_chunk_buffers.values() {
+            for chunk_loc in self.generated_chunk_buffers.keys().sorted_by(|&x, &y| {
+                ((y[0] * CHUNK_WIDTH as i32 - self.camera.position.x as i32).pow(2)
+                    + (y[1] * CHUNK_DEPTH as i32 - self.camera.position.z as i32).pow(2))
+                .cmp(
+                    &((x[0] * CHUNK_WIDTH as i32 - self.camera.position.x as i32).pow(2)
+                        + (x[1] * CHUNK_DEPTH as i32 + -self.camera.position.z as i32).pow(2)),
+                )
+            }) {
+                let chunk = &self.generated_chunk_buffers[chunk_loc];
                 render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
                 render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
@@ -871,7 +752,7 @@ fn main() {
     let _path = args.next().unwrap();
     if let Some(arg) = args.next() {
         match &*arg {
-            "-save" => save = true,
+            "-save" | "-s" => save = true,
             _ => println!("Invalid argument {arg}!"),
         }
     }

@@ -41,6 +41,7 @@ pub enum BlockType {
     Flower,
     Wood(Rotation),
     Leaf,
+    Water,
 }
 
 impl BlockType {
@@ -69,17 +70,35 @@ impl BlockType {
             BlockType::Leaf => [[TEXTURE_WIDTH * 5.0, TEXTURE_WIDTH]; 6],
             BlockType::Grass => [[TEXTURE_WIDTH * 2.0, TEXTURE_WIDTH]; 6],
             BlockType::Flower => [[TEXTURE_WIDTH * 3.0, TEXTURE_WIDTH]; 6],
+            BlockType::Water => [
+                [TEXTURE_WIDTH * 3.0, 0.0],
+                [TEXTURE_WIDTH * 5.0, 0.0],
+                [TEXTURE_WIDTH * 5.0, 0.0],
+                [TEXTURE_WIDTH * 5.0, 0.0],
+                [TEXTURE_WIDTH * 5.0, 0.0],
+                [TEXTURE_WIDTH * 3.0, 0.0],
+            ],
             BlockType::Air => panic!("This is not supposed to be called!"),
         }
     }
     pub fn is_solid(self) -> bool {
-        !matches!(self, BlockType::Air | BlockType::Grass | BlockType::Flower)
+        !matches!(
+            self,
+            BlockType::Air | BlockType::Grass | BlockType::Flower | BlockType::Water
+        )
     }
     pub fn is_transparent(self) -> bool {
         !matches!(
             self,
-            BlockType::Air | BlockType::Grass | BlockType::Leaf | BlockType::Flower
+            BlockType::Air
+                | BlockType::Grass
+                | BlockType::Leaf
+                | BlockType::Flower
+                | BlockType::Water
         )
+    }
+    pub fn is_liquid(self) -> bool {
+        matches!(self, BlockType::Water)
     }
 }
 
@@ -172,6 +191,76 @@ fn add_arrs(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
     [a[0] + b[0], a[1] + b[1]]
 }
 
+const WATER_HEIGHT: usize = 20;
+const LARGE_SCALE: f64 = 100.0;
+const SMALL_SCALE: f64 = 25.0;
+const LARGE_HEIGHT: f64 = 40.0;
+const TERRAIN_HEIGHT: f64 = 0.8;
+
+pub fn generate_chunk(
+    noise: &OpenSimplex,
+    chunk_location: [i32; 2],
+) -> [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH] {
+    let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
+        .map(|x| {
+            (0..CHUNK_DEPTH)
+                .map(|z| {
+                    (((noise_at(&noise, x as i32, z as i32, chunk_location, LARGE_SCALE, 0.0)
+                        + TERRAIN_HEIGHT)
+                        * LARGE_HEIGHT)
+                        + (noise_at(
+                            &noise,
+                            x as i32,
+                            z as i32,
+                            chunk_location,
+                            SMALL_SCALE,
+                            10.0,
+                        ) * 10.0)) as i32
+                })
+                .collect::<Vec<i32>>()
+        })
+        .collect();
+    let mut chunk_contents = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+    for x in 0..CHUNK_WIDTH {
+        for y in 0..CHUNK_HEIGHT {
+            for z in 0..CHUNK_DEPTH {
+                let y_i32 = y as i32;
+                chunk_contents[x][y][z] = if y_i32 < heightmap[x][z] {
+                    BlockType::Stone
+                } else if y_i32 == heightmap[x][z] && heightmap[x][z] + 1 >= WATER_HEIGHT as i32 {
+                    BlockType::GrassBlock
+                } else if y < WATER_HEIGHT {
+                    BlockType::Water
+                } else if y_i32 > heightmap[x][z]
+                    && y_i32 <= heightmap[x][z] + 5
+                    && heightmap[x][z] >= WATER_HEIGHT as i32
+                {
+                    if noise.get([x as f64, f64::from(heightmap[x][z]), z as f64]) > 0.4 {
+                        if y_i32 == heightmap[x][z] + 5 {
+                            BlockType::Leaf
+                        } else {
+                            BlockType::Wood(Rotation::Up)
+                        }
+                    } else if y_i32 == heightmap[x][z] + 1
+                        && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
+                    {
+                        if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
+                            BlockType::Flower
+                        } else {
+                            BlockType::Grass
+                        }
+                    } else {
+                        BlockType::Air
+                    }
+                } else {
+                    BlockType::Air
+                };
+            }
+        }
+    }
+    chunk_contents
+}
+
 pub fn generate_chunk_mesh(
     location: [i32; 2],
     chunk: &[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
@@ -238,6 +327,121 @@ pub fn generate_chunk_mesh(
                             1.0,
                         ),
                     ]);
+                    continue;
+                } else if chunk[x][y][z].is_liquid() {
+                    let tex_offsets = chunk[x][y][z].get_offset();
+                    let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH as i32)) as f32;
+                    let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH as i32)) as f32;
+                    let y_f32 = y as f32;
+                    let yplusoff = y_f32 + 0.5;
+                    if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
+                        let tex_offset = tex_offsets[0];
+                        indices.extend(
+                            QUAD_INDICES
+                                .iter()
+                                .map(|i| *i + vertices.len() as u32)
+                                .chain(
+                                    QUAD_INDICES
+                                        .iter()
+                                        .rev()
+                                        .map(|i| *i + vertices.len() as u32),
+                                ),
+                        );
+                        vertices.append(&mut vec![
+                            Vertex(
+                                [rel_x, yplusoff, rel_z],
+                                add_arrs(TOP_LEFT, tex_offset),
+                                TOP_BRIGHTNESS,
+                            ),
+                            Vertex(
+                                [rel_x, yplusoff, 1.0 + rel_z],
+                                add_arrs(BOTTOM_LEFT, tex_offset),
+                                TOP_BRIGHTNESS,
+                            ),
+                            Vertex(
+                                [1.0 + rel_x, yplusoff, 1.0 + rel_z],
+                                add_arrs(BOTTOM_RIGHT, tex_offset),
+                                TOP_BRIGHTNESS,
+                            ),
+                            Vertex(
+                                [1.0 + rel_x, yplusoff, rel_z],
+                                add_arrs(TOP_RIGHT, tex_offset),
+                                TOP_BRIGHTNESS,
+                            ),
+                        ]);
+                    }
+                    if (z == CHUNK_DEPTH - 1
+                        && surrounding_chunks[2].map_or(true, |chunk| {
+                            !chunk.contents[x][y][0].is_transparent()
+                                && !chunk.contents[x][y][0].is_liquid()
+                        }))
+                        || (z != CHUNK_DEPTH - 1
+                            && (!chunk[x][y][z + 1].is_transparent()
+                                && !chunk[x][y][z + 1].is_liquid()))
+                    {
+                        let tex_offset = tex_offsets[1];
+                        indices.extend(
+                            QUAD_INDICES
+                                .iter()
+                                .map(|i| *i + vertices.len() as u32)
+                                .chain(
+                                    QUAD_INDICES
+                                        .iter()
+                                        .rev()
+                                        .map(|i| *i + vertices.len() as u32),
+                                ),
+                        );
+                        if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
+                            let half_texture_width = TEXTURE_WIDTH / 2.0;
+                            let top_left = [TOP_LEFT[0], TOP_LEFT[1] + half_texture_width];
+                            let top_right = [TOP_RIGHT[0], TOP_RIGHT[1] + half_texture_width];
+                            vertices.append(&mut vec![
+                                Vertex(
+                                    [rel_x, yplusoff, 1.0 + rel_z],
+                                    add_arrs(top_left, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [rel_x, y_f32, 1.0 + rel_z],
+                                    add_arrs(BOTTOM_LEFT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, y_f32, 1.0 + rel_z],
+                                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, yplusoff, 1.0 + rel_z],
+                                    add_arrs(top_right, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                            ]);
+                        } else {
+                            vertices.append(&mut vec![
+                                Vertex(
+                                    [rel_x, y_f32 + 1.0, 1.0 + rel_z],
+                                    add_arrs(TOP_LEFT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [rel_x, y_f32, 1.0 + rel_z],
+                                    add_arrs(BOTTOM_LEFT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, y_f32, 1.0 + rel_z],
+                                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, y_f32 + 1.0, 1.0 + rel_z],
+                                    add_arrs(TOP_RIGHT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                            ]);
+                        }
+                    }
                     continue;
                 }
                 let tex_offsets = chunk[x][y][z].get_offset();

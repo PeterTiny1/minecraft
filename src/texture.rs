@@ -165,17 +165,9 @@ impl Texture {
                         texture.get_pixel(x * 2, y * 2 + 1).0,
                         texture.get_pixel(x * 2 + 1, y * 2 + 1).0
                     )
-                    .enumerate()
-                    .map(|(index, i)| {
-                        if index == 3 {
-                            (((f32::from(i.0) + f32::from(i.1) + f32::from(i.2) + f32::from(i.3))
-                                / (4.0 * 256.0))
-                                .round()
-                                * 256.0) as u8
-                        } else {
-                            ((u16::from(i.0) + u16::from(i.1) + u16::from(i.2) + u16::from(i.3))
-                                / 4) as u8
-                        }
+                    .map(|i| {
+                        ((u16::from(i.0) + u16::from(i.1) + u16::from(i.2) + u16::from(i.3)) / 4)
+                            as u8
                     })
                     .collect::<Vec<_>>()
                     .try_into()
