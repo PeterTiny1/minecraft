@@ -29,7 +29,7 @@ use futures::executor::block_on;
 use vek::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
-use noise::{NoiseFn, OpenSimplex};
+use noise::OpenSimplex;
 
 const MAX_DEPTH: f32 = 256.0;
 
@@ -411,7 +411,7 @@ impl State {
                 shader,
             )
         };
-        let noise = OpenSimplex::new();
+        let noise = OpenSimplex::new(0);
         let path = Path::new("0,0.bin");
         let chunk = if path.exists() {
             let buffer = std::fs::read(path).unwrap();
