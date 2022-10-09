@@ -85,12 +85,12 @@ impl Iterator for Ray {
             .unwrap();
         self.position += real_change;
         let direction = direction * 2
-            + match direction {
+            + usize::from(match direction {
                 0 => positive_x,
                 1 => positive_y,
                 2 => positive_z,
                 _ => false,
-            } as usize;
+            });
         match direction {
             0 => self.block_position.x -= 1,
             1 => self.block_position.x += 1,

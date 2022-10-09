@@ -21,6 +21,7 @@ const TOP_LEFT: [f32; 2] = [0.0, 0.0];
 const TOP_RIGHT: [f32; 2] = [TEXTURE_WIDTH, 0.0];
 const BOTTOM_LEFT: [f32; 2] = [0.0, TEXTURE_WIDTH];
 const BOTTOM_RIGHT: [f32; 2] = [TEXTURE_WIDTH, TEXTURE_WIDTH];
+type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Rotation {
@@ -42,6 +43,7 @@ pub enum BlockType {
     Wood(Rotation),
     Leaf,
     Water,
+    Sand,
 }
 
 impl BlockType {
@@ -78,6 +80,7 @@ impl BlockType {
                 [TEXTURE_WIDTH * 5.0, 0.0],
                 [TEXTURE_WIDTH * 3.0, 0.0],
             ],
+            BlockType::Sand => [[TEXTURE_WIDTH * 9.0, 0.0]; 6],
             BlockType::Air => panic!("This is not supposed to be called!"),
         }
     }
@@ -107,7 +110,7 @@ impl BlockType {
 pub struct ChunkData {
     // pub location: [i32; 2],
     #[serde_as(as = "[[[_; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH]")]
-    pub contents: [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
+    pub contents: Chunk,
 }
 
 const MAX_DISTANCE_X: i32 = MAX_DEPTH as i32 / CHUNK_WIDTH as i32 + 1;
@@ -187,6 +190,7 @@ const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
 const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
 const FAR_CORNER: f32 = 0.5 - 0.5 * FRAC_1_SQRT_2;
 
+#[inline]
 fn add_arrs(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
     [a[0] + b[0], a[1] + b[1]]
 }
@@ -197,25 +201,16 @@ const SMALL_SCALE: f64 = 25.0;
 const LARGE_HEIGHT: f64 = 40.0;
 const TERRAIN_HEIGHT: f64 = 0.8;
 
-pub fn generate_chunk(
-    noise: &OpenSimplex,
-    chunk_location: [i32; 2],
-) -> [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH] {
+pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
     let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
         .map(|x| {
             (0..CHUNK_DEPTH)
                 .map(|z| {
-                    (((noise_at(&noise, x as i32, z as i32, chunk_location, LARGE_SCALE, 0.0)
+                    (((noise_at(noise, x as i32, z as i32, chunk_location, LARGE_SCALE, 0.0)
                         + TERRAIN_HEIGHT)
                         * LARGE_HEIGHT)
-                        + (noise_at(
-                            &noise,
-                            x as i32,
-                            z as i32,
-                            chunk_location,
-                            SMALL_SCALE,
-                            10.0,
-                        ) * 10.0)) as i32
+                        + (noise_at(noise, x as i32, z as i32, chunk_location, SMALL_SCALE, 10.0)
+                            * 10.0)) as i32
                 })
                 .collect::<Vec<i32>>()
         })
@@ -227,8 +222,12 @@ pub fn generate_chunk(
                 let y_i32 = y as i32;
                 chunk_contents[x][y][z] = if y_i32 < heightmap[x][z] {
                     BlockType::Stone
-                } else if y_i32 == heightmap[x][z] && heightmap[x][z] + 1 >= WATER_HEIGHT as i32 {
-                    BlockType::GrassBlock
+                } else if y_i32 == heightmap[x][z] {
+                    if heightmap[x][z] + 1 > WATER_HEIGHT as i32 {
+                        BlockType::GrassBlock
+                    } else {
+                        BlockType::Sand
+                    }
                 } else if y < WATER_HEIGHT {
                     BlockType::Water
                 } else if y_i32 > heightmap[x][z]
@@ -263,7 +262,7 @@ pub fn generate_chunk(
 
 pub fn generate_chunk_mesh(
     location: [i32; 2],
-    chunk: &[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
+    chunk: &Chunk,
     surrounding_chunks: [Option<&ChunkData>; 4], // north, south, east, west for... reasons...
 ) -> (Vec<Vertex>, Vec<u32>) {
     let (mut vertices, mut indices) = (vec![], vec![]);
