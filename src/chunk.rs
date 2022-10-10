@@ -24,23 +24,13 @@ const BOTTOM_RIGHT: [f32; 2] = [TEXTURE_WIDTH, TEXTURE_WIDTH];
 type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Rotation {
-    Up,
-    Down,
-    North,
-    East,
-    South,
-    West,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BlockType {
     Air,
     Stone,
     GrassBlock,
     Grass,
     Flower,
-    Wood(Rotation),
+    Wood,
     Leaf,
     Water,
     Sand,
@@ -58,17 +48,14 @@ impl BlockType {
                 [TEXTURE_WIDTH, TEXTURE_WIDTH],
                 [0.0, 0.0],
             ],
-            BlockType::Wood(rotation) => match rotation {
-                Rotation::Up => [
-                    [TEXTURE_WIDTH * 7.0, TEXTURE_WIDTH],
-                    [TEXTURE_WIDTH * 6.0, TEXTURE_WIDTH],
-                    [TEXTURE_WIDTH * 6.0, TEXTURE_WIDTH],
-                    [TEXTURE_WIDTH * 6.0, TEXTURE_WIDTH],
-                    [TEXTURE_WIDTH * 6.0, TEXTURE_WIDTH],
-                    [TEXTURE_WIDTH * 7.0, TEXTURE_WIDTH],
-                ],
-                _ => todo!(),
-            },
+            BlockType::Wood => [
+                [TEXTURE_WIDTH * 7.0, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH * 6.0, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH * 6.0, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH * 6.0, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH * 6.0, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH * 7.0, TEXTURE_WIDTH],
+            ],
             BlockType::Leaf => [[TEXTURE_WIDTH * 5.0, TEXTURE_WIDTH]; 6],
             BlockType::Grass => [[TEXTURE_WIDTH * 2.0, TEXTURE_WIDTH]; 6],
             BlockType::Flower => [[TEXTURE_WIDTH * 3.0, TEXTURE_WIDTH]; 6],
@@ -80,7 +67,7 @@ impl BlockType {
                 [TEXTURE_WIDTH * 5.0, 0.0],
                 [TEXTURE_WIDTH * 3.0, 0.0],
             ],
-            BlockType::Sand => [[TEXTURE_WIDTH * 9.0, 0.0]; 6],
+            BlockType::Sand => [[TEXTURE_WIDTH * 8.0, 0.0]; 6],
             BlockType::Air => panic!("This is not supposed to be called!"),
         }
     }
@@ -238,7 +225,7 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
                         if y_i32 == heightmap[x][z] + 5 {
                             BlockType::Leaf
                         } else {
-                            BlockType::Wood(Rotation::Up)
+                            BlockType::Wood
                         }
                     } else if y_i32 == heightmap[x][z] + 1
                         && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
