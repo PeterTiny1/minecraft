@@ -16,6 +16,7 @@ pub const CHUNK_DEPTH: usize = 16;
 pub const CHUNK_DEPTH: usize = 32;
 
 const TEXTURE_WIDTH: f32 = 1.0 / 16.0;
+const HALF_TEXTURE_WIDTH: f32 = TEXTURE_WIDTH / 2.0;
 
 const TOP_LEFT: [f32; 2] = [0.0, 0.0];
 const TOP_RIGHT: [f32; 2] = [TEXTURE_WIDTH, 0.0];
@@ -67,7 +68,7 @@ impl BlockType {
                 [TEXTURE_WIDTH * 5.0, 0.0],
                 [TEXTURE_WIDTH * 3.0, 0.0],
             ],
-            BlockType::Sand => [[TEXTURE_WIDTH * 8.0, 0.0]; 6],
+            BlockType::Sand => [[TEXTURE_WIDTH * 9.0, 0.0]; 6],
             BlockType::Air => panic!("This is not supposed to be called!"),
         }
     }
@@ -385,9 +386,8 @@ pub fn generate_chunk_mesh(
                                 ),
                         );
                         if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
-                            let half_texture_width = TEXTURE_WIDTH / 2.0;
-                            let top_left = [TOP_LEFT[0], TOP_LEFT[1] + half_texture_width];
-                            let top_right = [TOP_RIGHT[0], TOP_RIGHT[1] + half_texture_width];
+                            let top_left = [TOP_LEFT[0], TOP_LEFT[1] + HALF_TEXTURE_WIDTH];
+                            let top_right = [TOP_RIGHT[0], TOP_RIGHT[1] + HALF_TEXTURE_WIDTH];
                             vertices.append(&mut vec![
                                 Vertex(
                                     [rel_x, yplusoff, 1.0 + rel_z],
@@ -429,6 +429,78 @@ pub fn generate_chunk_mesh(
                                 ),
                                 Vertex(
                                     [1.0 + rel_x, y_f32 + 1.0, 1.0 + rel_z],
+                                    add_arrs(TOP_RIGHT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                            ]);
+                        }
+                    }
+                    if (x == CHUNK_WIDTH - 1
+                        && surrounding_chunks[0].map_or(true, |chunk| {
+                            !chunk.contents[0][y][z].is_transparent()
+                                && !chunk.contents[0][y][z].is_liquid()
+                        }))
+                        || (x != CHUNK_WIDTH - 1
+                            && (!chunk[x + 1][y][z].is_transparent()
+                                && !chunk[x + 1][y][z].is_liquid()))
+                    {
+                        let tex_offset = tex_offsets[2];
+                        indices.extend(
+                            QUAD_INDICES
+                                .iter()
+                                .map(|i| *i + vertices.len() as u32)
+                                .chain(
+                                    QUAD_INDICES
+                                        .iter()
+                                        .rev()
+                                        .map(|i| *i + vertices.len() as u32),
+                                ),
+                        );
+                        if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
+                            let top_left = [TOP_LEFT[0], TOP_LEFT[1] + HALF_TEXTURE_WIDTH];
+                            let top_right = [TOP_RIGHT[0], TOP_RIGHT[1] + HALF_TEXTURE_WIDTH];
+                            vertices.append(&mut vec![
+                                Vertex(
+                                    [1.0 + rel_x, yplusoff, rel_z],
+                                    add_arrs(top_left, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, y_f32, rel_z],
+                                    add_arrs(BOTTOM_LEFT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, y_f32, 1.0 + rel_z],
+                                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, yplusoff, 1.0 + rel_z],
+                                    add_arrs(top_right, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                            ]);
+                        } else {
+                            let yplusoff = y_f32 + 1.0;
+                            vertices.append(&mut vec![
+                                Vertex(
+                                    [1.0 + rel_x, yplusoff, rel_z],
+                                    add_arrs(TOP_LEFT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, y_f32, rel_z],
+                                    add_arrs(BOTTOM_LEFT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, y_f32, 1.0 + rel_z],
+                                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, yplusoff, 1.0 + rel_z],
                                     add_arrs(TOP_RIGHT, tex_offset),
                                     TOP_BRIGHTNESS,
                                 ),
