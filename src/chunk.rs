@@ -71,12 +71,14 @@ impl BlockType {
             BlockType::Air => panic!("This is not supposed to be called!"),
         }
     }
+
     pub fn is_solid(self) -> bool {
         !matches!(
             self,
             BlockType::Air | BlockType::Grass | BlockType::Flower | BlockType::Water
         )
     }
+
     pub fn is_transparent(self) -> bool {
         !matches!(
             self,
@@ -87,8 +89,13 @@ impl BlockType {
                 | BlockType::Water
         )
     }
+
     pub fn is_liquid(self) -> bool {
         matches!(self, BlockType::Water)
+    }
+
+    pub fn is_grasslike(self) -> bool {
+        matches!(self, BlockType::Flower | BlockType::Grass)
     }
 }
 
@@ -259,7 +266,7 @@ pub fn generate_chunk_mesh(
                 if chunk[x][y][z] == BlockType::Air {
                     continue;
                 }
-                if matches!(chunk[x][y][z], BlockType::Grass | BlockType::Flower) {
+                if chunk[x][y][z].is_grasslike() {
                     let tex_offset = chunk[x][y][z].get_offset()[0];
                     let x = (x as i32 + (location[0] * CHUNK_WIDTH as i32)) as f32;
                     let z = (z as i32 + (location[1] * CHUNK_WIDTH as i32)) as f32;
