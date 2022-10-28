@@ -364,6 +364,43 @@ pub fn generate_chunk_mesh(
                             ),
                         ]);
                     }
+                    if y != 0 && !(chunk[x][y - 1][z].is_liquid() || chunk[x][y - 1][z].is_solid())
+                    {
+                        let tex_offset = tex_offsets[5];
+                        indices.extend(
+                            QUAD_INDICES
+                                .iter()
+                                .map(|i| *i + vertices.len() as u32)
+                                .chain(
+                                    QUAD_INDICES
+                                        .iter()
+                                        .rev()
+                                        .map(|i| *i + vertices.len() as u32),
+                                ),
+                        );
+                        vertices.append(&mut vec![
+                            Vertex(
+                                [rel_x, y_f32, rel_z],
+                                add_arrs(TOP_LEFT, tex_offset),
+                                TOP_BRIGHTNESS,
+                            ),
+                            Vertex(
+                                [rel_x, y_f32, 1.0 + rel_z],
+                                add_arrs(BOTTOM_LEFT, tex_offset),
+                                TOP_BRIGHTNESS,
+                            ),
+                            Vertex(
+                                [1.0 + rel_x, y_f32, 1.0 + rel_z],
+                                add_arrs(BOTTOM_RIGHT, tex_offset),
+                                TOP_BRIGHTNESS,
+                            ),
+                            Vertex(
+                                [1.0 + rel_x, y_f32, rel_z],
+                                add_arrs(TOP_RIGHT, tex_offset),
+                                TOP_BRIGHTNESS,
+                            ),
+                        ]);
+                    }
                     if (z == CHUNK_DEPTH - 1
                         && surrounding_chunks[2].map_or(true, |chunk| {
                             !chunk.contents[x][y][0].is_transparent()
