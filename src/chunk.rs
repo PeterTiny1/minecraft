@@ -322,7 +322,8 @@ pub fn generate_chunk_mesh(
                         ),
                     ]);
                     continue;
-                } else if chunk[x][y][z].is_liquid() {
+                }
+                if chunk[x][y][z].is_liquid() {
                     let tex_offsets = chunk[x][y][z].get_offset();
                     let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH as i32)) as f32;
                     let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH as i32)) as f32;
