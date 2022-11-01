@@ -545,6 +545,77 @@ pub fn generate_chunk_mesh(
                             ]);
                         }
                     }
+                    if (z == 0
+                        && surrounding_chunks[3].map_or(true, |chunk| {
+                            !chunk.contents[x][y][CHUNK_DEPTH - 1].is_transparent()
+                                && !chunk.contents[x][y][CHUNK_DEPTH - 1].is_liquid()
+                        }))
+                        || (z != 0
+                            && !chunk[x][y][z - 1].is_transparent()
+                            && !chunk[x][y][z - 1].is_liquid())
+                    {
+                        let tex_offset = tex_offsets[1];
+                        indices.extend(
+                            QUAD_INDICES
+                                .iter()
+                                .map(|i| *i + vertices.len() as u32)
+                                .chain(
+                                    QUAD_INDICES
+                                        .iter()
+                                        .rev()
+                                        .map(|i| *i + vertices.len() as u32),
+                                ),
+                        );
+                        if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
+                            let top_left = [TOP_LEFT[0], TOP_LEFT[1] + HALF_TEXTURE_WIDTH];
+                            let top_right = [TOP_RIGHT[0], TOP_RIGHT[1] + HALF_TEXTURE_WIDTH];
+                            vertices.append(&mut vec![
+                                Vertex(
+                                    [rel_x, yplusoff, rel_z],
+                                    add_arrs(top_left, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [rel_x, y_f32, rel_z],
+                                    add_arrs(BOTTOM_LEFT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, y_f32, rel_z],
+                                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, yplusoff, rel_z],
+                                    add_arrs(top_right, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                            ]);
+                        } else {
+                            vertices.append(&mut vec![
+                                Vertex(
+                                    [rel_x, y_f32 + 1.0, rel_z],
+                                    add_arrs(TOP_LEFT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [rel_x, y_f32, rel_z],
+                                    add_arrs(BOTTOM_LEFT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, y_f32, rel_z],
+                                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                                Vertex(
+                                    [1.0 + rel_x, y_f32 + 1.0, rel_z],
+                                    add_arrs(TOP_RIGHT, tex_offset),
+                                    TOP_BRIGHTNESS,
+                                ),
+                            ]);
+                        }
+                    }
                     continue;
                 }
                 let tex_offsets = chunk[x][y][z].get_offset();
