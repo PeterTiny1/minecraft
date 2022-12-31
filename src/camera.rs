@@ -382,6 +382,9 @@ impl CameraController {
         );
         self.looking_at_block = looking_at_block;
         camera.position += scrollward * self.scroll * self.speed * self.sensitivity * dt;
+        if camera.position.y < -64.0 {
+            camera.position.y = 64.0
+        }
         self.scroll = 0.0;
 
         // camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;

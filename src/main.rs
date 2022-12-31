@@ -306,7 +306,7 @@ impl State {
             label: Some("crosshair_bind_group"),
         });
         let camera = camera::Camera::new(
-            (0.2, 64.5, 8.2),
+            (0.0, 64.5, 0.0),
             -45.0_f32.to_radians(),
             -20.0_f32.to_radians(),
         );
