@@ -1,4 +1,4 @@
-use image::{GenericImage, GenericImageView, ImageBuffer, ImageError, Rgba};
+use image::{GenericImageView, ImageBuffer, ImageError, Rgba};
 use itertools::izip;
 
 pub struct Texture {
@@ -55,21 +55,9 @@ impl Texture {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         bytes: &[u8],
-        alpha_bytes: &[u8],
         label: &str,
     ) -> Result<Self, ImageError> {
-        let alpha = image::load_from_memory(alpha_bytes)?;
-        let mut img = image::load_from_memory(bytes)?;
-        for x in 0..img.width() {
-            for y in 0..img.height() {
-                img.put_pixel(x, y, {
-                    let mut pixel = img.get_pixel(x, y);
-                    let alpha_pix = alpha.get_pixel(x, y);
-                    pixel.0[3] = alpha_pix.0[1];
-                    pixel
-                })
-            }
-        }
+        let img = image::load_from_memory(bytes)?;
         Ok(Self::from_image_mip(device, queue, &img, Some(label)))
     }
 

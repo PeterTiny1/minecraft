@@ -264,15 +264,8 @@ impl State {
                 label: Some("texture_bind_group_layout"),
             });
         let diffuse_bytes = include_bytes!("atlas.png");
-        let alpha_bytes = include_bytes!("atlas_alpha.png");
-        let diffuse_texture = texture::Texture::from_bytes_mip(
-            &device,
-            &queue,
-            diffuse_bytes,
-            alpha_bytes,
-            "atlas.png",
-        )
-        .unwrap();
+        let diffuse_texture =
+            texture::Texture::from_bytes_mip(&device, &queue, diffuse_bytes, "atlas.png").unwrap();
         let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &texture_bind_group_layout,
             entries: &[
