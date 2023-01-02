@@ -28,8 +28,10 @@ type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 pub enum BlockType {
     Air,
     Stone,
-    GrassBlock,
-    Grass,
+    GrassBlock0,
+    GrassBlock1,
+    Grass0,
+    Grass1,
     Flower,
     Wood,
     Leaf,
@@ -41,12 +43,20 @@ impl BlockType {
     fn get_offset(self) -> [[f32; 2]; 6] {
         match self {
             BlockType::Stone => [[0., TEXTURE_WIDTH * 8.]; 6],
-            BlockType::GrassBlock => [
+            BlockType::GrassBlock0 => [
                 [0., TEXTURE_WIDTH],
                 [TEXTURE_WIDTH, TEXTURE_WIDTH],
                 [TEXTURE_WIDTH, TEXTURE_WIDTH],
                 [TEXTURE_WIDTH, TEXTURE_WIDTH],
                 [TEXTURE_WIDTH, TEXTURE_WIDTH],
+                [0., 0.],
+            ],
+            BlockType::GrassBlock1 => [
+                [0., TEXTURE_WIDTH * 2.],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
                 [0., 0.],
             ],
             BlockType::Wood => [
@@ -58,7 +68,8 @@ impl BlockType {
                 [TEXTURE_WIDTH * 7., TEXTURE_WIDTH * 2.],
             ],
             BlockType::Leaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH * 2.]; 6],
-            BlockType::Grass => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH]; 6],
+            BlockType::Grass0 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH]; 6],
+            BlockType::Grass1 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH * 2.]; 6],
             BlockType::Flower => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH]; 6],
             BlockType::Water => [
                 [TEXTURE_WIDTH * 4., 0.],
@@ -76,7 +87,11 @@ impl BlockType {
     pub fn is_solid(self) -> bool {
         !matches!(
             self,
-            BlockType::Air | BlockType::Grass | BlockType::Flower | BlockType::Water
+            BlockType::Air
+                | BlockType::Grass0
+                | BlockType::Grass1
+                | BlockType::Flower
+                | BlockType::Water
         )
     }
 
@@ -84,7 +99,8 @@ impl BlockType {
         !matches!(
             self,
             BlockType::Air
-                | BlockType::Grass
+                | BlockType::Grass0
+                | BlockType::Grass1
                 | BlockType::Leaf
                 | BlockType::Flower
                 | BlockType::Water
@@ -96,7 +112,10 @@ impl BlockType {
     }
 
     pub fn is_grasslike(self) -> bool {
-        matches!(self, BlockType::Flower | BlockType::Grass)
+        matches!(
+            self,
+            BlockType::Flower | BlockType::Grass0 | BlockType::Grass1
+        )
     }
 }
 
@@ -195,6 +214,7 @@ const LARGE_SCALE: f64 = 100.0;
 const SMALL_SCALE: f64 = 25.0;
 const LARGE_HEIGHT: f64 = 40.0;
 const TERRAIN_HEIGHT: f64 = 0.8;
+const BIOME_SCALE: f64 = 250.0;
 
 pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
     let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
@@ -210,6 +230,13 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
                 .collect::<Vec<i32>>()
         })
         .collect();
+    let biomemap: Vec<Vec<_>> = (0..CHUNK_WIDTH)
+        .map(|x| {
+            (0..CHUNK_DEPTH)
+                .map(|z| noise_at(noise, x as i32, z as i32, chunk_location, BIOME_SCALE, 18.9))
+                .collect::<Vec<_>>()
+        })
+        .collect();
     let mut chunk_contents = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
     for x in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_HEIGHT {
@@ -219,7 +246,11 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
                     BlockType::Stone
                 } else if y_i32 == heightmap[x][z] {
                     if heightmap[x][z] + 1 > WATER_HEIGHT as i32 {
-                        BlockType::GrassBlock
+                        if biomemap[x][z] > 0.2 {
+                            BlockType::GrassBlock1
+                        } else {
+                            BlockType::GrassBlock0
+                        }
                     } else {
                         BlockType::Sand
                     }
@@ -241,7 +272,11 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
                         if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
                             BlockType::Flower
                         } else {
-                            BlockType::Grass
+                            if biomemap[x][z] > 0.2 {
+                                BlockType::Grass1
+                            } else {
+                                BlockType::Grass0
+                            }
                         }
                     } else {
                         BlockType::Air
