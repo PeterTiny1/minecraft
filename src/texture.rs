@@ -57,8 +57,12 @@ impl Texture {
         bytes: &[u8],
         label: &str,
     ) -> Result<Self, ImageError> {
-        let img = image::load_from_memory(bytes)?;
-        Ok(Self::from_image_mip(device, queue, &img, Some(label)))
+        Ok(Self::from_image_mip(
+            device,
+            queue,
+            &image::load_from_memory(bytes)?,
+            Some(label),
+        ))
     }
 
     pub fn from_bytes(
@@ -67,8 +71,12 @@ impl Texture {
         bytes: &[u8],
         label: &str,
     ) -> Result<Self, ImageError> {
-        let img = image::load_from_memory(bytes)?;
-        Ok(Self::from_image(device, queue, &img, Some(label)))
+        Ok(Self::from_image(
+            device,
+            queue,
+            &image::load_from_memory(bytes)?,
+            Some(label),
+        ))
     }
 
     pub fn from_image(
