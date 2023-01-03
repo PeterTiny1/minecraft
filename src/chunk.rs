@@ -24,6 +24,14 @@ const BOTTOM_LEFT: [f32; 2] = [0.0, TEXTURE_WIDTH];
 const BOTTOM_RIGHT: [f32; 2] = [TEXTURE_WIDTH, TEXTURE_WIDTH];
 type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 
+// enum Biome {
+//     BirchFalls,
+//     GreenGrove,
+//     DarklogForest,
+//     PineHills,
+//     SnowDesert,
+// }
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BlockType {
     Air,
@@ -32,9 +40,12 @@ pub enum BlockType {
     GrassBlock1,
     Grass0,
     Grass1,
-    Flower,
+    Flower0,
+    Flower1,
     Wood,
+    BirchWood,
     Leaf,
+    BirchLeaf,
     Water,
     Sand,
 }
@@ -59,6 +70,14 @@ impl BlockType {
                 [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
                 [0., 0.],
             ],
+            BlockType::BirchWood => [
+                [TEXTURE_WIDTH * 7., TEXTURE_WIDTH],
+                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH],
+                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH],
+                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH],
+                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH],
+                [TEXTURE_WIDTH * 7., TEXTURE_WIDTH],
+            ],
             BlockType::Wood => [
                 [TEXTURE_WIDTH * 7., TEXTURE_WIDTH * 2.],
                 [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 2.],
@@ -68,9 +87,11 @@ impl BlockType {
                 [TEXTURE_WIDTH * 7., TEXTURE_WIDTH * 2.],
             ],
             BlockType::Leaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH * 2.]; 6],
+            BlockType::BirchLeaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH]; 6],
             BlockType::Grass0 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH]; 6],
             BlockType::Grass1 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH * 2.]; 6],
-            BlockType::Flower => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH]; 6],
+            BlockType::Flower0 => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH]; 6],
+            BlockType::Flower1 => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH * 2.]; 6],
             BlockType::Water => [
                 [TEXTURE_WIDTH * 4., 0.],
                 [TEXTURE_WIDTH * 5., 0.],
@@ -90,7 +111,8 @@ impl BlockType {
             BlockType::Air
                 | BlockType::Grass0
                 | BlockType::Grass1
-                | BlockType::Flower
+                | BlockType::Flower0
+                | BlockType::Flower1
                 | BlockType::Water
         )
     }
@@ -98,13 +120,9 @@ impl BlockType {
     pub fn is_transparent(self) -> bool {
         !matches!(
             self,
-            BlockType::Air
-                | BlockType::Grass0
-                | BlockType::Grass1
-                | BlockType::Leaf
-                | BlockType::Flower
-                | BlockType::Water
-        )
+            BlockType::Air | BlockType::Leaf | BlockType::BirchLeaf
+        ) || self.is_liquid()
+            || self.is_grasslike()
     }
 
     pub fn is_liquid(self) -> bool {
@@ -114,7 +132,7 @@ impl BlockType {
     pub fn is_grasslike(self) -> bool {
         matches!(
             self,
-            BlockType::Flower | BlockType::Grass0 | BlockType::Grass1
+            BlockType::Flower0 | BlockType::Flower1 | BlockType::Grass0 | BlockType::Grass1
         )
     }
 }
@@ -242,11 +260,12 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH {
                 let y_i32 = y as i32;
+                let biome = biomemap[x][z] > 0.2;
                 chunk_contents[x][y][z] = if y_i32 < heightmap[x][z] {
                     BlockType::Stone
                 } else if y_i32 == heightmap[x][z] {
                     if heightmap[x][z] + 1 > WATER_HEIGHT as i32 {
-                        if biomemap[x][z] > 0.2 {
+                        if biome {
                             BlockType::GrassBlock1
                         } else {
                             BlockType::GrassBlock0
@@ -262,17 +281,29 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
                 {
                     if noise.get([x as f64, f64::from(heightmap[x][z]), z as f64]) > 0.4 {
                         if y_i32 == heightmap[x][z] + 5 {
-                            BlockType::Leaf
+                            if biome {
+                                BlockType::Leaf
+                            } else {
+                                BlockType::BirchLeaf
+                            }
                         } else {
-                            BlockType::Wood
+                            if biome {
+                                BlockType::Wood
+                            } else {
+                                BlockType::BirchWood
+                            }
                         }
                     } else if y_i32 == heightmap[x][z] + 1
                         && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
                     {
                         if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
-                            BlockType::Flower
+                            if biome {
+                                BlockType::Flower1
+                            } else {
+                                BlockType::Flower0
+                            }
                         } else {
-                            if biomemap[x][z] > 0.2 {
+                            if biome {
                                 BlockType::Grass1
                             } else {
                                 BlockType::Grass0
