@@ -161,7 +161,7 @@ fn create_render_pipeline(
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(shader);
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some(&format!("{:?}", shader)),
+        label: Some(&format!("{shader:?}")),
         layout: Some(layout),
         vertex: wgpu::VertexState {
             module: &shader,
@@ -483,7 +483,7 @@ impl State {
                             &chunk.contents,
                             [
                                 get_chunk(1, 0),
-                                get_chunk(0, (index != 1) as usize),
+                                get_chunk(0, usize::from(index != 1)),
                                 get_chunk(3, if index < 2 { 1 } else { 2 }),
                                 get_chunk(2, 2),
                             ],
@@ -850,7 +850,7 @@ fn main() {
             Ok(_) => {}
             Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
             Err(wgpu::SurfaceError::OutOfMemory) => break 'running,
-            Err(e) => eprintln!("{:?}", e),
+            Err(e) => eprintln!("{e:?}"),
         }
     }
     if save {
