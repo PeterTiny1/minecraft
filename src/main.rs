@@ -855,7 +855,8 @@ fn main() {
     }
     if save {
         let generated_chunkdata = state.generated_chunkdata.lock().unwrap();
-        for (location, data) in generated_chunkdata.iter() {
+        let iterator = generated_chunkdata.iter();
+        for (location, data) in iterator {
             let location = format!("{}.bin", location.iter().join(","));
             let path = Path::new(&location);
             if let Ok(mut file) = File::create(path) {
