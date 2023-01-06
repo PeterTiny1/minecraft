@@ -7,6 +7,25 @@ pub struct Texture {
     pub sampler: wgpu::Sampler,
 }
 
+fn downscale(texture: ImageBuffer<Rgba<u8>, Vec<u8>>) -> impl Fn(u32, u32) -> Rgba<u8> {
+    move |x, y| {
+        Rgba(
+            izip!(
+                texture.get_pixel(x * 2, y * 2).0,
+                texture.get_pixel(x * 2 + 1, y * 2).0,
+                texture.get_pixel(x * 2, y * 2 + 1).0,
+                texture.get_pixel(x * 2 + 1, y * 2 + 1).0
+            )
+            .map(|i| {
+                ((u16::from(i.0) + u16::from(i.1) + u16::from(i.2) + u16::from(i.3)) / 4) as u8
+            })
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap(),
+        )
+    }
+}
+
 impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -164,40 +183,12 @@ impl Texture {
             height: dimensions.1 / 8,
             depth_or_array_layers: 1,
         };
-        let downscale_function = |texture: ImageBuffer<Rgba<u8>, Vec<u8>>| {
-            move |x, y| {
-                Rgba(
-                    izip!(
-                        texture.get_pixel(x * 2, y * 2).0,
-                        texture.get_pixel(x * 2 + 1, y * 2).0,
-                        texture.get_pixel(x * 2, y * 2 + 1).0,
-                        texture.get_pixel(x * 2 + 1, y * 2 + 1).0
-                    )
-                    .map(|i| {
-                        ((u16::from(i.0) + u16::from(i.1) + u16::from(i.2) + u16::from(i.3)) / 4)
-                            as u8
-                    })
-                    .collect::<Vec<_>>()
-                    .try_into()
-                    .unwrap(),
-                )
-            }
-        };
-        let rgba1 = ImageBuffer::from_fn(
-            dimensions.0 / 2,
-            dimensions.1 / 2,
-            downscale_function(rgba.clone()),
-        );
-        let rgba2 = ImageBuffer::from_fn(
-            dimensions.0 / 4,
-            dimensions.1 / 4,
-            downscale_function(rgba1.clone()),
-        );
-        let rgba3 = ImageBuffer::from_fn(
-            dimensions.0 / 8,
-            dimensions.1 / 8,
-            downscale_function(rgba2.clone()),
-        );
+        let rgba1 =
+            ImageBuffer::from_fn(dimensions.0 / 2, dimensions.1 / 2, downscale(rgba.clone()));
+        let rgba2 =
+            ImageBuffer::from_fn(dimensions.0 / 4, dimensions.1 / 4, downscale(rgba1.clone()));
+        let rgba3 =
+            ImageBuffer::from_fn(dimensions.0 / 8, dimensions.1 / 8, downscale(rgba2.clone()));
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label,
             size,
