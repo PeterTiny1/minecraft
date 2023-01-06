@@ -53,8 +53,8 @@ pub enum BlockType {
 impl BlockType {
     fn get_offset(self) -> [[f32; 2]; 6] {
         match self {
-            BlockType::Stone => [[0., TEXTURE_WIDTH * 8.]; 6],
-            BlockType::GrassBlock0 => [
+            Self::Stone => [[0., TEXTURE_WIDTH * 8.]; 6],
+            Self::GrassBlock0 => [
                 [0., TEXTURE_WIDTH],
                 [TEXTURE_WIDTH, TEXTURE_WIDTH],
                 [TEXTURE_WIDTH, TEXTURE_WIDTH],
@@ -62,7 +62,7 @@ impl BlockType {
                 [TEXTURE_WIDTH, TEXTURE_WIDTH],
                 [0., 0.],
             ],
-            BlockType::GrassBlock1 => [
+            Self::GrassBlock1 => [
                 [0., TEXTURE_WIDTH * 2.],
                 [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
                 [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
@@ -70,7 +70,7 @@ impl BlockType {
                 [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
                 [0., 0.],
             ],
-            BlockType::BirchWood => [
+            Self::BirchWood => [
                 [TEXTURE_WIDTH * 7., TEXTURE_WIDTH],
                 [TEXTURE_WIDTH * 6., TEXTURE_WIDTH],
                 [TEXTURE_WIDTH * 6., TEXTURE_WIDTH],
@@ -78,7 +78,7 @@ impl BlockType {
                 [TEXTURE_WIDTH * 6., TEXTURE_WIDTH],
                 [TEXTURE_WIDTH * 7., TEXTURE_WIDTH],
             ],
-            BlockType::Wood => [
+            Self::Wood => [
                 [TEXTURE_WIDTH * 7., TEXTURE_WIDTH * 2.],
                 [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 2.],
                 [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 2.],
@@ -86,13 +86,13 @@ impl BlockType {
                 [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 2.],
                 [TEXTURE_WIDTH * 7., TEXTURE_WIDTH * 2.],
             ],
-            BlockType::Leaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH * 2.]; 6],
-            BlockType::BirchLeaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH]; 6],
-            BlockType::Grass0 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH]; 6],
-            BlockType::Grass1 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH * 2.]; 6],
-            BlockType::Flower0 => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH]; 6],
-            BlockType::Flower1 => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH * 2.]; 6],
-            BlockType::Water => [
+            Self::Leaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH * 2.]; 6],
+            Self::BirchLeaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH]; 6],
+            Self::Grass0 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH]; 6],
+            Self::Grass1 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH * 2.]; 6],
+            Self::Flower0 => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH]; 6],
+            Self::Flower1 => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH * 2.]; 6],
+            Self::Water => [
                 [TEXTURE_WIDTH * 4., 0.],
                 [TEXTURE_WIDTH * 5., 0.],
                 [TEXTURE_WIDTH * 5., 0.],
@@ -100,31 +100,31 @@ impl BlockType {
                 [TEXTURE_WIDTH * 5., 0.],
                 [TEXTURE_WIDTH * 4., 0.],
             ],
-            BlockType::Sand => [[TEXTURE_WIDTH * 9., 0.]; 6],
-            BlockType::Air => panic!("This is not supposed to be called!"),
+            Self::Sand => [[TEXTURE_WIDTH * 9., 0.]; 6],
+            Self::Air => panic!("This is not supposed to be called!"),
         }
     }
 
     pub fn is_solid(self) -> bool {
-        !matches!(self, BlockType::Air | BlockType::Water) && !self.is_grasslike()
+        !matches!(self, Self::Air | Self::Water) && !self.is_grasslike()
     }
 
     pub fn is_transparent(self) -> bool {
         matches!(
             self,
-            BlockType::Air | BlockType::Leaf | BlockType::BirchLeaf
+            Self::Air | Self::Leaf | Self::BirchLeaf
         ) || self.is_liquid()
             || self.is_grasslike()
     }
 
     pub fn is_liquid(self) -> bool {
-        matches!(self, BlockType::Water)
+        matches!(self, Self::Water)
     }
 
     pub fn is_grasslike(self) -> bool {
         matches!(
             self,
-            BlockType::Flower0 | BlockType::Flower1 | BlockType::Grass0 | BlockType::Grass1
+            Self::Flower0 | Self::Flower1 | Self::Grass0 | Self::Grass1
         )
     }
 }
@@ -227,11 +227,7 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
         .map(|x| {
             (0..CHUNK_DEPTH)
                 .map(|z| {
-                    (((noise_at(noise, x as i32, z as i32, chunk_location, LARGE_SCALE, 0.0)
-                        + TERRAIN_HEIGHT)
-                        * LARGE_HEIGHT)
-                        + (noise_at(noise, x as i32, z as i32, chunk_location, SMALL_SCALE, 10.0)
-                            * 10.0)) as i32
+                    (noise_at(noise, x as i32, z as i32, chunk_location, LARGE_SCALE, 0.0) + TERRAIN_HEIGHT).mul_add(LARGE_HEIGHT, noise_at(noise, x as i32, z as i32, chunk_location, SMALL_SCALE, 10.0) * 10.0) as i32
                 })
                 .collect::<Vec<i32>>()
         })

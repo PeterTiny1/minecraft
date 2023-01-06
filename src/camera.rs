@@ -23,10 +23,10 @@ fn to_quaternion(heading: f32, attitude: f32) -> Quaternion<f32> {
     let (s2, c2) = (attitude / 2.0).sin_cos();
     let (s3, c3) = (0.0, 1.0);
     Quaternion::from_xyzw(
-        s1 * s2 * c3 + c1 * c2 * s3,
-        s1 * c2 * c3 + c1 * s2 * s3,
-        c1 * s2 * c3 - s1 * c2 * s3,
-        c1 * c2 * c3 - s1 * s2 * s3,
+        (s1 * s2).mul_add(c3, c1 * c2 * s3),
+        (s1 * c2).mul_add(c3, c1 * s2 * s3),
+        (c1 * s2).mul_add(c3, -s1 * c2 * s3),
+        (c1 * c2).mul_add(c3, -s1 * s2 * s3),
     )
 }
 
