@@ -657,7 +657,9 @@ impl State {
                 }
             }
         }
-        for (mesh, indices, index) in self.returned_buffers.lock().unwrap().drain(..) {
+        let mut data = self.returned_buffers.lock().unwrap();
+        let returned_buffers = data.drain(..);
+        for (mesh, indices, index) in returned_buffers {
             self.generated_chunk_buffers.insert(
                 index,
                 ChunkBuffers {
