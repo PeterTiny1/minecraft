@@ -857,14 +857,18 @@ fn main() {
         }
     }
     if save {
-        let generated_chunkdata = state.generated_chunkdata.lock().unwrap();
-        let iterator = generated_chunkdata.iter();
-        for (location, data) in iterator {
-            let location = format!("{}.bin", location.iter().join(","));
-            let path = Path::new(&location);
-            if let Ok(mut file) = File::create(path) {
-                file.write_all(&bincode::serialize(data).unwrap()).unwrap();
-            }
+        save_file(&state);
+    }
+}
+
+fn save_file(state: &State) {
+    let generated_chunkdata = state.generated_chunkdata.lock().unwrap();
+    let iterator = generated_chunkdata.iter();
+    for (location, data) in iterator {
+        let location = format!("{}.bin", location.iter().join(","));
+        let path = Path::new(&location);
+        if let Ok(mut file) = File::create(path) {
+            file.write_all(&bincode::serialize(data).unwrap()).unwrap();
         }
     }
 }
