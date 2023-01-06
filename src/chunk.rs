@@ -210,10 +210,6 @@ pub fn get_nearest_chunk_location(
     collector.map(|value: [i32; 2]| [value[0] + chunk_x, value[1] + chunk_z])
 }
 
-const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
-const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
-const FAR_CORNER: f32 = 0.5 - 0.5 * FRAC_1_SQRT_2;
-
 #[inline]
 fn add_arrs(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
     [a[0] + b[0], a[1] + b[1]]
@@ -312,6 +308,48 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
     }
     chunk_contents
 }
+const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
+const FAR_CORNER: f32 = 0.5 - 0.5 * FRAC_1_SQRT_2;
+
+fn create_grass_face(
+    tex_offset: [f32; 2],
+    position: (f32, f32, f32),
+    diagonal: bool,
+) -> Vec<Vertex> {
+    let (x, y, z) = position;
+    let (add0, add1) = if diagonal {
+        (FAR_CORNER, CLOSE_CORNER)
+    } else {
+        (CLOSE_CORNER, FAR_CORNER)
+    };
+    vec![
+        Vertex(
+            [x + CLOSE_CORNER, y + 1.0, z + add0],
+            add_arrs(TOP_LEFT, tex_offset),
+            1.0,
+        ),
+        Vertex(
+            [x + CLOSE_CORNER, y, z + add0],
+            add_arrs(BOTTOM_LEFT, tex_offset),
+            1.0,
+        ),
+        Vertex(
+            [x + FAR_CORNER, y, z + add1],
+            add_arrs(BOTTOM_RIGHT, tex_offset),
+            1.0,
+        ),
+        Vertex(
+            [x + FAR_CORNER, y + 1.0, z + add1],
+            add_arrs(TOP_RIGHT, tex_offset),
+            1.0,
+        ),
+    ]
+}
+
+const GRASS_INDICES: [u32; 24] = [
+    0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0, 4, 5, 6, 4, 6, 7, 7, 6, 4, 6, 5, 4,
+];
+const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
 
 pub fn generate_chunk_mesh(
     location: [i32; 2],
@@ -330,55 +368,9 @@ pub fn generate_chunk_mesh(
                     let x = (x as i32 + (location[0] * CHUNK_WIDTH as i32)) as f32;
                     let z = (z as i32 + (location[1] * CHUNK_WIDTH as i32)) as f32;
                     let y = y as f32;
-                    indices.extend(
-                        [
-                            0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0, 4, 5, 6, 4, 6, 7, 7, 6, 4, 6, 5, 4,
-                        ]
-                        .iter()
-                        .map(|i| *i + vertices.len() as u32),
-                    );
-                    vertices.append(&mut vec![
-                        Vertex(
-                            [x + CLOSE_CORNER, y + 1.0, z + CLOSE_CORNER],
-                            add_arrs(TOP_LEFT, tex_offset),
-                            1.0,
-                        ),
-                        Vertex(
-                            [x + CLOSE_CORNER, y, z + CLOSE_CORNER],
-                            add_arrs(BOTTOM_LEFT, tex_offset),
-                            1.0,
-                        ),
-                        Vertex(
-                            [x + FAR_CORNER, y, z + FAR_CORNER],
-                            add_arrs(BOTTOM_RIGHT, tex_offset),
-                            1.0,
-                        ),
-                        Vertex(
-                            [x + FAR_CORNER, y + 1.0, z + FAR_CORNER],
-                            add_arrs(TOP_RIGHT, tex_offset),
-                            1.0,
-                        ),
-                        Vertex(
-                            [x + CLOSE_CORNER, y + 1.0, z + FAR_CORNER],
-                            add_arrs(TOP_LEFT, tex_offset),
-                            1.0,
-                        ),
-                        Vertex(
-                            [x + CLOSE_CORNER, y, z + FAR_CORNER],
-                            add_arrs(BOTTOM_LEFT, tex_offset),
-                            1.0,
-                        ),
-                        Vertex(
-                            [x + FAR_CORNER, y, z + CLOSE_CORNER],
-                            add_arrs(BOTTOM_RIGHT, tex_offset),
-                            1.0,
-                        ),
-                        Vertex(
-                            [x + FAR_CORNER, y + 1.0, z + CLOSE_CORNER],
-                            add_arrs(TOP_RIGHT, tex_offset),
-                            1.0,
-                        ),
-                    ]);
+                    indices.extend(GRASS_INDICES.iter().map(|i| *i + vertices.len() as u32));
+                    vertices.append(&mut create_grass_face(tex_offset, (x, y, z), false));
+                    vertices.append(&mut create_grass_face(tex_offset, (x, y, z), true));
                     continue;
                 }
                 if chunk[x][y][z].is_liquid() {
