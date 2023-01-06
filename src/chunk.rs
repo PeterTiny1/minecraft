@@ -345,6 +345,7 @@ fn create_grass_face(
 const GRASS_INDICES: [u32; 24] = [
     0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0, 4, 5, 6, 4, 6, 7, 7, 6, 4, 6, 5, 4,
 ];
+const BIDIR_INDICES: [u32; 12] = [0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0];
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
 
 pub fn generate_chunk_mesh(
@@ -373,17 +374,7 @@ pub fn generate_chunk_mesh(
                     let yplusoff = y_f32 + 0.5;
                     if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
                         let tex_offset = tex_offsets[0];
-                        indices.extend(
-                            QUAD_INDICES
-                                .iter()
-                                .map(|i| *i + vertices.len() as u32)
-                                .chain(
-                                    QUAD_INDICES
-                                        .iter()
-                                        .rev()
-                                        .map(|i| *i + vertices.len() as u32),
-                                ),
-                        );
+                        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as u32));
                         vertices.append(&mut vec![
                             Vertex(
                                 [rel_x, yplusoff, rel_z],
