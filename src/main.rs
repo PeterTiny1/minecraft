@@ -39,13 +39,13 @@ struct ChunkBuffers {
     vertex: wgpu::Buffer,
     num_indices: u32,
 }
-
+// location, uv, brightness
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex([f32; 3], [f32; 2], f32);
 
 impl Vertex {
-    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+    const fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
@@ -69,13 +69,13 @@ impl Vertex {
         }
     }
 }
-
+// location, uv
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct UiVertex([f32; 2], [f32; 2]);
 
 impl UiVertex {
-    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+    const fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
