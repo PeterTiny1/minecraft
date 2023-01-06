@@ -239,6 +239,7 @@ impl State {
             width: size.0,
             height: size.1,
             present_mode: wgpu::PresentMode::Fifo,
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
         };
         surface.configure(&device, &config);
         let texture_bind_group_layout =
