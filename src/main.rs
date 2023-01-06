@@ -483,7 +483,7 @@ impl State {
                             &chunk.contents,
                             [
                                 get_chunk(1, 0),
-                                get_chunk(0, if index == 1 { 0 } else { 1 }),
+                                get_chunk(0, (index != 1) as usize),
                                 get_chunk(3, if index < 2 { 1 } else { 2 }),
                                 get_chunk(2, 2),
                             ],
