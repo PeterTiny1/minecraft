@@ -274,12 +274,10 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
                             } else {
                                 BlockType::BirchLeaf
                             }
+                        } else if biome {
+                            BlockType::Wood
                         } else {
-                            if biome {
-                                BlockType::Wood
-                            } else {
-                                BlockType::BirchWood
-                            }
+                            BlockType::BirchWood
                         }
                     } else if y_i32 == heightmap[x][z] + 1
                         && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
@@ -290,12 +288,10 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
                             } else {
                                 BlockType::Flower0
                             }
+                        } else if biome {
+                            BlockType::Grass1
                         } else {
-                            if biome {
-                                BlockType::Grass1
-                            } else {
-                                BlockType::Grass0
-                            }
+                            BlockType::Grass0
                         }
                     } else {
                         BlockType::Air
