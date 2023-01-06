@@ -396,11 +396,7 @@ impl CameraController {
         self.rotate_horizontal = 0.0;
         self.rotate_vertical = 0.0;
 
-        if camera.pitch < -FRAC_PI_2 {
-            camera.pitch = -FRAC_PI_2;
-        } else if camera.pitch > (FRAC_PI_2) {
-            camera.pitch = FRAC_PI_2;
-        }
+        camera.pitch = camera.pitch.clamp(-FRAC_PI_2, FRAC_PI_2);
 
         camera.quaternion = to_quaternion(-camera.yaw, camera.pitch).normalized();
     }
