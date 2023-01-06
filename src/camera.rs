@@ -174,13 +174,7 @@ impl CameraController {
             self.velocity.normalized(),
             (self.velocity * dt).magnitude(),
         )
-        .find(|(b, _)| {
-            if let Some(b) = get_block(world, b.x, b.y, b.z) {
-                b.is_solid()
-            } else {
-                false
-            }
-        });
+        .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, |b| b.is_solid()));
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 => self.velocity.x = 0.0,
@@ -208,13 +202,7 @@ impl CameraController {
                 self.velocity.normalized(),
                 (self.velocity * dt).magnitude(),
             )
-            .find(|(b, _)| {
-                if let Some(b) = get_block(world, b.x, b.y, b.z) {
-                    b.is_solid()
-                } else {
-                    false
-                }
-            })
+            .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, |b| b.is_solid()))
         }
 
         let mut would_collide = Ray::new(
@@ -227,13 +215,7 @@ impl CameraController {
             self.velocity.normalized(),
             (self.velocity * dt).magnitude(),
         )
-        .find(|(b, _)| {
-            if let Some(b) = get_block(world, b.x, b.y, b.z) {
-                b.is_solid()
-            } else {
-                false
-            }
-        });
+        .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, |b| b.is_solid()));
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 => self.velocity.x = 0.0,
@@ -261,13 +243,7 @@ impl CameraController {
                 self.velocity.normalized(),
                 (self.velocity * dt).magnitude(),
             )
-            .find(|(b, _)| {
-                if let Some(b) = get_block(world, b.x, b.y, b.z) {
-                    b.is_solid()
-                } else {
-                    false
-                }
-            })
+            .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, |b| b.is_solid()))
         }
         let mut would_collide = Ray::new(
             camera.position
@@ -279,13 +255,7 @@ impl CameraController {
             self.velocity.normalized(),
             (self.velocity * dt).magnitude(),
         )
-        .find(|(b, _)| {
-            if let Some(b) = get_block(world, b.x, b.y, b.z) {
-                b.is_solid()
-            } else {
-                false
-            }
-        });
+        .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, |b| b.is_solid()));
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 => self.velocity.x = 0.0,
@@ -313,13 +283,7 @@ impl CameraController {
                 self.velocity.normalized(),
                 (self.velocity * dt).magnitude(),
             )
-            .find(|(b, _)| {
-                if let Some(b) = get_block(world, b.x, b.y, b.z) {
-                    b.is_solid()
-                } else {
-                    false
-                }
-            })
+            .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, |b| b.is_solid()))
         }
         let mut would_collide = Ray::new(
             camera.position
@@ -331,13 +295,7 @@ impl CameraController {
             self.velocity.normalized(),
             (self.velocity * dt).magnitude(),
         )
-        .find(|(b, _)| {
-            if let Some(b) = get_block(world, b.x, b.y, b.z) {
-                b.is_solid()
-            } else {
-                false
-            }
-        });
+        .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, |b| b.is_solid()));
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 => self.velocity.x = 0.0,
@@ -365,13 +323,7 @@ impl CameraController {
                 self.velocity.normalized(),
                 (self.velocity * dt).magnitude(),
             )
-            .find(|(b, _)| {
-                if let Some(b) = get_block(world, b.x, b.y, b.z) {
-                    b.is_solid()
-                } else {
-                    false
-                }
-            })
+            .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, |b| b.is_solid()))
         }
         camera.position += self.velocity * dt;
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
