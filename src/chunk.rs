@@ -105,21 +105,21 @@ impl BlockType {
         }
     }
 
-    pub fn is_solid(self) -> bool {
-        !matches!(self, Self::Air | Self::Water) && !self.is_grasslike()
+    pub const fn is_solid(self) -> bool {
+        !(matches!(self, Self::Air | Self::Water) || self.is_grasslike())
     }
 
-    pub fn is_transparent(self) -> bool {
+    pub const fn is_transparent(self) -> bool {
         matches!(self, Self::Air | Self::Leaf | Self::BirchLeaf)
             || self.is_liquid()
             || self.is_grasslike()
     }
 
-    pub fn is_liquid(self) -> bool {
+    pub const fn is_liquid(self) -> bool {
         matches!(self, Self::Water)
     }
 
-    pub fn is_grasslike(self) -> bool {
+    pub const fn is_grasslike(self) -> bool {
         matches!(
             self,
             Self::Flower0 | Self::Flower1 | Self::Grass0 | Self::Grass1
