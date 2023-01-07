@@ -216,8 +216,8 @@ const TERRAIN_HEIGHT: f64 = 0.8;
 const BIOME_SCALE: f64 = 250.0;
 
 pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
-    let heightmap: Vec<Vec<i32>> = generate_heightmap(noise, chunk_location);
-    let biomemap: Vec<Vec<_>> = generate_biomemap(noise, chunk_location);
+    let heightmap = generate_heightmap(noise, chunk_location);
+    let biomemap = generate_biomemap(noise, chunk_location);
     let mut chunk_contents = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
     for x in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_HEIGHT {
