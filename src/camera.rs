@@ -90,6 +90,27 @@ pub struct Controller {
     velocity: Vec3<f32>,
 }
 
+const CORNER0: Vec3<f32> = Vec3 {
+    x: 0.3,
+    y: 1.5,
+    z: 0.3,
+};
+const CORNER1: Vec3<f32> = Vec3 {
+    x: 0.3,
+    y: 1.5,
+    z: -0.3,
+};
+const CORNER2: Vec3<f32> = Vec3 {
+    x: -0.3,
+    y: 1.5,
+    z: -0.3,
+};
+const CORNER3: Vec3<f32> = Vec3 {
+    x: -0.3,
+    y: 1.5,
+    z: 0.3,
+};
+
 impl Controller {
     pub fn new(speed: f32, sensitivity: f32) -> Self {
         Self {
@@ -164,17 +185,7 @@ impl Controller {
         self.velocity.y -= GRAVITY * dt;
         self.velocity.x -= (self.velocity.x) * dt;
         self.velocity.z -= (self.velocity.z) * dt;
-        let mut would_collide = find_collision(
-            self.velocity,
-            camera.position
-                - Vec3 {
-                    x: 0.3,
-                    y: 1.5,
-                    z: 0.3,
-                },
-            dt,
-            world,
-        );
+        let mut would_collide = find_collision(self.velocity, camera.position - CORNER0, dt, world);
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 | 1 => self.velocity.x = 0.0,
@@ -190,30 +201,9 @@ impl Controller {
                 }
                 _ => {}
             }
-            would_collide = find_collision(
-                self.velocity,
-                camera.position
-                    - Vec3 {
-                        x: 0.3,
-                        y: 1.5,
-                        z: 0.3,
-                    },
-                dt,
-                world,
-            )
+            would_collide = find_collision(self.velocity, camera.position - CORNER0, dt, world)
         }
-
-        let mut would_collide = find_collision(
-            self.velocity,
-            camera.position
-                - Vec3 {
-                    x: 0.3,
-                    y: 1.5,
-                    z: -0.3,
-                },
-            dt,
-            world,
-        );
+        let mut would_collide = find_collision(self.velocity, camera.position - CORNER1, dt, world);
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 | 1 => self.velocity.x = 0.0,
@@ -229,29 +219,9 @@ impl Controller {
                 }
                 _ => {}
             }
-            would_collide = find_collision(
-                self.velocity,
-                camera.position
-                    - Vec3 {
-                        x: 0.3,
-                        y: 1.5,
-                        z: -0.3,
-                    },
-                dt,
-                world,
-            );
+            would_collide = find_collision(self.velocity, camera.position - CORNER1, dt, world);
         }
-        let mut would_collide = find_collision(
-            self.velocity,
-            camera.position
-                - Vec3 {
-                    x: -0.3,
-                    y: 1.5,
-                    z: -0.3,
-                },
-            dt,
-            world,
-        );
+        let mut would_collide = find_collision(self.velocity, camera.position - CORNER2, dt, world);
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 | 1 => self.velocity.x = 0.0,
@@ -267,29 +237,9 @@ impl Controller {
                 }
                 _ => {}
             }
-            would_collide = find_collision(
-                self.velocity,
-                camera.position
-                    - Vec3 {
-                        x: -0.3,
-                        y: 1.5,
-                        z: -0.3,
-                    },
-                dt,
-                world,
-            );
+            would_collide = find_collision(self.velocity, camera.position - CORNER2, dt, world);
         }
-        let mut would_collide = find_collision(
-            self.velocity,
-            camera.position
-                - Vec3 {
-                    x: -0.3,
-                    y: 1.5,
-                    z: 0.3,
-                },
-            dt,
-            world,
-        );
+        let mut would_collide = find_collision(self.velocity, camera.position - CORNER3, dt, world);
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 | 1 => self.velocity.x = 0.0,
@@ -305,17 +255,7 @@ impl Controller {
                 }
                 _ => {}
             }
-            would_collide = find_collision(
-                self.velocity,
-                camera.position
-                    - Vec3 {
-                        x: -0.3,
-                        y: 1.5,
-                        z: 0.3,
-                    },
-                dt,
-                world,
-            );
+            would_collide = find_collision(self.velocity, camera.position - CORNER3, dt, world);
         }
         camera.position += self.velocity * dt;
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
