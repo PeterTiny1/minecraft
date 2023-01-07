@@ -347,6 +347,8 @@ const GRASS_INDICES: [u32; 24] = [
 ];
 const BIDIR_INDICES: [u32; 12] = [0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0];
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
+const TOP_LEFT_WATER: [f32; 2] = [TOP_LEFT[0], TOP_LEFT[1] + HALF_TEXTURE_WIDTH];
+const TOP_RIGHT_WATER: [f32; 2] = [TOP_RIGHT[0], TOP_RIGHT[1] + HALF_TEXTURE_WIDTH];
 
 pub fn generate_chunk_mesh(
     location: [i32; 2],
@@ -437,12 +439,10 @@ pub fn generate_chunk_mesh(
                         let tex_offset = tex_offsets[1];
                         indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as u32));
                         if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
-                            let top_left = [TOP_LEFT[0], TOP_LEFT[1] + HALF_TEXTURE_WIDTH];
-                            let top_right = [TOP_RIGHT[0], TOP_RIGHT[1] + HALF_TEXTURE_WIDTH];
                             vertices.append(&mut vec![
                                 Vertex(
                                     [rel_x, yplusoff, 1.0 + rel_z],
-                                    add_arrs(top_left, tex_offset),
+                                    add_arrs(TOP_LEFT_WATER, tex_offset),
                                     TOP_BRIGHTNESS,
                                 ),
                                 Vertex(
@@ -457,7 +457,7 @@ pub fn generate_chunk_mesh(
                                 ),
                                 Vertex(
                                     [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                                    add_arrs(top_right, tex_offset),
+                                    add_arrs(TOP_RIGHT_WATER, tex_offset),
                                     TOP_BRIGHTNESS,
                                 ),
                             ]);
@@ -498,12 +498,10 @@ pub fn generate_chunk_mesh(
                         let tex_offset = tex_offsets[2];
                         indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as u32));
                         if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
-                            let top_left = [TOP_LEFT[0], TOP_LEFT[1] + HALF_TEXTURE_WIDTH];
-                            let top_right = [TOP_RIGHT[0], TOP_RIGHT[1] + HALF_TEXTURE_WIDTH];
                             vertices.append(&mut vec![
                                 Vertex(
                                     [1.0 + rel_x, yplusoff, rel_z],
-                                    add_arrs(top_left, tex_offset),
+                                    add_arrs(TOP_LEFT_WATER, tex_offset),
                                     TOP_BRIGHTNESS,
                                 ),
                                 Vertex(
@@ -518,7 +516,7 @@ pub fn generate_chunk_mesh(
                                 ),
                                 Vertex(
                                     [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                                    add_arrs(top_right, tex_offset),
+                                    add_arrs(TOP_RIGHT_WATER, tex_offset),
                                     TOP_BRIGHTNESS,
                                 ),
                             ]);
@@ -560,12 +558,10 @@ pub fn generate_chunk_mesh(
                         let tex_offset = tex_offsets[1];
                         indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as u32));
                         if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
-                            let top_left = [TOP_LEFT[0], TOP_LEFT[1] + HALF_TEXTURE_WIDTH];
-                            let top_right = [TOP_RIGHT[0], TOP_RIGHT[1] + HALF_TEXTURE_WIDTH];
                             vertices.append(&mut vec![
                                 Vertex(
                                     [rel_x, yplusoff, rel_z],
-                                    add_arrs(top_left, tex_offset),
+                                    add_arrs(TOP_LEFT_WATER, tex_offset),
                                     TOP_BRIGHTNESS,
                                 ),
                                 Vertex(
@@ -580,7 +576,7 @@ pub fn generate_chunk_mesh(
                                 ),
                                 Vertex(
                                     [1.0 + rel_x, yplusoff, rel_z],
-                                    add_arrs(top_right, tex_offset),
+                                    add_arrs(TOP_RIGHT_WATER, tex_offset),
                                     TOP_BRIGHTNESS,
                                 ),
                             ]);
