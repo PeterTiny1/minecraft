@@ -121,21 +121,7 @@ impl Texture {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         });
 
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &rgba,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(4 * dimensions.0),
-                rows_per_image: std::num::NonZeroU32::new(dimensions.1),
-            },
-            size,
-        );
+        write_texture(queue, &texture, rgba, dimensions, size, 0);
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -199,65 +185,30 @@ impl Texture {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         });
 
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &rgba,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(4 * dimensions.0),
-                rows_per_image: std::num::NonZeroU32::new(dimensions.1),
-            },
-            size,
-        );
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 1,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &rgba1,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(4 * dimensions.0 / 2),
-                rows_per_image: std::num::NonZeroU32::new(dimensions.1 / 2),
-            },
+        write_texture(queue, &texture, rgba, dimensions, size, 0);
+        write_texture(
+            queue,
+            &texture,
+            rgba1,
+            (dimensions.0 / 2, dimensions.1 / 2),
             size1,
+            1,
         );
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 2,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &rgba2,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(4 * dimensions.0 / 4),
-                rows_per_image: std::num::NonZeroU32::new(dimensions.1 / 4),
-            },
+        write_texture(
+            queue,
+            &texture,
+            rgba2,
+            (dimensions.0 / 4, dimensions.1 / 4),
             size2,
+            2,
         );
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &texture,
-                mip_level: 3,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &rgba3,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(4 * dimensions.0 / 8),
-                rows_per_image: std::num::NonZeroU32::new(dimensions.1 / 8),
-            },
+        write_texture(
+            queue,
+            &texture,
+            rgba3,
+            (dimensions.0 / 8, dimensions.1 / 8),
             size3,
+            3,
         );
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -277,4 +228,29 @@ impl Texture {
             sampler,
         }
     }
+}
+
+fn write_texture(
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    rgba: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    dimensions: (u32, u32),
+    size: wgpu::Extent3d,
+    mip_level: u32,
+) {
+    queue.write_texture(
+        wgpu::ImageCopyTexture {
+            texture,
+            mip_level,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &rgba,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: std::num::NonZeroU32::new(4 * dimensions.0),
+            rows_per_image: std::num::NonZeroU32::new(dimensions.1),
+        },
+        size,
+    );
 }
