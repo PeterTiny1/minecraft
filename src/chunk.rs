@@ -216,7 +216,32 @@ const TERRAIN_HEIGHT: f64 = 0.8;
 const BIOME_SCALE: f64 = 250.0;
 
 pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
-    let heightmap: Vec<Vec<i32>> = (0..CHUNK_WIDTH)
+    let heightmap: Vec<Vec<i32>> = generate_heightmap(noise, chunk_location);
+    let biomemap: Vec<Vec<_>> = generate_biomemap(noise, chunk_location);
+    let mut chunk_contents = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+    for x in 0..CHUNK_WIDTH {
+        for y in 0..CHUNK_HEIGHT {
+            for z in 0..CHUNK_DEPTH {
+                let biome = biomemap[x][z] > 0.2;
+                chunk_contents[x][y][z] = determine_type(&heightmap, x, y, z, biome, noise);
+            }
+        }
+    }
+    chunk_contents
+}
+
+fn generate_biomemap(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Vec<Vec<f64>> {
+    (0..CHUNK_WIDTH)
+        .map(|x| {
+            (0..CHUNK_DEPTH)
+                .map(|z| noise_at(noise, x as i32, z as i32, chunk_location, BIOME_SCALE, 18.9))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn generate_heightmap(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Vec<Vec<i32>> {
+    (0..CHUNK_WIDTH)
         .map(|x| {
             (0..CHUNK_DEPTH)
                 .map(|z| {
@@ -230,74 +255,68 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
                 })
                 .collect::<Vec<i32>>()
         })
-        .collect();
-    let biomemap: Vec<Vec<_>> = (0..CHUNK_WIDTH)
-        .map(|x| {
-            (0..CHUNK_DEPTH)
-                .map(|z| noise_at(noise, x as i32, z as i32, chunk_location, BIOME_SCALE, 18.9))
-                .collect::<Vec<_>>()
-        })
-        .collect();
-    let mut chunk_contents = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
-    for x in 0..CHUNK_WIDTH {
-        for y in 0..CHUNK_HEIGHT {
-            for z in 0..CHUNK_DEPTH {
-                let y_i32 = y as i32;
-                let biome = biomemap[x][z] > 0.2;
-                chunk_contents[x][y][z] = if y_i32 < heightmap[x][z] {
-                    BlockType::Stone
-                } else if y_i32 == heightmap[x][z] {
-                    if heightmap[x][z] + 1 > WATER_HEIGHT as i32 {
-                        if biome {
-                            BlockType::GrassBlock1
-                        } else {
-                            BlockType::GrassBlock0
-                        }
-                    } else {
-                        BlockType::Sand
-                    }
-                } else if y < WATER_HEIGHT {
-                    BlockType::Water
-                } else if y_i32 > heightmap[x][z]
-                    && y_i32 <= heightmap[x][z] + 5
-                    && heightmap[x][z] >= WATER_HEIGHT as i32
-                {
-                    if noise.get([x as f64, f64::from(heightmap[x][z]), z as f64]) > 0.4 {
-                        if y_i32 == heightmap[x][z] + 5 {
-                            if biome {
-                                BlockType::Leaf
-                            } else {
-                                BlockType::BirchLeaf
-                            }
-                        } else if biome {
-                            BlockType::Wood
-                        } else {
-                            BlockType::BirchWood
-                        }
-                    } else if y_i32 == heightmap[x][z] + 1
-                        && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
-                    {
-                        if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
-                            if biome {
-                                BlockType::Flower1
-                            } else {
-                                BlockType::Flower0
-                            }
-                        } else if biome {
-                            BlockType::Grass1
-                        } else {
-                            BlockType::Grass0
-                        }
-                    } else {
-                        BlockType::Air
-                    }
-                } else {
-                    BlockType::Air
-                };
+        .collect()
+}
+
+fn determine_type(
+    heightmap: &Vec<Vec<i32>>,
+    x: usize,
+    y: usize,
+    z: usize,
+    biome: bool,
+    noise: &OpenSimplex,
+) -> BlockType {
+    let y_i32 = y as i32;
+    if y_i32 < heightmap[x][z] {
+        BlockType::Stone
+    } else if y_i32 == heightmap[x][z] {
+        if heightmap[x][z] + 1 > WATER_HEIGHT as i32 {
+            if biome {
+                BlockType::GrassBlock1
+            } else {
+                BlockType::GrassBlock0
             }
+        } else {
+            BlockType::Sand
         }
+    } else if y < WATER_HEIGHT {
+        BlockType::Water
+    } else if y_i32 > heightmap[x][z]
+        && y_i32 <= heightmap[x][z] + 5
+        && heightmap[x][z] >= WATER_HEIGHT as i32
+    {
+        if noise.get([x as f64, f64::from(heightmap[x][z]), z as f64]) > 0.4 {
+            if y_i32 == heightmap[x][z] + 5 {
+                if biome {
+                    BlockType::Leaf
+                } else {
+                    BlockType::BirchLeaf
+                }
+            } else if biome {
+                BlockType::Wood
+            } else {
+                BlockType::BirchWood
+            }
+        } else if y_i32 == heightmap[x][z] + 1
+            && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
+        {
+            if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
+                if biome {
+                    BlockType::Flower1
+                } else {
+                    BlockType::Flower0
+                }
+            } else if biome {
+                BlockType::Grass1
+            } else {
+                BlockType::Grass0
+            }
+        } else {
+            BlockType::Air
+        }
+    } else {
+        BlockType::Air
     }
-    chunk_contents
 }
 
 const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
