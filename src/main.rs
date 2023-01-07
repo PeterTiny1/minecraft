@@ -129,7 +129,7 @@ struct State {
     diffuse_bind_group: wgpu::BindGroup,
     camera: camera::Camera,
     projection: camera::Projection,
-    camera_controller: camera::CameraController,
+    camera_controller: camera::Controller,
     uniforms: Uniforms,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
@@ -311,7 +311,7 @@ impl State {
             0.05,
             MAX_DEPTH,
         );
-        let camera_controller = camera::CameraController::new(4.0, 0.05);
+        let camera_controller = camera::Controller::new(4.0, 0.05);
         let mut uniforms = Uniforms::new();
         uniforms.update_view_proj(&camera, &projection);
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
