@@ -259,7 +259,7 @@ fn generate_heightmap(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Vec<Vec<
 }
 
 fn determine_type(
-    heightmap: &Vec<Vec<i32>>,
+    heightmap: &[Vec<i32>],
     x: usize,
     y: usize,
     z: usize,

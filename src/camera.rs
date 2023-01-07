@@ -164,17 +164,17 @@ impl Controller {
         self.velocity.y -= GRAVITY * dt;
         self.velocity.x -= (self.velocity.x) * dt;
         self.velocity.z -= (self.velocity.z) * dt;
-        let mut would_collide = Ray::new(
+        let mut would_collide = find_collision(
+            self.velocity,
             camera.position
                 - Vec3 {
                     x: 0.3,
                     y: 1.5,
                     z: 0.3,
                 },
-            self.velocity.normalized(),
-            (self.velocity * dt).magnitude(),
-        )
-        .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, BlockType::is_solid));
+            dt,
+            world,
+        );
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 | 1 => self.velocity.x = 0.0,
@@ -190,30 +190,30 @@ impl Controller {
                 }
                 _ => {}
             }
-            would_collide = Ray::new(
+            would_collide = find_collision(
+                self.velocity,
                 camera.position
                     - Vec3 {
                         x: 0.3,
                         y: 1.5,
                         z: 0.3,
                     },
-                self.velocity.normalized(),
-                (self.velocity * dt).magnitude(),
+                dt,
+                world,
             )
-            .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, BlockType::is_solid));
         }
 
-        let mut would_collide = Ray::new(
+        let mut would_collide = find_collision(
+            self.velocity,
             camera.position
                 - Vec3 {
                     x: 0.3,
                     y: 1.5,
                     z: -0.3,
                 },
-            self.velocity.normalized(),
-            (self.velocity * dt).magnitude(),
-        )
-        .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, BlockType::is_solid));
+            dt,
+            world,
+        );
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 | 1 => self.velocity.x = 0.0,
@@ -229,29 +229,29 @@ impl Controller {
                 }
                 _ => {}
             }
-            would_collide = Ray::new(
+            would_collide = find_collision(
+                self.velocity,
                 camera.position
                     - Vec3 {
                         x: 0.3,
                         y: 1.5,
                         z: -0.3,
                     },
-                self.velocity.normalized(),
-                (self.velocity * dt).magnitude(),
-            )
-            .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, BlockType::is_solid));
+                dt,
+                world,
+            );
         }
-        let mut would_collide = Ray::new(
+        let mut would_collide = find_collision(
+            self.velocity,
             camera.position
                 - Vec3 {
                     x: -0.3,
                     y: 1.5,
                     z: -0.3,
                 },
-            self.velocity.normalized(),
-            (self.velocity * dt).magnitude(),
-        )
-        .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, BlockType::is_solid));
+            dt,
+            world,
+        );
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 | 1 => self.velocity.x = 0.0,
@@ -267,29 +267,29 @@ impl Controller {
                 }
                 _ => {}
             }
-            would_collide = Ray::new(
+            would_collide = find_collision(
+                self.velocity,
                 camera.position
                     - Vec3 {
                         x: -0.3,
                         y: 1.5,
                         z: -0.3,
                     },
-                self.velocity.normalized(),
-                (self.velocity * dt).magnitude(),
-            )
-            .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, BlockType::is_solid));
+                dt,
+                world,
+            );
         }
-        let mut would_collide = Ray::new(
+        let mut would_collide = find_collision(
+            self.velocity,
             camera.position
                 - Vec3 {
                     x: -0.3,
                     y: 1.5,
                     z: 0.3,
                 },
-            self.velocity.normalized(),
-            (self.velocity * dt).magnitude(),
-        )
-        .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, BlockType::is_solid));
+            dt,
+            world,
+        );
         while let Some(collision) = would_collide {
             match collision.1 {
                 0 | 1 => self.velocity.x = 0.0,
@@ -305,17 +305,17 @@ impl Controller {
                 }
                 _ => {}
             }
-            would_collide = Ray::new(
+            would_collide = find_collision(
+                self.velocity,
                 camera.position
                     - Vec3 {
                         x: -0.3,
                         y: 1.5,
                         z: 0.3,
                     },
-                self.velocity.normalized(),
-                (self.velocity * dt).magnitude(),
-            )
-            .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, BlockType::is_solid));
+                dt,
+                world,
+            );
         }
         camera.position += self.velocity * dt;
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
@@ -344,4 +344,14 @@ impl Controller {
 
         camera.quaternion = to_quaternion(-camera.yaw, camera.pitch).normalized();
     }
+}
+
+fn find_collision(
+    velocity: Vec3<f32>,
+    origin: Vec3<f32>,
+    dt: f32,
+    world: &HashMap<[i32; 2], ChunkData>,
+) -> Option<(Vec3<i32>, usize)> {
+    Ray::new(origin, velocity.normalized(), (velocity * dt).magnitude())
+        .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, BlockType::is_solid))
 }
