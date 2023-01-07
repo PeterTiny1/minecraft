@@ -18,10 +18,6 @@ pub const CHUNK_DEPTH: usize = 32;
 const TEXTURE_WIDTH: f32 = 1.0 / 16.0;
 const HALF_TEXTURE_WIDTH: f32 = TEXTURE_WIDTH / 2.0;
 
-const TOP_LEFT: [f32; 2] = [0.0, 0.0];
-const TOP_RIGHT: [f32; 2] = [TEXTURE_WIDTH, 0.0];
-const BOTTOM_LEFT: [f32; 2] = [0.0, TEXTURE_WIDTH];
-const BOTTOM_RIGHT: [f32; 2] = [TEXTURE_WIDTH, TEXTURE_WIDTH];
 type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 
 // enum Biome {
@@ -304,8 +300,13 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
     }
     chunk_contents
 }
+
 const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
 const FAR_CORNER: f32 = 0.5 - 0.5 * FRAC_1_SQRT_2;
+const TOP_LEFT: [f32; 2] = [0.0, 0.0];
+const TOP_RIGHT: [f32; 2] = [TEXTURE_WIDTH, 0.0];
+const BOTTOM_LEFT: [f32; 2] = [0.0, TEXTURE_WIDTH];
+const BOTTOM_RIGHT: [f32; 2] = [TEXTURE_WIDTH, TEXTURE_WIDTH];
 
 fn create_grass_face(
     tex_offset: [f32; 2],
@@ -349,6 +350,7 @@ const BIDIR_INDICES: [u32; 12] = [0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0];
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
 const TOP_LEFT_WATER: [f32; 2] = [TOP_LEFT[0], TOP_LEFT[1] + HALF_TEXTURE_WIDTH];
 const TOP_RIGHT_WATER: [f32; 2] = [TOP_RIGHT[0], TOP_RIGHT[1] + HALF_TEXTURE_WIDTH];
+const AO_BRIGHTNESS: f32 = 0.5;
 
 pub fn generate_chunk_mesh(
     location: [i32; 2],
@@ -633,7 +635,7 @@ pub fn generate_chunk_mesh(
                                         && z != CHUNK_DEPTH - 1
                                         && !chunk[x - 1][y][z + 1].is_transparent())
                                 {
-                                    0.5
+                                    AO_BRIGHTNESS
                                 } else {
                                     FRONT_BRIGHTNESS
                                 },
@@ -649,7 +651,7 @@ pub fn generate_chunk_mesh(
                                                 !chunk.contents[x][y - 1][0].is_transparent()
                                             })))
                                 {
-                                    0.5
+                                    AO_BRIGHTNESS
                                 } else {
                                     FRONT_BRIGHTNESS
                                 },
@@ -665,7 +667,7 @@ pub fn generate_chunk_mesh(
                                                 !chunk.contents[x][y - 1][0].is_transparent()
                                             })))
                                 {
-                                    0.5
+                                    AO_BRIGHTNESS
                                 } else {
                                     FRONT_BRIGHTNESS
                                 },
@@ -682,7 +684,7 @@ pub fn generate_chunk_mesh(
                                         && z != CHUNK_DEPTH - 1
                                         && !chunk[x + 1][y][z + 1].is_transparent())
                                 {
-                                    0.5
+                                    AO_BRIGHTNESS
                                 } else {
                                     FRONT_BRIGHTNESS
                                 },
@@ -711,7 +713,7 @@ pub fn generate_chunk_mesh(
                                         && z != CHUNK_WIDTH - 1
                                         && !chunk[x + 1][y][z + 1].is_transparent())
                                 {
-                                    0.5
+                                    AO_BRIGHTNESS
                                 } else {
                                     SIDE_BRIGHTNESS
                                 },
@@ -723,7 +725,7 @@ pub fn generate_chunk_mesh(
                                     && x != CHUNK_WIDTH - 1
                                     && !chunk[x + 1][y - 1][z].is_transparent()
                                 {
-                                    0.5
+                                    AO_BRIGHTNESS
                                 } else {
                                     SIDE_BRIGHTNESS
                                 },
@@ -735,7 +737,7 @@ pub fn generate_chunk_mesh(
                                     && x != CHUNK_WIDTH - 1
                                     && !chunk[x + 1][y - 1][z].is_transparent()
                                 {
-                                    0.5
+                                    AO_BRIGHTNESS
                                 } else {
                                     SIDE_BRIGHTNESS
                                 },
@@ -751,7 +753,7 @@ pub fn generate_chunk_mesh(
                                         && z != 0
                                         && !chunk[x + 1][y][z - 1].is_transparent())
                                 {
-                                    0.5
+                                    AO_BRIGHTNESS
                                 } else {
                                     SIDE_BRIGHTNESS
                                 },
@@ -777,7 +779,7 @@ pub fn generate_chunk_mesh(
                                 [1.0 + rel_x, y_f32, rel_z],
                                 add_arrs(BOTTOM_LEFT, tex_offset),
                                 if y != 0 && z != 0 && !chunk[x][y - 1][z - 1].is_transparent() {
-                                    0.5
+                                    AO_BRIGHTNESS
                                 } else {
                                     BACK_BRIGHTNESS
                                 },
@@ -786,7 +788,7 @@ pub fn generate_chunk_mesh(
                                 [rel_x, y_f32, rel_z],
                                 add_arrs(BOTTOM_RIGHT, tex_offset),
                                 if y != 0 && z != 0 && !chunk[x][y - 1][z - 1].is_transparent() {
-                                    0.5
+                                    AO_BRIGHTNESS
                                 } else {
                                     BACK_BRIGHTNESS
                                 },
@@ -894,7 +896,7 @@ pub fn generate_chunk_mesh(
                                             }))
                                         || (z != 0 && !chunk[x][y + 1][z - 1].is_transparent())
                                     {
-                                        0.5
+                                        AO_BRIGHTNESS
                                     } else {
                                         TOP_BRIGHTNESS
                                     },
@@ -933,7 +935,7 @@ pub fn generate_chunk_mesh(
                                             && y != CHUNK_HEIGHT - 1
                                             && !chunk[x][y + 1][z + 1].is_transparent())
                                     {
-                                        0.5
+                                        AO_BRIGHTNESS
                                     } else {
                                         TOP_BRIGHTNESS
                                     },
@@ -970,7 +972,7 @@ pub fn generate_chunk_mesh(
                                             && y != CHUNK_HEIGHT - 1
                                             && !chunk[x][y + 1][z + 1].is_transparent())
                                     {
-                                        0.5
+                                        AO_BRIGHTNESS
                                     } else {
                                         TOP_BRIGHTNESS
                                     },
@@ -1005,7 +1007,7 @@ pub fn generate_chunk_mesh(
                                             && y != CHUNK_HEIGHT - 1
                                             && !chunk[x][y + 1][z - 1].is_transparent())
                                     {
-                                        0.5
+                                        AO_BRIGHTNESS
                                     } else {
                                         TOP_BRIGHTNESS
                                     },
