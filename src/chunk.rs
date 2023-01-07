@@ -187,21 +187,20 @@ pub fn get_nearest_chunk_location(
     let chunk_x = (x as i32).div_euclid(CHUNK_WIDTH as i32);
     let chunk_z = (z as i32).div_euclid(CHUNK_WIDTH as i32);
     let length = |a, b| (a * a + b * b);
-    let mut collector: Option<[i32; 2]> = None;
-    for i in -MAX_DISTANCE_X..=MAX_DISTANCE_X {
-        for j in -MAX_DISTANCE_Y..=MAX_DISTANCE_Y {
-            let distance = length(i, j);
-            if distance <= MAX_DEPTH as i32
-                && ((collector.is_some()
-                    && distance < length(collector.unwrap()[0], collector.unwrap()[1]))
-                    || collector.is_none())
-                && !generated_chunks.contains_key(&[i + chunk_x, j + chunk_z])
-            {
-                collector = Some([i, j]);
-            }
-        }
-    }
-    collector.map(|value: [i32; 2]| [value[0] + chunk_x, value[1] + chunk_z])
+    (-MAX_DISTANCE_X..=MAX_DISTANCE_X)
+        .flat_map(|i| {
+            (-MAX_DISTANCE_Y..=MAX_DISTANCE_Y).filter_map(move |j| {
+                let distance = length(i, j);
+                let location = [i + chunk_x, j + chunk_z];
+                if distance <= MAX_DEPTH as i32 && !generated_chunks.contains_key(&location) {
+                    Some((location, distance))
+                } else {
+                    None
+                }
+            })
+        })
+        .reduce(|acc, v| if acc.1 > v.1 { v } else { acc })
+        .map(|(loc, _)| loc)
 }
 
 #[inline]
