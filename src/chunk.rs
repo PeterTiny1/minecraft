@@ -20,13 +20,14 @@ const HALF_TEXTURE_WIDTH: f32 = TEXTURE_WIDTH / 2.0;
 
 type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 
-// enum Biome {
-//     BirchFalls,
-//     GreenGrove,
-//     DarklogForest,
-//     PineHills,
-//     SnowDesert,
-// }
+#[derive(Clone, Copy)]
+enum Biome {
+    BirchFalls,
+    GreenGrove,
+    DarklogForest,
+    // PineHills,
+    // SnowDesert,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BlockType {
@@ -34,12 +35,17 @@ pub enum BlockType {
     Stone,
     GrassBlock0,
     GrassBlock1,
+    GrassBlock2,
     Grass0,
     Grass1,
+    Grass2,
     Flower0,
     Flower1,
+    Flower2,
     Wood,
     BirchWood,
+    DarkWood,
+    DarkLeaf,
     Leaf,
     BirchLeaf,
     Water,
@@ -66,6 +72,14 @@ impl BlockType {
                 [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
                 [0., 0.],
             ],
+            Self::GrassBlock2 => [
+                [0., TEXTURE_WIDTH * 3.],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH * 3.],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH * 3.],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH * 3.],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH * 3.],
+                [0., 0.],
+            ],
             Self::BirchWood => [
                 [TEXTURE_WIDTH * 7., TEXTURE_WIDTH],
                 [TEXTURE_WIDTH * 6., TEXTURE_WIDTH],
@@ -82,12 +96,23 @@ impl BlockType {
                 [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 2.],
                 [TEXTURE_WIDTH * 7., TEXTURE_WIDTH * 2.],
             ],
-            Self::Leaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH * 2.]; 6],
+            Self::DarkWood => [
+                [TEXTURE_WIDTH * 7., TEXTURE_WIDTH * 3.],
+                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 3.],
+                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 3.],
+                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 3.],
+                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 3.],
+                [TEXTURE_WIDTH * 7., TEXTURE_WIDTH * 3.],
+            ],
             Self::BirchLeaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH]; 6],
+            Self::Leaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH * 2.]; 6],
+            Self::DarkLeaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH * 3.]; 6],
             Self::Grass0 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH]; 6],
             Self::Grass1 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH * 2.]; 6],
+            Self::Grass2 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH * 3.]; 6],
             Self::Flower0 => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH]; 6],
             Self::Flower1 => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH * 2.]; 6],
+            Self::Flower2 => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH * 3.]; 6],
             Self::Water => [
                 [TEXTURE_WIDTH * 4., 0.],
                 [TEXTURE_WIDTH * 5., 0.],
@@ -106,8 +131,10 @@ impl BlockType {
     }
 
     pub const fn is_transparent(self) -> bool {
-        matches!(self, Self::Air | Self::Leaf | Self::BirchLeaf)
-            || self.is_liquid()
+        matches!(
+            self,
+            Self::Air | Self::Leaf | Self::BirchLeaf | Self::DarkLeaf
+        ) || self.is_liquid()
             || self.is_grasslike()
     }
 
@@ -118,7 +145,12 @@ impl BlockType {
     pub const fn is_grasslike(self) -> bool {
         matches!(
             self,
-            Self::Flower0 | Self::Flower1 | Self::Grass0 | Self::Grass1
+            Self::Flower0
+                | Self::Flower1
+                | Self::Flower2
+                | Self::Grass0
+                | Self::Grass1
+                | Self::Grass2
         )
     }
 }
@@ -222,7 +254,7 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
     for x in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH {
-                let biome = biomemap[x][z] > 0.2;
+                let biome = biomemap[x][z];
                 chunk_contents[x][y][z] = determine_type(&heightmap, x, y, z, biome, noise);
             }
         }
@@ -230,11 +262,20 @@ pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
     chunk_contents
 }
 
-fn generate_biomemap(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Vec<Vec<f64>> {
+fn generate_biomemap(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Vec<Vec<Biome>> {
     (0..CHUNK_WIDTH)
         .map(|x| {
             (0..CHUNK_DEPTH)
-                .map(|z| noise_at(noise, x as i32, z as i32, chunk_location, BIOME_SCALE, 18.9))
+                .map(|z| {
+                    let v = noise_at(noise, x as i32, z as i32, chunk_location, BIOME_SCALE, 18.9);
+                    if v > 0.2 {
+                        Biome::DarklogForest
+                    } else if v > 0.0 {
+                        Biome::GreenGrove
+                    } else {
+                        Biome::BirchFalls
+                    }
+                })
                 .collect::<Vec<_>>()
         })
         .collect()
@@ -263,7 +304,7 @@ fn determine_type(
     x: usize,
     y: usize,
     z: usize,
-    biome: bool,
+    biome: Biome,
     noise: &OpenSimplex,
 ) -> BlockType {
     let y_i32 = y as i32;
@@ -271,10 +312,10 @@ fn determine_type(
         BlockType::Stone
     } else if y_i32 == heightmap[x][z] {
         if heightmap[x][z] + 1 > WATER_HEIGHT as i32 {
-            if biome {
-                BlockType::GrassBlock1
-            } else {
-                BlockType::GrassBlock0
+            match biome {
+                Biome::BirchFalls => BlockType::GrassBlock0,
+                Biome::GreenGrove => BlockType::GrassBlock1,
+                Biome::DarklogForest => BlockType::GrassBlock2,
             }
         } else {
             BlockType::Sand
@@ -287,29 +328,33 @@ fn determine_type(
     {
         if noise.get([x as f64, f64::from(heightmap[x][z]), z as f64]) > 0.4 {
             if y_i32 == heightmap[x][z] + 5 {
-                if biome {
-                    BlockType::Leaf
-                } else {
-                    BlockType::BirchLeaf
+                match biome {
+                    Biome::BirchFalls => BlockType::BirchLeaf,
+                    Biome::GreenGrove => BlockType::Leaf,
+                    Biome::DarklogForest => BlockType::DarkLeaf,
                 }
-            } else if biome {
-                BlockType::Wood
             } else {
-                BlockType::BirchWood
+                match biome {
+                    Biome::BirchFalls => BlockType::BirchWood,
+                    Biome::GreenGrove => BlockType::Wood,
+                    Biome::DarklogForest => BlockType::DarkWood,
+                }
             }
         } else if y_i32 == heightmap[x][z] + 1
             && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
         {
             if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
-                if biome {
-                    BlockType::Flower1
-                } else {
-                    BlockType::Flower0
+                match biome {
+                    Biome::BirchFalls => BlockType::Flower0,
+                    Biome::GreenGrove => BlockType::Flower1,
+                    Biome::DarklogForest => BlockType::Flower2,
                 }
-            } else if biome {
-                BlockType::Grass1
             } else {
-                BlockType::Grass0
+                match biome {
+                    Biome::BirchFalls => BlockType::Grass0,
+                    Biome::GreenGrove => BlockType::Grass1,
+                    Biome::DarklogForest => BlockType::Grass2,
+                }
             }
         } else {
             BlockType::Air
