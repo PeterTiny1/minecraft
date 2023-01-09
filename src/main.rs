@@ -12,12 +12,12 @@ use sdl2::{
     video::{FullscreenType, Window},
 };
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     env,
     fs::File,
     io::Write,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{mpsc, Arc, Mutex},
     thread,
     time::Instant,
     vec,
@@ -140,7 +140,7 @@ struct State {
     depth_texture: texture::Texture,
     generated_chunkdata: Arc<Mutex<HashMap<[i32; 2], chunk::ChunkData>>>,
     generated_chunk_buffers: HashMap<[i32; 2], ChunkBuffers>,
-    generating_chunks: Arc<Mutex<VecDeque<[i32; 2]>>>,
+    tx: mpsc::SyncSender<[i32; 2]>,
     returned_buffers: Arc<Mutex<Vec<(Vec<Vertex>, Vec<u32>, [i32; 2])>>>,
     noise: noise::OpenSimplex,
     ui_pipeline: wgpu::RenderPipeline,
@@ -441,18 +441,16 @@ impl State {
                 num_indices: chunk_indices.len() as u32,
             },
         )]);
-        let generating_chunks: Arc<std::sync::Mutex<VecDeque<[i32; 2]>>> =
-            Arc::new(Mutex::new(VecDeque::new()));
         let returned_buffers = Arc::new(Mutex::new(vec![]));
-        let thread_arc = Arc::clone(&generating_chunks);
+        let (tx, rx) = mpsc::sync_channel(10);
         let chunkdata_arc = Arc::clone(&generated_chunkdata);
         let returning_arc = Arc::clone(&returned_buffers);
         // Chunk generator thread
         thread::spawn(move || loop {
-            if let Some(chunk_location) = thread_arc.lock().unwrap().pop_front() {
+            if let Ok(chunk_location) = rx.recv() {
                 let generated_chunkdata = chunkdata_arc.lock().unwrap();
                 let chunk_contents = generated_chunkdata[&chunk_location].contents;
-                let [x, y] = chunk_location;
+                let [x, y]: [i32; 2] = chunk_location;
                 let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
                 let (mesh, index_buffer) = generate_chunk_mesh(
                     chunk_location,
@@ -532,7 +530,7 @@ impl State {
             depth_texture,
             generated_chunkdata,
             generated_chunk_buffers,
-            generating_chunks,
+            tx,
             returned_buffers,
             noise,
             last_break: Instant::now(),
@@ -600,7 +598,6 @@ impl State {
             self.camera.position.z,
             &generated_chunkdata,
         );
-        let mut generating_chunks = self.generating_chunks.lock().unwrap();
         if let Some(chunk_location) = chunk_location {
             if let std::collections::hash_map::Entry::Vacant(e) =
                 generated_chunkdata.entry(chunk_location)
@@ -616,7 +613,7 @@ impl State {
                 e.insert(ChunkData {
                     contents: chunk_contents,
                 });
-                generating_chunks.push_back(chunk_location);
+                self.tx.send(chunk_location).unwrap();
             }
         }
         if let Some((location, previous_step)) = self.camera_controller.looking_at_block {
@@ -640,9 +637,7 @@ impl State {
                         .unwrap()
                         .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
                         [location.z as usize % CHUNK_DEPTH] = BlockType::Stone;
-                    if !generating_chunks.contains(&[chunk_x, chunk_z]) {
-                        generating_chunks.push_back([chunk_x, chunk_z]);
-                    }
+                    self.tx.send([chunk_x, chunk_z]).unwrap();
                 }
             } else if self.left_pressed && (now - self.last_break).as_millis() > 250 {
                 self.last_break = Instant::now();
@@ -653,9 +648,7 @@ impl State {
                     .unwrap()
                     .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
                     [location.z as usize % CHUNK_DEPTH] = BlockType::Air;
-                if !generating_chunks.contains(&[chunk_x, chunk_z]) {
-                    generating_chunks.push_back([chunk_x, chunk_z]);
-                }
+                self.tx.send([chunk_x, chunk_z]).unwrap();
             }
         }
         let mut data = self.returned_buffers.lock().unwrap();
