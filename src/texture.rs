@@ -1,5 +1,4 @@
 use image::{GenericImageView, ImageBuffer, ImageError, Rgba};
-use itertools::izip;
 
 pub struct Texture {
     pub texture: wgpu::Texture,
@@ -7,22 +6,39 @@ pub struct Texture {
     pub sampler: wgpu::Sampler,
 }
 
+fn downsample(pixels: [&Rgba<u8>; 4]) -> Rgba<u8> {
+    let total = pixels.map(|p| p.0[3] as u16).iter().sum::<u16>();
+    if total == 0 {
+        Rgba([0, 0, 0, 0])
+    } else {
+        Rgba({
+            let mut d = pixels
+                .map(|v| {
+                    let alpha = v.0[3] as u16;
+                    [
+                        (v.0[0] as u16 * alpha / total) as u8,
+                        (v.0[1] as u16 * alpha / total) as u8,
+                        (v.0[2] as u16 * alpha / total) as u8,
+                        0,
+                    ]
+                })
+                .into_iter()
+                .reduce(|acc, v| [acc[0] + v[0], acc[1] + v[1], acc[2] + v[2], 0])
+                .unwrap();
+            d[3] = (total / 4) as u8;
+            d
+        })
+    }
+}
+
 fn downscale(texture: ImageBuffer<Rgba<u8>, Vec<u8>>) -> impl Fn(u32, u32) -> Rgba<u8> {
     move |x, y| {
-        Rgba(
-            izip!(
-                texture.get_pixel(x * 2, y * 2).0,
-                texture.get_pixel(x * 2 + 1, y * 2).0,
-                texture.get_pixel(x * 2, y * 2 + 1).0,
-                texture.get_pixel(x * 2 + 1, y * 2 + 1).0
-            )
-            .map(|i| {
-                ((u16::from(i.0) + u16::from(i.1) + u16::from(i.2) + u16::from(i.3)) / 4) as u8
-            })
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap(),
-        )
+        downsample([
+            texture.get_pixel(x * 2, y * 2),
+            texture.get_pixel(x * 2 + 1, y * 2),
+            texture.get_pixel(x * 2, y * 2 + 1),
+            texture.get_pixel(x * 2 + 1, y * 2 + 1),
+        ])
     }
 }
 
