@@ -20,7 +20,6 @@ use std::{
     sync::{mpsc, Arc, Mutex},
     thread,
     time::Instant,
-    vec,
 };
 
 use chunk::{generate_chunk, generate_chunk_mesh, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_WIDTH};
@@ -140,8 +139,8 @@ struct State {
     depth_texture: texture::Texture,
     generated_chunkdata: Arc<Mutex<HashMap<[i32; 2], chunk::ChunkData>>>,
     generated_chunk_buffers: HashMap<[i32; 2], ChunkBuffers>,
-    tx: mpsc::SyncSender<[i32; 2]>,
-    returned_buffers: Arc<Mutex<Vec<(Vec<Vertex>, Vec<u32>, [i32; 2])>>>,
+    send_generate: mpsc::SyncSender<[i32; 2]>,
+    recv_chunk: mpsc::Receiver<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
     noise: noise::OpenSimplex,
     ui_pipeline: wgpu::RenderPipeline,
     crosshair: (wgpu::Buffer, wgpu::Buffer),
@@ -441,13 +440,14 @@ impl State {
                 num_indices: chunk_indices.len() as u32,
             },
         )]);
-        let returned_buffers = Arc::new(Mutex::new(vec![]));
-        let (tx, rx) = mpsc::sync_channel(10);
+        // let returned_buffers = Arc::new(Mutex::new(vec![]));
+        let (send_generate, recv_generate) = mpsc::sync_channel(10);
+        let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
         let chunkdata_arc = Arc::clone(&generated_chunkdata);
-        let returning_arc = Arc::clone(&returned_buffers);
+        // let returning_arc = Arc::clone(&returned_buffers);
         // Chunk generator thread
         thread::spawn(move || loop {
-            if let Ok(chunk_location) = rx.recv() {
+            if let Ok(chunk_location) = recv_generate.recv() {
                 let generated_chunkdata = chunkdata_arc.lock().unwrap();
                 let chunk_contents = generated_chunkdata[&chunk_location].contents;
                 let [x, y]: [i32; 2] = chunk_location;
@@ -487,16 +487,12 @@ impl State {
                                 get_chunk(2, 2),
                             ],
                         );
-                        returning_arc
-                            .lock()
-                            .unwrap()
-                            .push((mesh, indices, *chunk_index));
+                        send_chunk.send((mesh, indices, *chunk_index)).unwrap();
                     }
                 }
-                returning_arc
-                    .lock()
-                    .unwrap()
-                    .push((mesh, index_buffer, chunk_location));
+                send_chunk
+                    .send((mesh, index_buffer, chunk_location))
+                    .unwrap();
             }
         });
         let crosshair = (
@@ -530,8 +526,8 @@ impl State {
             depth_texture,
             generated_chunkdata,
             generated_chunk_buffers,
-            tx,
-            returned_buffers,
+            send_generate,
+            recv_chunk,
             noise,
             last_break: Instant::now(),
             ui_pipeline,
@@ -613,7 +609,7 @@ impl State {
                 e.insert(ChunkData {
                     contents: chunk_contents,
                 });
-                self.tx.send(chunk_location).unwrap();
+                self.send_generate.send(chunk_location).unwrap();
             }
         }
         if let Some((location, previous_step)) = self.camera_controller.looking_at_block {
@@ -637,7 +633,7 @@ impl State {
                         .unwrap()
                         .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
                         [location.z as usize % CHUNK_DEPTH] = BlockType::Stone;
-                    self.tx.send([chunk_x, chunk_z]).unwrap();
+                    self.send_generate.send([chunk_x, chunk_z]).unwrap();
                 }
             } else if self.left_pressed && (now - self.last_break).as_millis() > 250 {
                 self.last_break = Instant::now();
@@ -648,12 +644,10 @@ impl State {
                     .unwrap()
                     .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
                     [location.z as usize % CHUNK_DEPTH] = BlockType::Air;
-                self.tx.send([chunk_x, chunk_z]).unwrap();
+                self.send_generate.send([chunk_x, chunk_z]).unwrap();
             }
         }
-        let mut data = self.returned_buffers.lock().unwrap();
-        let returned_buffers = data.drain(..);
-        for (mesh, indices, index) in returned_buffers {
+        while let Ok((mesh, indices, index)) = self.recv_chunk.try_recv() {
             self.generated_chunk_buffers.insert(
                 index,
                 ChunkBuffers {
