@@ -137,7 +137,7 @@ impl Texture {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         });
 
-        write_texture(queue, &texture, rgba, dimensions, size, 0);
+        write_texture(queue, &texture, rgba, size, 0);
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -165,26 +165,19 @@ impl Texture {
     ) -> Self {
         let rgba = img.to_rgba8();
         let dimensions = img.dimensions();
+        let half_size = |extent: wgpu::Extent3d| wgpu::Extent3d {
+            width: extent.width / 2,
+            height: extent.height / 2,
+            depth_or_array_layers: extent.depth_or_array_layers,
+        };
         let size = wgpu::Extent3d {
             width: dimensions.0,
             height: dimensions.1,
             depth_or_array_layers: 1,
         };
-        let size1 = wgpu::Extent3d {
-            width: dimensions.0 / 2,
-            height: dimensions.1 / 2,
-            depth_or_array_layers: 1,
-        };
-        let size2 = wgpu::Extent3d {
-            width: dimensions.0 / 4,
-            height: dimensions.1 / 4,
-            depth_or_array_layers: 1,
-        };
-        let size3 = wgpu::Extent3d {
-            width: dimensions.0 / 8,
-            height: dimensions.1 / 8,
-            depth_or_array_layers: 1,
-        };
+        let size1 = half_size(size);
+        let size2 = half_size(size1);
+        let size3 = half_size(size2);
         let rgba1 =
             ImageBuffer::from_fn(dimensions.0 / 2, dimensions.1 / 2, downscale(rgba.clone()));
         let rgba2 =
@@ -201,31 +194,10 @@ impl Texture {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         });
 
-        write_texture(queue, &texture, rgba, dimensions, size, 0);
-        write_texture(
-            queue,
-            &texture,
-            rgba1,
-            (dimensions.0 / 2, dimensions.1 / 2),
-            size1,
-            1,
-        );
-        write_texture(
-            queue,
-            &texture,
-            rgba2,
-            (dimensions.0 / 4, dimensions.1 / 4),
-            size2,
-            2,
-        );
-        write_texture(
-            queue,
-            &texture,
-            rgba3,
-            (dimensions.0 / 8, dimensions.1 / 8),
-            size3,
-            3,
-        );
+        write_texture(queue, &texture, rgba, size, 0);
+        write_texture(queue, &texture, rgba1, size1, 1);
+        write_texture(queue, &texture, rgba2, size2, 2);
+        write_texture(queue, &texture, rgba3, size3, 3);
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -250,7 +222,6 @@ fn write_texture(
     queue: &wgpu::Queue,
     texture: &wgpu::Texture,
     rgba: ImageBuffer<Rgba<u8>, Vec<u8>>,
-    dimensions: (u32, u32),
     size: wgpu::Extent3d,
     mip_level: u32,
 ) {
@@ -264,8 +235,8 @@ fn write_texture(
         &rgba,
         wgpu::ImageDataLayout {
             offset: 0,
-            bytes_per_row: std::num::NonZeroU32::new(4 * dimensions.0),
-            rows_per_image: std::num::NonZeroU32::new(dimensions.1),
+            bytes_per_row: std::num::NonZeroU32::new(4 * size.width),
+            rows_per_image: std::num::NonZeroU32::new(size.height),
         },
         size,
     );
