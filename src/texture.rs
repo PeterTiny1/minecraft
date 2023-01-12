@@ -13,6 +13,7 @@ fn downsample(pixels: [&Rgba<u8>; 4]) -> Rgba<u8> {
     } else {
         Rgba({
             let mut d = pixels
+                .into_iter()
                 .map(|v| {
                     let alpha = v.0[3] as u16;
                     [
@@ -22,7 +23,6 @@ fn downsample(pixels: [&Rgba<u8>; 4]) -> Rgba<u8> {
                         0,
                     ]
                 })
-                .into_iter()
                 .reduce(|acc, v| [acc[0] + v[0], acc[1] + v[1], acc[2] + v[2], 0])
                 .unwrap();
             d[3] = (total / 4) as u8;
