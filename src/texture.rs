@@ -137,7 +137,7 @@ impl Texture {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         });
 
-        write_texture(queue, &texture, rgba, size, 0);
+        write_texture(queue, &texture, &rgba, size, 0);
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -194,10 +194,10 @@ impl Texture {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         });
 
-        write_texture(queue, &texture, rgba, size, 0);
-        write_texture(queue, &texture, rgba1, size1, 1);
-        write_texture(queue, &texture, rgba2, size2, 2);
-        write_texture(queue, &texture, rgba3, size3, 3);
+        write_texture(queue, &texture, &rgba, size, 0);
+        write_texture(queue, &texture, &rgba1, size1, 1);
+        write_texture(queue, &texture, &rgba2, size2, 2);
+        write_texture(queue, &texture, &rgba3, size3, 3);
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -221,7 +221,7 @@ impl Texture {
 fn write_texture(
     queue: &wgpu::Queue,
     texture: &wgpu::Texture,
-    rgba: ImageBuffer<Rgba<u8>, Vec<u8>>,
+    rgba: &ImageBuffer<Rgba<u8>, Vec<u8>>,
     size: wgpu::Extent3d,
     mip_level: u32,
 ) {
