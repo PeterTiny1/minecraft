@@ -161,9 +161,9 @@ impl Controller {
         }
     }
 
-    pub fn process_mouse(&mut self, mouse_dx: f64, mouse_dy: f64) {
-        self.rotate_horizontal = mouse_dx as f32;
-        self.rotate_vertical = -mouse_dy as f32;
+    pub fn process_mouse(&mut self, dx: f64, dy: f64) {
+        self.rotate_horizontal = dx as f32;
+        self.rotate_vertical = -dy as f32;
     }
 
     pub fn process_scroll(&mut self, delta: i32) {
