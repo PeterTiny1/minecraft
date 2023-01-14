@@ -7,7 +7,7 @@ pub struct Texture {
 }
 
 fn downsample(pixels: [&Rgba<u8>; 4]) -> Rgba<u8> {
-    let total = pixels.map(|p| p.0[3] as u16).iter().sum::<u16>();
+    let total = pixels.map(|p| u16::from(p.0[3])).iter().sum::<u16>();
     if total == 0 {
         Rgba([0, 0, 0, 0])
     } else {
@@ -15,11 +15,11 @@ fn downsample(pixels: [&Rgba<u8>; 4]) -> Rgba<u8> {
             let mut d = pixels
                 .into_iter()
                 .map(|v| {
-                    let alpha = v.0[3] as u16;
+                    let alpha = u16::from(v.0[3]);
                     [
-                        (v.0[0] as u16 * alpha / total) as u8,
-                        (v.0[1] as u16 * alpha / total) as u8,
-                        (v.0[2] as u16 * alpha / total) as u8,
+                        (u16::from(v.0[0]) * alpha / total) as u8,
+                        (u16::from(v.0[1]) * alpha / total) as u8,
+                        (u16::from(v.0[2]) * alpha / total) as u8,
                         0,
                     ]
                 })
@@ -232,7 +232,7 @@ fn write_texture(
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
-        &rgba,
+        rgba,
         wgpu::ImageDataLayout {
             offset: 0,
             bytes_per_row: std::num::NonZeroU32::new(4 * size.width),
