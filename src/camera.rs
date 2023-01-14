@@ -259,13 +259,12 @@ impl Controller {
         }
         camera.position += self.velocity * dt;
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
-        let scrollward =
+        let looking_direction =
             Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalized();
-        let looking_at_block = Ray::new(camera.position, scrollward, 5.0).find(
+        let looking_at_block = Ray::new(camera.position, looking_direction, 5.0).find(
             |(e, _)| matches!(get_block(world, e.x, e.y, e.z), Some(b) if b != BlockType::Air),
         );
         self.looking_at_block = looking_at_block;
-        camera.position += scrollward * self.scroll * self.speed * self.sensitivity * dt;
         if camera.position.y < -64.0 {
             camera.position.y = 64.0;
         }
