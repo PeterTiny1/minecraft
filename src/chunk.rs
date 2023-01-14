@@ -9,11 +9,13 @@ use crate::{Vertex, MAX_DEPTH};
 pub const CHUNK_WIDTH: usize = 16;
 #[cfg(not(target_os = "windows"))]
 pub const CHUNK_WIDTH: usize = 32;
+const CHUNK_WIDTH_I32: i32 = CHUNK_WIDTH as i32;
 pub const CHUNK_HEIGHT: usize = 256;
 #[cfg(target_os = "windows")]
 pub const CHUNK_DEPTH: usize = 16;
 #[cfg(not(target_os = "windows"))]
 pub const CHUNK_DEPTH: usize = 32;
+const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
 
 const TEXTURE_WIDTH: f32 = 1.0 / 16.0;
 const HALF_TEXTURE_WIDTH: f32 = TEXTURE_WIDTH / 2.0;
@@ -163,8 +165,8 @@ pub struct ChunkData {
     pub contents: Chunk,
 }
 
-const MAX_DISTANCE_X: i32 = MAX_DEPTH as i32 / CHUNK_WIDTH as i32 + 1;
-const MAX_DISTANCE_Y: i32 = MAX_DEPTH as i32 / CHUNK_DEPTH as i32 + 1;
+const MAX_DISTANCE_X: i32 = MAX_DEPTH as i32 / CHUNK_WIDTH_I32 + 1;
+const MAX_DISTANCE_Y: i32 = MAX_DEPTH as i32 / CHUNK_DEPTH_I32 + 1;
 const TOP_BRIGHTNESS: f32 = 1.0;
 const BOTTOM_BRIGHTNESS: f32 = 0.6;
 const SIDE_BRIGHTNESS: f32 = 0.8;
@@ -180,8 +182,8 @@ pub fn noise_at(
     offset: f64,
 ) -> f64 {
     noise.get([
-        f64::from(x + (chunk_location[0] * CHUNK_WIDTH as i32)) / scale + offset,
-        f64::from(z + (chunk_location[1] * CHUNK_DEPTH as i32)) / scale + offset,
+        f64::from(x + (chunk_location[0] * CHUNK_WIDTH_I32)) / scale + offset,
+        f64::from(z + (chunk_location[1] * CHUNK_DEPTH_I32)) / scale + offset,
     ])
 }
 
@@ -190,8 +192,8 @@ fn chunk_at_block(
     x: i32,
     z: i32,
 ) -> Option<ChunkData> {
-    let chunk_x = x.div_euclid(CHUNK_WIDTH as i32);
-    let chunk_z = z.div_euclid(CHUNK_DEPTH as i32);
+    let chunk_x = x.div_euclid(CHUNK_WIDTH_I32);
+    let chunk_z = z.div_euclid(CHUNK_DEPTH_I32);
     generated_chunks.get(&[chunk_x, chunk_z]).copied()
 }
 
@@ -202,8 +204,8 @@ pub fn get_block(
     z: i32,
 ) -> Option<BlockType> {
     let chunk = chunk_at_block(generated_chunks, x, z)?;
-    let x = (x - (x.div_euclid(CHUNK_WIDTH as i32) * CHUNK_WIDTH as i32)) as usize;
-    let z = (z - (z.div_euclid(CHUNK_DEPTH as i32) * CHUNK_DEPTH as i32)) as usize;
+    let x = (x - (x.div_euclid(CHUNK_WIDTH_I32) * CHUNK_WIDTH_I32)) as usize;
+    let z = (z - (z.div_euclid(CHUNK_DEPTH_I32) * CHUNK_DEPTH_I32)) as usize;
     if y >= 0 && (y as usize) < CHUNK_HEIGHT {
         Some(chunk.contents[x][y as usize][z])
     } else {
@@ -216,8 +218,8 @@ pub fn get_nearest_chunk_location(
     z: f32,
     generated_chunks: &HashMap<[i32; 2], ChunkData>,
 ) -> Option<[i32; 2]> {
-    let chunk_x = (x as i32).div_euclid(CHUNK_WIDTH as i32);
-    let chunk_z = (z as i32).div_euclid(CHUNK_WIDTH as i32);
+    let chunk_x = (x as i32).div_euclid(CHUNK_WIDTH_I32);
+    let chunk_z = (z as i32).div_euclid(CHUNK_WIDTH_I32);
     let length = |a, b| (a * a + b * b);
     (-MAX_DISTANCE_X..=MAX_DISTANCE_X)
         .flat_map(|i| {
@@ -247,19 +249,19 @@ const LARGE_HEIGHT: f64 = 40.0;
 const TERRAIN_HEIGHT: f64 = 0.8;
 const BIOME_SCALE: f64 = 250.0;
 
-pub fn generate_chunk(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
+pub fn generate(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
     let heightmap = generate_heightmap(noise, chunk_location);
     let biomemap = generate_biomemap(noise, chunk_location);
-    let mut chunk_contents = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+    let mut contents = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
     for x in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH {
                 let biome = biomemap[x][z];
-                chunk_contents[x][y][z] = determine_type(&heightmap, x, y, z, biome, noise);
+                contents[x][y][z] = determine_type(&heightmap, x, y, z, biome, noise);
             }
         }
     }
-    chunk_contents
+    contents
 }
 
 fn generate_biomemap(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Vec<Vec<Biome>> {
@@ -427,16 +429,16 @@ pub fn generate_chunk_mesh(
                 if chunk[x][y][z] == BlockType::Air {
                 } else if chunk[x][y][z].is_grasslike() {
                     let tex_offset = chunk[x][y][z].get_offset()[0];
-                    let x = (x as i32 + (location[0] * CHUNK_WIDTH as i32)) as f32;
-                    let z = (z as i32 + (location[1] * CHUNK_WIDTH as i32)) as f32;
+                    let x = (x as i32 + (location[0] * CHUNK_WIDTH_I32)) as f32;
+                    let z = (z as i32 + (location[1] * CHUNK_WIDTH_I32)) as f32;
                     let y = y as f32;
                     indices.extend(GRASS_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     vertices.append(&mut create_grass_face(tex_offset, (x, y, z), false));
                     vertices.append(&mut create_grass_face(tex_offset, (x, y, z), true));
                 } else if chunk[x][y][z].is_liquid() {
                     let tex_offsets = chunk[x][y][z].get_offset();
-                    let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH as i32)) as f32;
-                    let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH as i32)) as f32;
+                    let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH_I32)) as f32;
+                    let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH_I32)) as f32;
                     let y_f32 = y as f32;
                     let yplusoff = y_f32 + 0.5;
                     if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
@@ -672,8 +674,8 @@ pub fn generate_chunk_mesh(
                     }
                 } else {
                     let tex_offsets = chunk[x][y][z].get_offset();
-                    let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH as i32)) as f32;
-                    let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH as i32)) as f32;
+                    let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH_I32)) as f32;
+                    let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH_I32)) as f32;
                     let y_f32 = y as f32;
                     // first face
                     if (z == CHUNK_DEPTH - 1

@@ -21,7 +21,7 @@ use std::{
     time::Instant,
 };
 
-use chunk::{generate_chunk, generate_chunk_mesh, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_WIDTH};
+use chunk::{generate, generate_chunk_mesh, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_WIDTH};
 use futures::executor::block_on;
 
 use vek::{Mat4, Vec3};
@@ -416,7 +416,7 @@ impl State {
             let buffer = std::fs::read(path).unwrap();
             bincode::deserialize::<ChunkData>(&buffer).unwrap().contents
         } else {
-            generate_chunk(&noise, [0, 0])
+            generate(&noise, [0, 0])
         };
         let (mesh, chunk_indices) = generate_chunk_mesh([0; 2], &chunk, [None; 4]);
         let generated_chunkdata = Arc::new(Mutex::new(HashMap::from([(
@@ -568,9 +568,8 @@ impl State {
         }
     }
 
-    fn mouse_motion(&mut self, xrel: i32, yrel: i32) {
-        self.camera_controller
-            .process_mouse(xrel.into(), yrel.into());
+    fn mouse_motion(&mut self, dx: i32, dy: i32) {
+        self.camera_controller.process_mouse(dx.into(), dy.into());
     }
 
     fn mouse_scroll(&mut self, delta: i32) {
@@ -603,7 +602,7 @@ impl State {
                     let buffer = std::fs::read(path).unwrap();
                     bincode::deserialize::<ChunkData>(&buffer).unwrap().contents
                 } else {
-                    generate_chunk(&self.noise, chunk_location)
+                    generate(&self.noise, chunk_location)
                 };
                 e.insert(ChunkData {
                     contents: chunk_contents,
