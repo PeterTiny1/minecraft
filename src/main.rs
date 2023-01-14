@@ -377,39 +377,35 @@ impl State {
                 bind_group_layouts: &[&texture_bind_group_layout, &uniform_bind_group_layout],
                 push_constant_ranges: &[],
             });
-        let render_pipeline = {
-            let shader = wgpu::ShaderModuleDescriptor {
-                label: Some("Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-            };
-            create_render_pipeline(
-                &device,
-                &render_pipeline_layout,
-                config.format,
-                Some(texture::Texture::DEPTH_FORMAT),
-                &[Vertex::desc()],
-                shader,
-            )
+        let shader = wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         };
+        let render_pipeline = create_render_pipeline(
+            &device,
+            &render_pipeline_layout,
+            config.format,
+            Some(texture::Texture::DEPTH_FORMAT),
+            &[Vertex::desc()],
+            shader,
+        );
         let ui_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
             bind_group_layouts: &[&texture_bind_group_layout, &ui_uniform_bind_group_layout],
             push_constant_ranges: &[],
         });
-        let ui_pipeline = {
-            let shader = wgpu::ShaderModuleDescriptor {
-                label: Some("Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
-            };
-            create_render_pipeline(
-                &device,
-                &ui_pipeline_layout,
-                config.format,
-                Some(texture::Texture::DEPTH_FORMAT),
-                &[UiVertex::desc()],
-                shader,
-            )
+        let shader = wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
         };
+        let ui_pipeline = create_render_pipeline(
+            &device,
+            &ui_pipeline_layout,
+            config.format,
+            Some(texture::Texture::DEPTH_FORMAT),
+            &[UiVertex::desc()],
+            shader,
+        );
         let noise = OpenSimplex::new(0);
         let path = Path::new("0,0.bin");
         let chunk = if path.exists() {
@@ -431,14 +427,18 @@ impl State {
                     contents: bytemuck::cast_slice(&mesh),
                     usage: wgpu::BufferUsages::VERTEX,
                 }),
-                index: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Vertex Buffer"),
-                    contents: bytemuck::cast_slice(&chunk_indices),
-                    usage: wgpu::BufferUsages::INDEX,
-                }),
+                index: create_index_buffer(&device, &chunk_indices),
                 num_indices: chunk_indices.len() as u32,
             },
         )]);
+        let crosshair = (
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(&CROSSHAIR),
+                usage: wgpu::BufferUsages::VERTEX,
+            }),
+            create_index_buffer(&device, &[0, 1, 2, 0, 2, 3]),
+        );
         // let returned_buffers = Arc::new(Mutex::new(vec![]));
         let (send_generate, recv_generate) = mpsc::sync_channel(10);
         let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
@@ -494,18 +494,6 @@ impl State {
                     .unwrap();
             }
         });
-        let crosshair = (
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(&CROSSHAIR),
-                usage: wgpu::BufferUsages::VERTEX,
-            }),
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(&[0, 1, 2, 0, 2, 3]),
-                usage: wgpu::BufferUsages::INDEX,
-            }),
-        );
         Self {
             surface,
             device,
@@ -731,6 +719,14 @@ impl State {
         output.present();
         Ok(())
     }
+}
+
+fn create_index_buffer(device: &wgpu::Device, chunk_indices: &[u32]) -> wgpu::Buffer {
+    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Vertex Buffer"),
+        contents: bytemuck::cast_slice(chunk_indices),
+        usage: wgpu::BufferUsages::INDEX,
+    })
 }
 
 fn main() {
