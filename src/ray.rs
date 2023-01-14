@@ -28,7 +28,7 @@ impl Iterator for Ray {
     type Item = (Vec3<i32>, usize);
     fn next(&mut self) -> Option<Self::Item> {
         let positive_x = self.direction.x > 0.0;
-        let changex = {
+        let dx = {
             let possible = (if positive_x {
                 self.position.x.ceil()
             } else {
@@ -43,7 +43,7 @@ impl Iterator for Ray {
             }
         };
         let positive_y = self.direction.y > 0.0;
-        let changey = {
+        let dy = {
             let possible = (if positive_y {
                 self.position.y.ceil()
             } else {
@@ -58,7 +58,7 @@ impl Iterator for Ray {
             }
         };
         let positive_z = self.direction.z > 0.0;
-        let changez = {
+        let dz = {
             let possible = (if positive_z {
                 self.position.z.ceil()
             } else {
@@ -72,7 +72,7 @@ impl Iterator for Ray {
                 possible
             }
         };
-        let (direction, &real_change) = [changex, changey, changez]
+        let (direction, &real_change) = [dx, dy, dz]
             .iter()
             .enumerate()
             .reduce(|acc, item| {
