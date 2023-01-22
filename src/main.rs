@@ -134,7 +134,6 @@ struct State {
     left_pressed: bool,
     right_pressed: bool,
     last_break: Instant,
-    // right_pressed: bool,
     depth_texture: texture::Texture,
     generated_chunkdata: Arc<Mutex<HashMap<[i32; 2], chunk::ChunkData>>>,
     generated_chunk_buffers: HashMap<[i32; 2], ChunkBuffers>,
@@ -262,41 +261,30 @@ impl State {
                 ],
                 label: Some("texture_bind_group_layout"),
             });
-        let diffuse_bytes = include_bytes!("atlas.png");
-        let diffuse_texture =
-            texture::Texture::from_bytes_mip(&device, &queue, diffuse_bytes, "atlas.png").unwrap();
-        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                },
-            ],
-            label: Some("diffuse_bind_group"),
-        });
-        let crosshair_bytes = include_bytes!("crosshair.png");
-        let crosshair_texture =
-            texture::Texture::from_bytes(&device, &queue, crosshair_bytes, "crosshair.png")
-                .unwrap();
-        let crosshair_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&crosshair_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&crosshair_texture.sampler),
-                },
-            ],
-            label: Some("crosshair_bind_group"),
-        });
+        let diffuse_bind_group = load_texture(
+            &device,
+            &texture_bind_group_layout,
+            &texture::Texture::from_bytes_mip(
+                &device,
+                &queue,
+                include_bytes!("atlas.png"),
+                "atlas.png",
+            )
+            .unwrap(),
+            Some("diffuse_bind_group"),
+        );
+        let crosshair_bind_group = load_texture(
+            &device,
+            &texture_bind_group_layout,
+            &texture::Texture::from_bytes(
+                &device,
+                &queue,
+                include_bytes!("crosshair.png"),
+                "crosshair.png",
+            )
+            .unwrap(),
+            Some("crosshair_bind_group"),
+        );
         let camera = camera::Camera::new(
             (0.0, 64.5, 0.0),
             -45.0_f32.to_radians(),
@@ -371,40 +359,35 @@ impl State {
         });
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        let render_pipeline = create_render_pipeline(
+            &device,
+            &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[&texture_bind_group_layout, &uniform_bind_group_layout],
                 push_constant_ranges: &[],
-            });
-        let shader = wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        };
-        let render_pipeline = create_render_pipeline(
-            &device,
-            &render_pipeline_layout,
+            }),
             config.format,
             Some(texture::Texture::DEPTH_FORMAT),
             &[Vertex::desc()],
-            shader,
+            wgpu::ShaderModuleDescriptor {
+                label: Some("Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+            },
         );
-        let ui_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[&texture_bind_group_layout, &ui_uniform_bind_group_layout],
-            push_constant_ranges: &[],
-        });
-        let shader = wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
-        };
         let ui_pipeline = create_render_pipeline(
             &device,
-            &ui_pipeline_layout,
+            &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[&texture_bind_group_layout, &ui_uniform_bind_group_layout],
+                push_constant_ranges: &[],
+            }),
             config.format,
             Some(texture::Texture::DEPTH_FORMAT),
             &[UiVertex::desc()],
-            shader,
+            wgpu::ShaderModuleDescriptor {
+                label: Some("Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
+            },
         );
         let noise = OpenSimplex::new(0);
         let path = Path::new("0,0.bin");
@@ -439,61 +422,9 @@ impl State {
             }),
             create_index_buffer(&device, &[0, 1, 2, 0, 2, 3]),
         );
-        // let returned_buffers = Arc::new(Mutex::new(vec![]));
         let (send_generate, recv_generate) = mpsc::sync_channel(10);
         let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
-        let chunkdata_arc = Arc::clone(&generated_chunkdata);
-        // let returning_arc = Arc::clone(&returned_buffers);
-        // Chunk generator thread
-        thread::spawn(move || loop {
-            if let Ok(chunk_location) = recv_generate.recv() {
-                let generated_chunkdata = chunkdata_arc.lock().unwrap();
-                let chunk_contents = generated_chunkdata[&chunk_location].contents;
-                let [x, y]: [i32; 2] = chunk_location;
-                let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
-                let (mesh, index_buffer) = generate_chunk_mesh(
-                    chunk_location,
-                    &chunk_contents,
-                    chunk_locations.map(|chunk| generated_chunkdata.get(&chunk)),
-                );
-                let further_chunks = [
-                    [[x + 2, y], [x + 1, y + 1], [x + 1, y - 1]],
-                    [[x - 2, y], [x - 1, y + 1], [x - 1, y - 1]],
-                    [[x + 1, y + 1], [x - 1, y + 1], [x, y + 2]],
-                    [[x + 1, y - 1], [x - 1, y - 1], [x, y - 2]],
-                ];
-                let new_chunkdata = chunk::ChunkData {
-                    contents: chunk_contents,
-                };
-                for (index, (chunk_index, surrounding_chunks)) in
-                    chunk_locations.iter().zip(further_chunks).enumerate()
-                {
-                    let get_chunk = |a, b| {
-                        if index == a {
-                            Some(&new_chunkdata)
-                        } else {
-                            generated_chunkdata.get(&surrounding_chunks[b])
-                        }
-                    };
-                    if let Some(chunk) = generated_chunkdata.get(chunk_index) {
-                        let (mesh, indices) = generate_chunk_mesh(
-                            chunk_locations[index],
-                            &chunk.contents,
-                            [
-                                get_chunk(1, 0),
-                                get_chunk(0, usize::from(index != 1)),
-                                get_chunk(3, if index < 2 { 1 } else { 2 }),
-                                get_chunk(2, 2),
-                            ],
-                        );
-                        send_chunk.send((mesh, indices, *chunk_index)).unwrap();
-                    }
-                }
-                send_chunk
-                    .send((mesh, index_buffer, chunk_location))
-                    .unwrap();
-            }
-        });
+        start_chunkgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
         Self {
             surface,
             device,
@@ -609,17 +540,23 @@ impl State {
                         3 => Vec3 { x: 0, y: -1, z: 0 },
                         4 => Vec3 { x: 0, y: 0, z: 1 },
                         5 => Vec3 { x: 0, y: 0, z: -1 },
-                        _ => Vec3::zero(),
+                        _ => panic!("Invalid return"),
                     };
                 if location.y < 256 && location.y > -1 {
                     let chunk_x = location.x.div_euclid(CHUNK_WIDTH as i32);
                     let chunk_z = location.z.div_euclid(CHUNK_DEPTH as i32);
-                    generated_chunkdata
-                        .get_mut(&[chunk_x, chunk_z])
-                        .unwrap()
-                        .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
-                        [location.z as usize % CHUNK_DEPTH] = BlockType::Stone;
-                    self.send_generate.send([chunk_x, chunk_z]).unwrap();
+                    let chunk = generated_chunkdata.get_mut(&[chunk_x, chunk_z]);
+                    if let Some(chunk) = chunk {
+                        if chunk.contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
+                            [location.z as usize % CHUNK_DEPTH]
+                            == BlockType::Air
+                        {
+                            chunk.contents[location.x as usize % CHUNK_WIDTH]
+                                [location.y as usize][location.z as usize % CHUNK_DEPTH] =
+                                BlockType::Stone;
+                            self.send_generate.send([chunk_x, chunk_z]).unwrap();
+                        }
+                    }
                 }
             } else if self.left_pressed && (now - self.last_break).as_millis() > 250 {
                 self.last_break = Instant::now();
@@ -721,6 +658,84 @@ impl State {
     }
 }
 
+fn start_chunkgen(
+    recv_generate: mpsc::Receiver<[i32; 2]>,
+    chunkdata_arc: Arc<Mutex<HashMap<[i32; 2], ChunkData>>>,
+    send_chunk: mpsc::SyncSender<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || loop {
+        if let Ok(chunk_location) = recv_generate.recv() {
+            let generated_chunkdata = chunkdata_arc.lock().unwrap();
+            let chunk_contents = generated_chunkdata[&chunk_location].contents;
+            let [x, y]: [i32; 2] = chunk_location;
+            let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+            let (mesh, index_buffer) = generate_chunk_mesh(
+                chunk_location,
+                &chunk_contents,
+                chunk_locations.map(|chunk| generated_chunkdata.get(&chunk)),
+            );
+            let further_chunks = [
+                [[x + 2, y], [x + 1, y + 1], [x + 1, y - 1]],
+                [[x - 2, y], [x - 1, y + 1], [x - 1, y - 1]],
+                [[x + 1, y + 1], [x - 1, y + 1], [x, y + 2]],
+                [[x + 1, y - 1], [x - 1, y - 1], [x, y - 2]],
+            ];
+            let new_chunkdata = chunk::ChunkData {
+                contents: chunk_contents,
+            };
+            for (index, (chunk_index, surrounding_chunks)) in
+                chunk_locations.iter().zip(further_chunks).enumerate()
+            {
+                let get_chunk = |a, b| {
+                    if index == a {
+                        Some(&new_chunkdata)
+                    } else {
+                        generated_chunkdata.get(&surrounding_chunks[b])
+                    }
+                };
+                if let Some(chunk) = generated_chunkdata.get(chunk_index) {
+                    let (mesh, indices) = generate_chunk_mesh(
+                        chunk_locations[index],
+                        &chunk.contents,
+                        [
+                            get_chunk(1, 0),
+                            get_chunk(0, usize::from(index != 1)),
+                            get_chunk(3, if index < 2 { 1 } else { 2 }),
+                            get_chunk(2, 2),
+                        ],
+                    );
+                    send_chunk.send((mesh, indices, *chunk_index)).unwrap();
+                }
+            }
+            send_chunk
+                .send((mesh, index_buffer, chunk_location))
+                .unwrap();
+        }
+    })
+}
+
+fn load_texture(
+    device: &wgpu::Device,
+    texture_bind_group_layout: &wgpu::BindGroupLayout,
+    texture: &texture::Texture,
+    label: Option<&str>,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: texture_bind_group_layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&texture.view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&texture.sampler),
+            },
+        ],
+        label,
+    })
+}
+
 fn create_index_buffer(device: &wgpu::Device, chunk_indices: &[u32]) -> wgpu::Buffer {
     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Vertex Buffer"),
@@ -747,7 +762,7 @@ fn main() {
         .position_centered()
         .build()
         .unwrap();
-    let mut event_pump = sdl_context.event_pump().unwrap();
+    let event_pump = sdl_context.event_pump().unwrap();
     window.set_grab(true);
     sdl_context.mouse().show_cursor(false);
     sdl_context.mouse().set_relative_mouse_mode(true);
@@ -755,6 +770,13 @@ fn main() {
         .set_fullscreen(sdl2::video::FullscreenType::Desktop)
         .expect("Failed to make the window full screen");
     let mut state = block_on(State::new(&window));
+    event_loop(event_pump, window, &mut state);
+    if save {
+        save_file(&state);
+    }
+}
+
+fn event_loop(mut event_pump: sdl2::EventPump, mut window: Window, state: &mut State) {
     let mut last_render_time = std::time::Instant::now();
     let mut window_focused = true;
     'running: loop {
@@ -836,9 +858,6 @@ fn main() {
             Err(wgpu::SurfaceError::OutOfMemory) => break 'running,
             Err(e) => eprintln!("{e:?}"),
         }
-    }
-    if save {
-        save_file(&state);
     }
 }
 
