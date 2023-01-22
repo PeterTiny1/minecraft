@@ -6,7 +6,7 @@ pub struct Texture {
     pub sampler: wgpu::Sampler,
 }
 
-fn downsample(pixels: [&Rgba<u8>; 4]) -> Rgba<u8> {
+fn average(pixels: [&Rgba<u8>; 4]) -> Rgba<u8> {
     let total = pixels.map(|p| u16::from(p.0[3])).iter().sum::<u16>();
     if total == 0 {
         Rgba([0, 0, 0, 0])
@@ -31,9 +31,9 @@ fn downsample(pixels: [&Rgba<u8>; 4]) -> Rgba<u8> {
     }
 }
 
-fn downscale(texture: ImageBuffer<Rgba<u8>, Vec<u8>>) -> impl Fn(u32, u32) -> Rgba<u8> {
+fn downsample(texture: ImageBuffer<Rgba<u8>, Vec<u8>>) -> impl Fn(u32, u32) -> Rgba<u8> {
     move |x, y| {
-        downsample([
+        average([
             texture.get_pixel(x * 2, y * 2),
             texture.get_pixel(x * 2 + 1, y * 2),
             texture.get_pixel(x * 2, y * 2 + 1),
@@ -179,11 +179,17 @@ impl Texture {
         let size2 = half_size(size1);
         let size3 = half_size(size2);
         let rgba1 =
-            ImageBuffer::from_fn(dimensions.0 / 2, dimensions.1 / 2, downscale(rgba.clone()));
-        let rgba2 =
-            ImageBuffer::from_fn(dimensions.0 / 4, dimensions.1 / 4, downscale(rgba1.clone()));
-        let rgba3 =
-            ImageBuffer::from_fn(dimensions.0 / 8, dimensions.1 / 8, downscale(rgba2.clone()));
+            ImageBuffer::from_fn(dimensions.0 / 2, dimensions.1 / 2, downsample(rgba.clone()));
+        let rgba2 = ImageBuffer::from_fn(
+            dimensions.0 / 4,
+            dimensions.1 / 4,
+            downsample(rgba1.clone()),
+        );
+        let rgba3 = ImageBuffer::from_fn(
+            dimensions.0 / 8,
+            dimensions.1 / 8,
+            downsample(rgba2.clone()),
+        );
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label,
             size,
