@@ -15,6 +15,7 @@ use std::{
     env,
     fs::File,
     io::Write,
+    ops::ControlFlow,
     path::Path,
     sync::{mpsc, Arc, Mutex},
     thread,
@@ -762,90 +763,20 @@ fn main() {
         .position_centered()
         .build()
         .unwrap();
-    let event_pump = sdl_context.event_pump().unwrap();
+    let mut state = block_on(State::new(&window));
+    let mut event_pump = sdl_context.event_pump().unwrap();
     window.set_grab(true);
     sdl_context.mouse().show_cursor(false);
     sdl_context.mouse().set_relative_mouse_mode(true);
     window
         .set_fullscreen(sdl2::video::FullscreenType::Desktop)
         .expect("Failed to make the window full screen");
-    let mut state = block_on(State::new(&window));
-    event_loop(event_pump, window, &mut state);
-    if save {
-        save_file(&state);
-    }
-}
-
-fn event_loop(mut event_pump: sdl2::EventPump, mut window: Window, state: &mut State) {
     let mut last_render_time = std::time::Instant::now();
     let mut window_focused = true;
     'running: loop {
         for event in event_pump.poll_iter() {
-            match event {
-                Event::KeyDown {
-                    keycode: Some(keycode),
-                    ..
-                } => match keycode {
-                    Keycode::F11 => {
-                        if window.fullscreen_state() == FullscreenType::Desktop {
-                            window
-                                .set_fullscreen(FullscreenType::Off)
-                                .expect("Failed to leave fullscreen");
-                        } else {
-                            window
-                                .set_fullscreen(FullscreenType::Desktop)
-                                .expect("Failed to make the window fullscreen");
-                        }
-                    }
-                    Keycode::Escape => {
-                        break 'running;
-                    }
-                    _ => {
-                        state.keydown(keycode, window_focused);
-                    }
-                },
-                Event::KeyUp {
-                    keycode: Some(keycode),
-                    ..
-                } => {
-                    state.keyup(keycode, window_focused);
-                }
-                Event::MouseMotion {
-                    xrel,
-                    yrel,
-                    window_id,
-                    ..
-                } if window_id == window.id() => state.mouse_motion(xrel, yrel),
-                Event::MouseWheel { y, .. } => state.mouse_scroll(y),
-                Event::Window {
-                    ref win_event,
-                    window_id,
-                    ..
-                } if window_id == window.id() => match win_event {
-                    WindowEvent::Close => break 'running,
-                    WindowEvent::FocusGained => window_focused = true,
-                    WindowEvent::FocusLost => window_focused = false,
-                    WindowEvent::Resized(width, height) => {
-                        state.resize((*width as u32, *height as u32));
-                    }
-                    _ => {}
-                },
-                Event::MouseButtonDown { mouse_btn, .. } => {
-                    if mouse_btn == MouseButton::Left {
-                        state.left_pressed = true;
-                    } else if mouse_btn == MouseButton::Right {
-                        state.right_pressed = true;
-                    }
-                }
-                Event::MouseButtonUp { mouse_btn, .. } => {
-                    if mouse_btn == MouseButton::Left {
-                        state.left_pressed = false;
-                    } else if mouse_btn == MouseButton::Right {
-                        state.right_pressed = false;
-                    }
-                }
-                Event::Quit { .. } => break 'running,
-                _ => {}
+            if process_event(event, &mut window, &mut state, &mut window_focused).is_break() {
+                break 'running;
             }
         }
         let now = std::time::Instant::now();
@@ -859,6 +790,84 @@ fn event_loop(mut event_pump: sdl2::EventPump, mut window: Window, state: &mut S
             Err(e) => eprintln!("{e:?}"),
         }
     }
+    if save {
+        save_file(&state);
+    }
+}
+
+fn process_event(
+    event: Event,
+    window: &mut Window,
+    state: &mut State,
+    window_focused: &mut bool,
+) -> ControlFlow<()> {
+    match event {
+        Event::KeyDown {
+            keycode: Some(keycode),
+            ..
+        } => match keycode {
+            Keycode::F11 => {
+                if window.fullscreen_state() == FullscreenType::Desktop {
+                    window
+                        .set_fullscreen(FullscreenType::Off)
+                        .expect("Failed to leave fullscreen");
+                } else {
+                    window
+                        .set_fullscreen(FullscreenType::Desktop)
+                        .expect("Failed to make the window fullscreen");
+                }
+            }
+            Keycode::Escape => {
+                return ControlFlow::Break(());
+            }
+            _ => {
+                state.keydown(keycode, *window_focused);
+            }
+        },
+        Event::KeyUp {
+            keycode: Some(keycode),
+            ..
+        } => {
+            state.keyup(keycode, *window_focused);
+        }
+        Event::MouseMotion {
+            xrel,
+            yrel,
+            window_id,
+            ..
+        } if window_id == window.id() => state.mouse_motion(xrel, yrel),
+        Event::MouseWheel { y, .. } => state.mouse_scroll(y),
+        Event::Window {
+            ref win_event,
+            window_id,
+            ..
+        } if window_id == window.id() => match win_event {
+            WindowEvent::Close => return ControlFlow::Break(()),
+            WindowEvent::FocusGained => *window_focused = true,
+            WindowEvent::FocusLost => *window_focused = false,
+            WindowEvent::Resized(width, height) => {
+                state.resize((*width as u32, *height as u32));
+            }
+            _ => {}
+        },
+        Event::MouseButtonDown { mouse_btn, .. } => {
+            if mouse_btn == MouseButton::Left {
+                state.left_pressed = true;
+            } else if mouse_btn == MouseButton::Right {
+                state.right_pressed = true;
+            }
+        }
+        Event::MouseButtonUp { mouse_btn, .. } => {
+            if mouse_btn == MouseButton::Left {
+                state.left_pressed = false;
+            } else if mouse_btn == MouseButton::Right {
+                state.right_pressed = false;
+            }
+        }
+        Event::Quit { .. } => return ControlFlow::Break(()),
+        _ => {}
+    }
+    ControlFlow::Continue(())
 }
 
 fn save_file(state: &State) {
