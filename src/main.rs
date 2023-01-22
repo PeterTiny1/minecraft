@@ -775,7 +775,7 @@ fn main() {
     let mut window_focused = true;
     'running: loop {
         for event in event_pump.poll_iter() {
-            if process_event(event, &mut window, &mut state, &mut window_focused).is_break() {
+            if process_event(&event, &mut window, &mut state, &mut window_focused).is_break() {
                 break 'running;
             }
         }
@@ -796,7 +796,7 @@ fn main() {
 }
 
 fn process_event(
-    event: Event,
+    event: &Event,
     window: &mut Window,
     state: &mut State,
     window_focused: &mut bool,
@@ -821,27 +821,27 @@ fn process_event(
                 return ControlFlow::Break(());
             }
             _ => {
-                state.keydown(keycode, *window_focused);
+                state.keydown(*keycode, *window_focused);
             }
         },
         Event::KeyUp {
             keycode: Some(keycode),
             ..
         } => {
-            state.keyup(keycode, *window_focused);
+            state.keyup(*keycode, *window_focused);
         }
         Event::MouseMotion {
             xrel,
             yrel,
             window_id,
             ..
-        } if window_id == window.id() => state.mouse_motion(xrel, yrel),
-        Event::MouseWheel { y, .. } => state.mouse_scroll(y),
+        } if *window_id == window.id() => state.mouse_motion(*xrel, *yrel),
+        Event::MouseWheel { y, .. } => state.mouse_scroll(*y),
         Event::Window {
             ref win_event,
             window_id,
             ..
-        } if window_id == window.id() => match win_event {
+        } if *window_id == window.id() => match win_event {
             WindowEvent::Close => return ControlFlow::Break(()),
             WindowEvent::FocusGained => *window_focused = true,
             WindowEvent::FocusLost => *window_focused = false,
@@ -851,16 +851,16 @@ fn process_event(
             _ => {}
         },
         Event::MouseButtonDown { mouse_btn, .. } => {
-            if mouse_btn == MouseButton::Left {
+            if *mouse_btn == MouseButton::Left {
                 state.left_pressed = true;
-            } else if mouse_btn == MouseButton::Right {
+            } else if *mouse_btn == MouseButton::Right {
                 state.right_pressed = true;
             }
         }
         Event::MouseButtonUp { mouse_btn, .. } => {
-            if mouse_btn == MouseButton::Left {
+            if *mouse_btn == MouseButton::Left {
                 state.left_pressed = false;
-            } else if mouse_btn == MouseButton::Right {
+            } else if *mouse_btn == MouseButton::Right {
                 state.right_pressed = false;
             }
         }
