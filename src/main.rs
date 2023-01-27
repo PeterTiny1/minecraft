@@ -210,8 +210,8 @@ const CROSSHAIR: [UiVertex; 4] = [
 impl State {
     async fn new(window: &Window) -> Self {
         let size = window.size();
-        let instance = wgpu::Instance::new(wgpu::Backends::all());
-        let surface = unsafe { instance.create_surface(window) };
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+        let surface = unsafe { instance.create_surface(window) }.unwrap();
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
@@ -233,11 +233,12 @@ impl State {
             .unwrap();
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface.get_supported_formats(&adapter)[0],
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
             width: size.0,
             height: size.1,
             present_mode: wgpu::PresentMode::Fifo,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            view_formats: vec![wgpu::TextureFormat::Bgra8Unorm],
         };
         surface.configure(&device, &config);
         let texture_bind_group_layout =
