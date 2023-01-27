@@ -1098,4 +1098,62 @@ fn generate_water(
             ]);
         }
     }
+    if (x == 0
+        && surrounding_chunks[1].map_or(true, |chunk| {
+            chunk.contents[CHUNK_WIDTH - 1][y][z].is_transparent()
+                && !chunk.contents[CHUNK_WIDTH - 1][y][z].is_liquid()
+        }))
+        || (x != 0 && chunk[x - 1][y][z].is_transparent() && !chunk[x - 1][y][z].is_liquid())
+    {
+        let tex_offset = tex_offsets[2];
+        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
+            vertices.append(&mut vec![
+                Vertex(
+                    [rel_x, yplusoff, rel_z],
+                    add_arrs(TOP_LEFT_WATER, tex_offset),
+                    TOP_BRIGHTNESS,
+                ),
+                Vertex(
+                    [rel_x, y_f32, rel_z],
+                    add_arrs(BOTTOM_LEFT, tex_offset),
+                    TOP_BRIGHTNESS,
+                ),
+                Vertex(
+                    [rel_x, y_f32, 1.0 + rel_z],
+                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                    TOP_BRIGHTNESS,
+                ),
+                Vertex(
+                    [rel_x, yplusoff, 1.0 + rel_z],
+                    add_arrs(TOP_RIGHT_WATER, tex_offset),
+                    TOP_BRIGHTNESS,
+                ),
+            ]);
+        } else {
+            let yplusoff = y_f32 + 1.0;
+            vertices.append(&mut vec![
+                Vertex(
+                    [rel_x, yplusoff, rel_z],
+                    add_arrs(TOP_LEFT, tex_offset),
+                    TOP_BRIGHTNESS,
+                ),
+                Vertex(
+                    [rel_x, y_f32, rel_z],
+                    add_arrs(BOTTOM_LEFT, tex_offset),
+                    TOP_BRIGHTNESS,
+                ),
+                Vertex(
+                    [rel_x, y_f32, 1.0 + rel_z],
+                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                    TOP_BRIGHTNESS,
+                ),
+                Vertex(
+                    [rel_x, yplusoff, 1.0 + rel_z],
+                    add_arrs(TOP_RIGHT, tex_offset),
+                    TOP_BRIGHTNESS,
+                ),
+            ]);
+        }
+    }
 }
