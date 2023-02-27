@@ -22,15 +22,99 @@ use std::{
     time::Instant,
 };
 
-use chunk::{generate, generate_chunk_mesh, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_WIDTH};
+use chunk::{
+    generate, generate_chunk_mesh, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH,
+};
 use futures::executor::block_on;
 
-use vek::{Mat4, Vec3};
+use vek::{Aabb, Mat4, Vec3, Vec4};
 use wgpu::util::DeviceExt;
 
 use noise::OpenSimplex;
 
 const MAX_DEPTH: f32 = 256.0;
+
+fn is_cuboid_intersecting_frustum(
+    cuboid: &Aabb<f32>,
+    camera_matrix: Mat4<f32>,
+    projection_matrix: Mat4<f32>,
+) -> bool {
+    // Define the frustum planes in clip space coordinates
+    let planes = [
+        Vec4::new(1.0, 0.0, 0.0, 1.0),
+        Vec4::new(-1.0, 0.0, 0.0, 1.0),
+        Vec4::new(0.0, 1.0, 0.0, 1.0),
+        Vec4::new(0.0, -1.0, 0.0, 1.0),
+        Vec4::new(0.0, 0.0, 1.0, 1.0),
+        Vec4::new(0.0, 0.0, -1.0, 1.0),
+    ];
+
+    // Calculate the matrix that transforms from world space to clip space
+    let transform_matrix = projection_matrix * camera_matrix;
+
+    // Transform the cuboid's vertices into clip space coordinates
+    let vertices = [
+        Vec4::from(cuboid.min),
+        Vec4::new(cuboid.min.x, cuboid.min.y, cuboid.max.z, 1.0),
+        Vec4::new(cuboid.min.x, cuboid.max.y, cuboid.min.z, 1.0),
+        Vec4::new(cuboid.min.x, cuboid.max.y, cuboid.max.z, 1.0),
+        Vec4::new(cuboid.max.x, cuboid.min.y, cuboid.min.z, 1.0),
+        Vec4::new(cuboid.max.x, cuboid.min.y, cuboid.max.z, 1.0),
+        Vec4::new(cuboid.max.x, cuboid.max.y, cuboid.min.z, 1.0),
+        Vec4::from(cuboid.max),
+    ];
+    let vertices_clip = vertices
+        .iter()
+        .map(|&v| transform_matrix * v)
+        .collect::<Vec<_>>();
+
+    // Check if the cuboid is completely above the far plane
+    if vertices_clip
+        .iter()
+        .map(|v| v.z)
+        .all(|z| z > vertices_clip[0].z)
+    {
+        return false;
+    }
+
+    // Check if any of the cuboid's vertices are inside the frustum
+    if vertices_clip
+        .iter()
+        .any(|v| planes.iter().all(|p| p.dot(*v) > 0.0))
+    {
+        return true;
+    }
+
+    // Check if any of the frustum's edges intersect the cuboid
+    let edges = [
+        (0, 1),
+        (0, 2),
+        (0, 4),
+        (1, 3),
+        (1, 5),
+        (2, 3),
+        (2, 6),
+        (3, 7),
+        (4, 5),
+        (4, 6),
+        (5, 7),
+        (6, 7),
+    ];
+    for &(i, j) in &edges {
+        let edge_dir = vertices_clip[j] - vertices_clip[i];
+        let edge_length = edge_dir.magnitude();
+        let edge_step = edge_dir / edge_length;
+        let mut t = 0.0;
+        while t <= edge_length {
+            let point_clip = vertices_clip[i] + t * edge_step;
+            if planes.iter().any(|p| p.dot(point_clip) > 0.0) {
+                return true;
+            }
+            t += 0.1; // Increase step size for better performance
+        }
+    }
+    false
+}
 
 #[derive(Debug)]
 struct ChunkBuffers {
@@ -634,14 +718,38 @@ impl State {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
-            for chunk_loc in self.generated_chunk_buffers.keys().sorted_by(|&x, &y| {
-                ((y[0] * CHUNK_WIDTH as i32 - self.camera.position.x as i32).pow(2)
-                    + (y[1] * CHUNK_DEPTH as i32 - self.camera.position.z as i32).pow(2))
-                .cmp(
-                    &((x[0] * CHUNK_WIDTH as i32 - self.camera.position.x as i32).pow(2)
-                        + (x[1] * CHUNK_DEPTH as i32 + -self.camera.position.z as i32).pow(2)),
-                )
-            }) {
+            for chunk_loc in self
+                .generated_chunk_buffers
+                .keys()
+                .sorted_by(|&x, &y| {
+                    ((y[0] * CHUNK_WIDTH as i32 - self.camera.position.x as i32).pow(2)
+                        + (y[1] * CHUNK_DEPTH as i32 - self.camera.position.z as i32).pow(2))
+                    .cmp(
+                        &((x[0] * CHUNK_WIDTH as i32 - self.camera.position.x as i32).pow(2)
+                            + (x[1] * CHUNK_DEPTH as i32 + -self.camera.position.z as i32).pow(2)),
+                    )
+                })
+                .filter(|c| {
+                    let min = Vec3::new(
+                        (c[0] * CHUNK_WIDTH as i32) as f32,
+                        0.0,
+                        (c[1] * CHUNK_DEPTH as i32) as f32,
+                    );
+                    is_cuboid_intersecting_frustum(
+                        &Aabb {
+                            min,
+                            max: min
+                                + Vec3::new(
+                                    CHUNK_WIDTH as f32,
+                                    CHUNK_HEIGHT as f32,
+                                    CHUNK_DEPTH as f32,
+                                ),
+                        },
+                        self.camera.calc_matrix(),
+                        self.projection.calc_matrix(),
+                    )
+                })
+            {
                 let chunk = &self.generated_chunk_buffers[chunk_loc];
                 render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
                 render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
