@@ -272,8 +272,8 @@ fn generate_biomemap(
 ) -> [[Biome; CHUNK_DEPTH]; CHUNK_WIDTH] {
     let mut biomemap = [[Biome::BirchFalls; CHUNK_DEPTH]; CHUNK_WIDTH];
 
-    for x in 0..CHUNK_WIDTH {
-        for z in 0..CHUNK_DEPTH {
+    for (x, row) in biomemap.iter_mut().enumerate() {
+        for (z, item) in row.iter_mut().enumerate() {
             let v = noise_at(noise, x as i32, z as i32, chunk_location, BIOME_SCALE, 18.9);
             let biome = if v > 0.2 {
                 Biome::DarklogForest
@@ -282,7 +282,7 @@ fn generate_biomemap(
             } else {
                 Biome::BirchFalls
             };
-            biomemap[x][z] = biome;
+            *item = biome;
         }
     }
 
@@ -294,14 +294,14 @@ fn generate_heightmap(
     chunk_location: [i32; 2],
 ) -> [[i32; CHUNK_DEPTH]; CHUNK_WIDTH] {
     let mut heightmap = [[0; CHUNK_DEPTH]; CHUNK_WIDTH];
-    for x in 0..CHUNK_WIDTH {
-        for z in 0..CHUNK_DEPTH {
+    for (x, row) in heightmap.iter_mut().enumerate() {
+        for (z, item) in row.iter_mut().enumerate() {
             let large_noise = noise_at(noise, x as i32, z as i32, chunk_location, LARGE_SCALE, 0.0);
             let small_noise =
                 noise_at(noise, x as i32, z as i32, chunk_location, SMALL_SCALE, 10.0);
             let height =
-                ((large_noise + TERRAIN_HEIGHT) * LARGE_HEIGHT + small_noise * 10.0) as i32;
-            heightmap[x][z] = height;
+                (large_noise + TERRAIN_HEIGHT).mul_add(LARGE_HEIGHT, small_noise * 10.0) as i32;
+            *item = height;
         }
     }
     heightmap
