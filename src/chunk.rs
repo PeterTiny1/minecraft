@@ -226,7 +226,9 @@ pub fn get_nearest_chunk_location(
             (-MAX_DISTANCE_Y..=MAX_DISTANCE_Y).filter_map(move |j| {
                 let distance = length(i, j);
                 let location = [i + chunk_x, j + chunk_z];
-                if distance <= MAX_DEPTH as i32 && !generated_chunks.contains_key(&location) {
+                if distance <= (MAX_DEPTH * MAX_DEPTH) as i32
+                    && !generated_chunks.contains_key(&location)
+                {
                     Some((location, distance))
                 } else {
                     None
@@ -257,52 +259,56 @@ pub fn generate(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH {
                 let biome = biomemap[x][z];
-                contents[x][y][z] = determine_type(&heightmap, x, y, z, biome, noise);
+                contents[x][y][z] = determine_type(heightmap, x, y, z, biome, noise);
             }
         }
     }
     contents
 }
 
-fn generate_biomemap(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Vec<Vec<Biome>> {
-    (0..CHUNK_WIDTH)
-        .map(|x| {
-            (0..CHUNK_DEPTH)
-                .map(|z| {
-                    let v = noise_at(noise, x as i32, z as i32, chunk_location, BIOME_SCALE, 18.9);
-                    if v > 0.2 {
-                        Biome::DarklogForest
-                    } else if v > 0.0 {
-                        Biome::GreenGrove
-                    } else {
-                        Biome::BirchFalls
-                    }
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect()
+fn generate_biomemap(
+    noise: &OpenSimplex,
+    chunk_location: [i32; 2],
+) -> [[Biome; CHUNK_DEPTH]; CHUNK_WIDTH] {
+    let mut biomemap = [[Biome::BirchFalls; CHUNK_DEPTH]; CHUNK_WIDTH];
+
+    for x in 0..CHUNK_WIDTH {
+        for z in 0..CHUNK_DEPTH {
+            let v = noise_at(noise, x as i32, z as i32, chunk_location, BIOME_SCALE, 18.9);
+            let biome = if v > 0.2 {
+                Biome::DarklogForest
+            } else if v > 0.0 {
+                Biome::GreenGrove
+            } else {
+                Biome::BirchFalls
+            };
+            biomemap[x][z] = biome;
+        }
+    }
+
+    biomemap
 }
 
-fn generate_heightmap(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Vec<Vec<i32>> {
-    (0..CHUNK_WIDTH)
-        .map(|x| {
-            (0..CHUNK_DEPTH)
-                .map(|z| {
-                    (noise_at(noise, x as i32, z as i32, chunk_location, LARGE_SCALE, 0.0)
-                        + TERRAIN_HEIGHT)
-                        .mul_add(
-                            LARGE_HEIGHT,
-                            noise_at(noise, x as i32, z as i32, chunk_location, SMALL_SCALE, 10.0)
-                                * 10.0,
-                        ) as i32
-                })
-                .collect::<Vec<i32>>()
-        })
-        .collect()
+fn generate_heightmap(
+    noise: &OpenSimplex,
+    chunk_location: [i32; 2],
+) -> [[i32; CHUNK_DEPTH]; CHUNK_WIDTH] {
+    let mut heightmap = [[0; CHUNK_DEPTH]; CHUNK_WIDTH];
+    for x in 0..CHUNK_WIDTH {
+        for z in 0..CHUNK_DEPTH {
+            let large_noise = noise_at(noise, x as i32, z as i32, chunk_location, LARGE_SCALE, 0.0);
+            let small_noise =
+                noise_at(noise, x as i32, z as i32, chunk_location, SMALL_SCALE, 10.0);
+            let height =
+                ((large_noise + TERRAIN_HEIGHT) * LARGE_HEIGHT + small_noise * 10.0) as i32;
+            heightmap[x][z] = height;
+        }
+    }
+    heightmap
 }
 
 fn determine_type(
-    heightmap: &[Vec<i32>],
+    heightmap: [[i32; CHUNK_DEPTH]; CHUNK_WIDTH],
     x: usize,
     y: usize,
     z: usize,
@@ -430,7 +436,7 @@ pub fn generate_chunk_mesh(
                 } else if chunk[x][y][z].is_grasslike() {
                     let tex_offset = chunk[x][y][z].get_offset()[0];
                     let x = (x as i32 + (location[0] * CHUNK_WIDTH_I32)) as f32;
-                    let z = (z as i32 + (location[1] * CHUNK_WIDTH_I32)) as f32;
+                    let z = (z as i32 + (location[1] * CHUNK_DEPTH_I32)) as f32;
                     let y = y as f32;
                     indices.extend(GRASS_INDICES.iter().map(|i| *i + vertices.len() as u32));
                     vertices.append(&mut create_grass_face(tex_offset, (x, y, z), false));
@@ -559,10 +565,10 @@ fn generate_solid(
                 add_arrs(TOP_LEFT, tex_offset),
                 if (x == CHUNK_WIDTH - 1
                     && surrounding_chunks[0].map_or(false, |chunk| {
-                        z != CHUNK_WIDTH - 1 && !chunk.contents[0][y][z + 1].is_transparent()
+                        z != CHUNK_DEPTH - 1 && !chunk.contents[0][y][z + 1].is_transparent()
                     }))
                     || (x != CHUNK_WIDTH - 1
-                        && z != CHUNK_WIDTH - 1
+                        && z != CHUNK_DEPTH - 1
                         && !chunk[x + 1][y][z + 1].is_transparent())
                 {
                     AO_BRIGHTNESS
