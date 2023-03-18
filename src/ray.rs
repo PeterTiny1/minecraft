@@ -1,5 +1,14 @@
 use vek::{num_traits::Zero, Vec3};
 
+const DIRECTION_OFFSETS: [Vec3<i32>; 6] = [
+    Vec3 { x: -1, y: 0, z: 0 },
+    Vec3 { x: 1, y: 0, z: 0 },
+    Vec3 { x: 0, y: -1, z: 0 },
+    Vec3 { x: 0, y: 1, z: 0 },
+    Vec3 { x: 0, y: 0, z: -1 },
+    Vec3 { x: 0, y: 0, z: 1 },
+];
+
 pub struct Ray {
     origin: Vec3<f32>,
     direction: Vec3<f32>,
@@ -27,7 +36,7 @@ impl Ray {
 impl Iterator for Ray {
     type Item = (Vec3<i32>, usize);
     fn next(&mut self) -> Option<Self::Item> {
-        let positive_x = self.direction.x > 0.0;
+        let positive_x = self.direction.x.is_sign_positive();
         let dx = {
             let possible = (if positive_x {
                 self.position.x.ceil()
@@ -36,13 +45,14 @@ impl Iterator for Ray {
             } - self.position.x)
                 / self.direction.x
                 * self.direction;
+
             if possible.is_zero() {
                 1.0 / self.direction.x.abs() * self.direction
             } else {
                 possible
             }
         };
-        let positive_y = self.direction.y > 0.0;
+        let positive_y = self.direction.y.is_sign_positive();
         let dy = {
             let possible = (if positive_y {
                 self.position.y.ceil()
@@ -57,7 +67,7 @@ impl Iterator for Ray {
                 possible
             }
         };
-        let positive_z = self.direction.z > 0.0;
+        let positive_z = self.direction.z.is_sign_positive();
         let dz = {
             let possible = (if positive_z {
                 self.position.z.ceil()
@@ -84,22 +94,8 @@ impl Iterator for Ray {
             })
             .unwrap();
         self.position += real_change;
-        let direction = direction * 2
-            + usize::from(match direction {
-                0 => positive_x,
-                1 => positive_y,
-                2 => positive_z,
-                _ => false,
-            });
-        match direction {
-            0 => self.block_position.x -= 1,
-            1 => self.block_position.x += 1,
-            2 => self.block_position.y -= 1,
-            3 => self.block_position.y += 1,
-            4 => self.block_position.z -= 1,
-            5 => self.block_position.z += 1,
-            _ => (),
-        }
+        let direction = direction * 2 + [positive_x, positive_y, positive_z][direction] as usize;
+        self.block_position += DIRECTION_OFFSETS[direction];
         if self.magnitude() < self.max_len {
             Some((self.block_position, direction))
         } else {
