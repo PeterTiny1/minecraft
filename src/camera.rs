@@ -4,15 +4,15 @@ use sdl2::keyboard::Keycode;
 use vek::{Mat4, Quaternion, Vec3};
 
 use crate::{
-    chunk::{get_block, BlockType, ChunkData},
+    chunk::{self, get_block, BlockType, ChunkData},
     ray::Ray,
 };
 
 const GRAVITY: f32 = 9.807;
 
 #[derive(Debug)]
-pub struct Camera {
-    pub position: Vec3<f32>,
+pub struct CameraData {
+    position: Vec3<f32>,
     pitch: f32,
     yaw: f32,
     quaternion: Quaternion<f32>,
@@ -30,7 +30,7 @@ fn to_quaternion(heading: f32, attitude: f32) -> Quaternion<f32> {
     )
 }
 
-impl Camera {
+impl CameraData {
     pub fn new<V: Into<Vec3<f32>>>(position: V, yaw: f32, pitch: f32) -> Self {
         Self {
             position: position.into(),
@@ -86,7 +86,7 @@ pub struct Controller {
     scroll: f32,
     speed: f32,
     sensitivity: f32,
-    pub looking_at_block: Option<(Vec3<i32>, usize)>,
+    looking_at_block: Option<(Vec3<i32>, usize)>,
     velocity: Vec3<f32>,
 }
 
@@ -170,9 +170,9 @@ impl Controller {
         self.scroll = (delta * 200) as f32;
     }
 
-    pub fn update_camera(
+    fn update_camera(
         &mut self,
-        camera: &mut Camera,
+        camera: &mut CameraData,
         dt: Duration,
         world: &HashMap<[i32; 2], ChunkData>,
     ) {
@@ -293,4 +293,36 @@ fn find_collision(
 ) -> Option<(Vec3<i32>, usize)> {
     Ray::new(origin, velocity.normalized(), (velocity * dt).magnitude())
         .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, BlockType::is_solid))
+}
+
+pub struct Camera {
+    pub data: CameraData,
+    pub projection: Projection,
+    pub controller: Controller,
+}
+
+impl Camera {
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.projection.resize(width, height)
+    }
+
+    pub fn update(&mut self, dt: Duration, world: &HashMap<[i32; 2], chunk::ChunkData>) {
+        self.controller.update_camera(&mut self.data, dt, world)
+    }
+
+    pub const fn get_position(&self) -> Vec3<f32> {
+        self.data.position
+    }
+
+    pub const fn get_looking_at(&self) -> Option<(Vec3<i32>, usize)> {
+        self.controller.looking_at_block
+    }
+
+    pub fn calc_matrix(&self) -> Mat4<f32> {
+        self.data.calc_matrix()
+    }
+
+    pub fn calc_projection_matrix(&self) -> Mat4<f32> {
+        self.projection.calc_matrix()
+    }
 }

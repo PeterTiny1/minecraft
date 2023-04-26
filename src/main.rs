@@ -2,6 +2,7 @@ mod camera;
 mod chunk;
 pub mod ray;
 mod texture;
+mod ui;
 
 use itertools::Itertools;
 use sdl2::{
@@ -21,6 +22,7 @@ use std::{
     thread,
     time::Instant,
 };
+use ui::{UiVertex, CROSSHAIR};
 
 use chunk::{
     generate, generate_chunk_mesh, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH,
@@ -34,7 +36,7 @@ use noise::OpenSimplex;
 
 const MAX_DEPTH: f32 = 256.0;
 
-fn is_cuboid_intersecting_frustum(
+fn cuboid_intersects_frustum(
     cuboid: &Aabb<f32>,
     camera_matrix: Mat4<f32>,
     projection_matrix: Mat4<f32>,
@@ -152,31 +154,6 @@ impl Vertex {
         }
     }
 }
-// location, uv
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct UiVertex([f32; 2], [f32; 2]);
-
-impl UiVertex {
-    const fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x2,
-                },
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 2]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x2,
-                },
-            ],
-        }
-    }
-}
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -191,15 +168,9 @@ impl Uniforms {
         }
     }
 
-    fn update_view_proj(&mut self, camera: &camera::Camera, projection: &camera::Projection) {
+    fn update_view_proj(&mut self, camera: &camera::CameraData, projection: &camera::Projection) {
         self.view_proj = (projection.calc_matrix() * camera.calc_matrix()).into_col_arrays();
     }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct UiUniform {
-    aspect: f32,
 }
 
 struct State {
@@ -211,8 +182,6 @@ struct State {
     render_pipeline: wgpu::RenderPipeline,
     diffuse_bind_group: wgpu::BindGroup,
     camera: camera::Camera,
-    projection: camera::Projection,
-    camera_controller: camera::Controller,
     uniforms: Uniforms,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
@@ -225,12 +194,7 @@ struct State {
     send_generate: mpsc::SyncSender<[i32; 2]>,
     recv_chunk: mpsc::Receiver<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
     noise: noise::OpenSimplex,
-    ui_pipeline: wgpu::RenderPipeline,
-    crosshair: (wgpu::Buffer, wgpu::Buffer),
-    crosshair_bind_group: wgpu::BindGroup,
-    ui_uniform_bind_group: wgpu::BindGroup,
-    ui_uniform: UiUniform,
-    ui_uniform_buffer: wgpu::Buffer,
+    ui: ui::UiState,
 }
 
 fn create_render_pipeline(
@@ -283,13 +247,6 @@ fn create_render_pipeline(
         multiview: None,
     })
 }
-
-const CROSSHAIR: [UiVertex; 4] = [
-    UiVertex([-0.03125, -0.03125], [0.0, 0.0]),
-    UiVertex([0.03125, -0.03125], [1.0, 0.0]),
-    UiVertex([0.03125, 0.03125], [1.0, 1.0]),
-    UiVertex([-0.03125, 0.03125], [0.0, 1.0]),
-];
 
 impl State {
     async fn new(window: &Window) -> Self {
@@ -371,7 +328,7 @@ impl State {
             .unwrap(),
             Some("crosshair_bind_group"),
         );
-        let camera = camera::Camera::new(
+        let camera = camera::CameraData::new(
             (0.0, 64.5, 0.0),
             -45.0_f32.to_radians(),
             -20.0_f32.to_radians(),
@@ -386,6 +343,11 @@ impl State {
         let camera_controller = camera::Controller::new(4.0, 0.05);
         let mut uniforms = Uniforms::new();
         uniforms.update_view_proj(&camera, &projection);
+        let camera = camera::Camera {
+            data: camera,
+            projection,
+            controller: camera_controller,
+        };
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
             contents: bytemuck::cast_slice(&[uniforms]),
@@ -413,36 +375,6 @@ impl State {
             }],
             label: Some("uniform_bind_group"),
         });
-        let ui_uniform = UiUniform {
-            aspect: size.0 as f32 / size.1 as f32,
-        };
-        let ui_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Uniform Buffer"),
-            contents: bytemuck::cast_slice(&[ui_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-        let ui_uniform_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("ui_uniform_bind_group_layout"),
-            });
-        let ui_uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &ui_uniform_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: ui_uniform_buffer.as_entire_binding(),
-            }],
-            label: Some("ui_uniform_bind_group"),
-        });
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
         let render_pipeline = create_render_pipeline(
@@ -458,21 +390,6 @@ impl State {
             wgpu::ShaderModuleDescriptor {
                 label: Some("Shader"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-            },
-        );
-        let ui_pipeline = create_render_pipeline(
-            &device,
-            &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture_bind_group_layout, &ui_uniform_bind_group_layout],
-                push_constant_ranges: &[],
-            }),
-            config.format,
-            Some(texture::Texture::DEPTH_FORMAT),
-            &[UiVertex::desc()],
-            wgpu::ShaderModuleDescriptor {
-                label: Some("Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
             },
         );
         let noise = OpenSimplex::new(0);
@@ -508,6 +425,79 @@ impl State {
             }),
             create_index_buffer(&device, &[0, 1, 2, 0, 2, 3]),
         );
+        let ui = ui::UiState {
+            pipeline: create_render_pipeline(
+                &device,
+                &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Render Pipeline Layout"),
+                    bind_group_layouts: &[
+                        &texture_bind_group_layout,
+                        &device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                            entries: &[wgpu::BindGroupLayoutEntry {
+                                binding: 0,
+                                visibility: wgpu::ShaderStages::VERTEX
+                                    | wgpu::ShaderStages::FRAGMENT,
+                                ty: wgpu::BindingType::Buffer {
+                                    ty: wgpu::BufferBindingType::Uniform,
+                                    has_dynamic_offset: false,
+                                    min_binding_size: None,
+                                },
+                                count: None,
+                            }],
+                            label: Some("ui_uniform_bind_group_layout"),
+                        }),
+                    ],
+                    push_constant_ranges: &[],
+                }),
+                config.format,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[UiVertex::desc()],
+                wgpu::ShaderModuleDescriptor {
+                    label: Some("Shader"),
+                    source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
+                },
+            ),
+            uniform: ui::UiUniform {
+                aspect: size.0 as f32 / size.1 as f32,
+            },
+            crosshair,
+            crosshair_bind_group,
+            uniform_bind_group: device.create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    }],
+                    label: Some("ui_uniform_bind_group_layout"),
+                }),
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Uniform Buffer"),
+                            contents: bytemuck::cast_slice(&[ui::UiUniform {
+                                aspect: size.0 as f32 / size.1 as f32,
+                            }]),
+                            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        })
+                        .as_entire_binding(),
+                }],
+                label: Some("ui_uniform_bind_group"),
+            }),
+            uniform_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Uniform Buffer"),
+                contents: bytemuck::cast_slice(&[ui::UiUniform {
+                    aspect: size.0 as f32 / size.1 as f32,
+                }]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }),
+        };
         let (send_generate, recv_generate) = mpsc::sync_channel(10);
         let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
         start_chunkgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
@@ -522,8 +512,6 @@ impl State {
             left_pressed: false,
             right_pressed: false,
             camera,
-            projection,
-            camera_controller,
             uniforms,
             uniform_buffer,
             uniform_bind_group,
@@ -534,23 +522,18 @@ impl State {
             recv_chunk,
             noise,
             last_break: Instant::now(),
-            ui_pipeline,
-            crosshair,
-            crosshair_bind_group,
-            ui_uniform_bind_group,
-            ui_uniform,
-            ui_uniform_buffer,
+            ui,
         }
     }
 
     fn resize(&mut self, new_size: (u32, u32)) {
         if new_size.1 > 0 {
-            self.projection.resize(new_size.0, new_size.1);
-            self.ui_uniform.aspect = new_size.0 as f32 / new_size.1 as f32;
+            self.camera.resize(new_size.0, new_size.1);
+            self.ui.uniform.aspect = new_size.0 as f32 / new_size.1 as f32;
             self.queue.write_buffer(
-                &self.ui_uniform_buffer,
+                &self.ui.uniform_buffer,
                 0,
-                bytemuck::cast_slice(&[self.ui_uniform]),
+                bytemuck::cast_slice(&[self.ui.uniform]),
             );
             self.size = new_size;
             self.config.width = new_size.0;
@@ -563,38 +546,37 @@ impl State {
 
     fn keydown(&mut self, keycode: Keycode, window_focused: bool) {
         if window_focused {
-            self.camera_controller.process_keyboard(keycode, true);
+            self.camera.controller.process_keyboard(keycode, true);
         }
     }
 
     fn keyup(&mut self, keycode: Keycode, window_focused: bool) {
         if window_focused {
-            self.camera_controller.process_keyboard(keycode, false);
+            self.camera.controller.process_keyboard(keycode, false);
         }
     }
 
     fn mouse_motion(&mut self, dx: i32, dy: i32) {
-        self.camera_controller.process_mouse(dx.into(), dy.into());
+        self.camera.controller.process_mouse(dx.into(), dy.into());
     }
 
     fn mouse_scroll(&mut self, delta: i32) {
-        self.camera_controller.process_scroll(delta);
+        self.camera.controller.process_scroll(delta);
     }
 
     fn update(&mut self, dt: std::time::Duration) {
         let mut generated_chunkdata = self.generated_chunkdata.lock().unwrap();
-        self.camera_controller
-            .update_camera(&mut self.camera, dt, &generated_chunkdata);
+        self.camera.update(dt, &generated_chunkdata);
         self.uniforms
-            .update_view_proj(&self.camera, &self.projection);
+            .update_view_proj(&self.camera.data, &self.camera.projection);
         self.queue.write_buffer(
             &self.uniform_buffer,
             0,
             bytemuck::cast_slice(&[self.uniforms]),
         );
         let chunk_location = chunk::get_nearest_chunk_location(
-            self.camera.position.x,
-            self.camera.position.z,
+            self.camera.get_position().x,
+            self.camera.get_position().z,
             &generated_chunkdata,
         );
         if let Some(chunk_location) = chunk_location {
@@ -615,7 +597,7 @@ impl State {
                 self.send_generate.send(chunk_location).unwrap();
             }
         }
-        if let Some((location, previous_step)) = self.camera_controller.looking_at_block {
+        if let Some((location, previous_step)) = self.camera.get_looking_at() {
             let now = Instant::now();
             if self.right_pressed {
                 let location = location
@@ -722,11 +704,12 @@ impl State {
                 .generated_chunk_buffers
                 .keys()
                 .sorted_by(|&x, &y| {
-                    ((y[0] * CHUNK_WIDTH as i32 - self.camera.position.x as i32).pow(2)
-                        + (y[1] * CHUNK_DEPTH as i32 - self.camera.position.z as i32).pow(2))
+                    ((y[0] * CHUNK_WIDTH as i32 - self.camera.get_position().x as i32).pow(2)
+                        + (y[1] * CHUNK_DEPTH as i32 - self.camera.get_position().z as i32).pow(2))
                     .cmp(
-                        &((x[0] * CHUNK_WIDTH as i32 - self.camera.position.x as i32).pow(2)
-                            + (x[1] * CHUNK_DEPTH as i32 + -self.camera.position.z as i32).pow(2)),
+                        &((x[0] * CHUNK_WIDTH as i32 - self.camera.get_position().x as i32).pow(2)
+                            + (x[1] * CHUNK_DEPTH as i32 + -self.camera.get_position().z as i32)
+                                .pow(2)),
                     )
                 })
                 .filter(|c| {
@@ -735,7 +718,7 @@ impl State {
                         0.0,
                         (c[1] * CHUNK_DEPTH as i32) as f32,
                     );
-                    is_cuboid_intersecting_frustum(
+                    cuboid_intersects_frustum(
                         &Aabb {
                             min,
                             max: min
@@ -746,7 +729,7 @@ impl State {
                                 ),
                         },
                         self.camera.calc_matrix(),
-                        self.projection.calc_matrix(),
+                        self.camera.calc_projection_matrix(),
                     )
                 })
             {
@@ -755,11 +738,11 @@ impl State {
                 render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
             }
-            render_pass.set_pipeline(&self.ui_pipeline);
-            render_pass.set_bind_group(0, &self.crosshair_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.ui_uniform_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.crosshair.0.slice(..));
-            render_pass.set_index_buffer(self.crosshair.1.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.set_pipeline(&self.ui.pipeline);
+            render_pass.set_bind_group(0, &self.ui.crosshair_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.ui.uniform_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, self.ui.crosshair.0.slice(..));
+            render_pass.set_index_buffer(self.ui.crosshair.1.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.draw_indexed(0..6, 0, 0..1);
         }
         self.queue.submit(std::iter::once(encoder.finish()));
