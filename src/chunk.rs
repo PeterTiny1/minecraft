@@ -432,38 +432,57 @@ pub fn generate_chunk_mesh(
     for x in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH {
-                if chunk[x][y][z] == BlockType::Air {
-                } else if chunk[x][y][z].is_grasslike() {
-                    let tex_offset = chunk[x][y][z].get_offset()[0];
-                    let x = (x as i32 + (location[0] * CHUNK_WIDTH_I32)) as f32;
-                    let z = (z as i32 + (location[1] * CHUNK_DEPTH_I32)) as f32;
-                    let y = y as f32;
-                    indices.extend(GRASS_INDICES.iter().map(|i| *i + vertices.len() as u32));
-                    vertices.append(&mut create_grass_face(tex_offset, (x, y, z), false));
-                    vertices.append(&mut create_grass_face(tex_offset, (x, y, z), true));
-                } else if chunk[x][y][z].is_liquid() {
-                    generate_water(
-                        chunk,
-                        (x, y, z),
-                        location,
-                        &mut indices,
-                        &mut vertices,
-                        surrounding_chunks,
-                    );
-                } else {
-                    generate_solid(
-                        chunk,
-                        (x, y, z),
-                        location,
-                        surrounding_chunks,
-                        &mut indices,
-                        &mut vertices,
-                    );
-                }
+                generate_block_mesh(
+                    chunk,
+                    (x, y, z),
+                    location,
+                    &mut indices,
+                    &mut vertices,
+                    surrounding_chunks,
+                );
             }
         }
     }
     (vertices, indices)
+}
+
+fn generate_block_mesh(
+    chunk: &[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
+    position: (usize, usize, usize),
+    chunk_location: [i32; 2],
+    indices: &mut Vec<u32>,
+    vertices: &mut Vec<Vertex>,
+    surrounding_chunks: [Option<&ChunkData>; 4],
+) {
+    let (x, y, z) = position;
+    if chunk[x][y][z] == BlockType::Air {
+    } else if chunk[x][y][z].is_grasslike() {
+        let tex_offset = chunk[x][y][z].get_offset()[0];
+        let x = (x as i32 + (chunk_location[0] * CHUNK_WIDTH_I32)) as f32;
+        let z = (z as i32 + (chunk_location[1] * CHUNK_DEPTH_I32)) as f32;
+        let y = y as f32;
+        indices.extend(GRASS_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        vertices.append(&mut create_grass_face(tex_offset, (x, y, z), false));
+        vertices.append(&mut create_grass_face(tex_offset, (x, y, z), true));
+    } else if chunk[x][y][z].is_liquid() {
+        generate_water(
+            chunk,
+            (x, y, z),
+            chunk_location,
+            indices,
+            vertices,
+            surrounding_chunks,
+        );
+    } else {
+        generate_solid(
+            chunk,
+            (x, y, z),
+            chunk_location,
+            surrounding_chunks,
+            indices,
+            vertices,
+        );
+    }
 }
 
 fn generate_solid(
