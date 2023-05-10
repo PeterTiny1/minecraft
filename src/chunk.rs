@@ -461,13 +461,13 @@ fn generate_block_mesh(
         let x = (x as i32 + (chunk_location[0] * CHUNK_WIDTH_I32)) as f32;
         let z = (z as i32 + (chunk_location[1] * CHUNK_DEPTH_I32)) as f32;
         let y = y as f32;
-        indices.extend(GRASS_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(GRASS_INDICES.map(|i| i + vertices.len() as u32));
         vertices.append(&mut create_grass_face(tex_offset, (x, y, z), false));
         vertices.append(&mut create_grass_face(tex_offset, (x, y, z), true));
     } else if chunk[x][y][z].is_liquid() {
         generate_water(
             chunk,
-            (x, y, z),
+            position,
             chunk_location,
             indices,
             vertices,
@@ -476,7 +476,7 @@ fn generate_block_mesh(
     } else {
         generate_solid(
             chunk,
-            (x, y, z),
+            position,
             chunk_location,
             surrounding_chunks,
             indices,
