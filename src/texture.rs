@@ -244,8 +244,8 @@ fn write_texture(
         rgba,
         wgpu::ImageDataLayout {
             offset: 0,
-            bytes_per_row: std::num::NonZeroU32::new(4 * size.width),
-            rows_per_image: std::num::NonZeroU32::new(size.height),
+            bytes_per_row: Some(4 * size.width),
+            rows_per_image: Some(size.height),
         },
         size,
     );
