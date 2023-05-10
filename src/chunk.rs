@@ -239,6 +239,11 @@ pub fn get_nearest_chunk_location(
         .map(|(loc, _)| loc)
 }
 
+#[test]
+fn test_add_arrs() {
+    assert_eq!(add_arrs([1.0, 2.0], [3.0, 4.0]), [4.0, 6.0])
+}
+
 #[inline]
 fn add_arrs(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
     [a[0] + b[0], a[1] + b[1]]
