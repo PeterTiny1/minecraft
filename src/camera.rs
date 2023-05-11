@@ -111,6 +111,16 @@ const CORNER3: Vec3<f32> = Vec3 {
     z: 0.3,
 };
 
+fn next_float(x: f32) -> f32 {
+    let bits = x.to_bits();
+    let next_bits = if x.is_sign_positive() {
+        bits + 1
+    } else {
+        bits - 1
+    };
+    f32::from_bits(next_bits)
+}
+
 impl Controller {
     pub fn new(speed: f32, sensitivity: f32) -> Self {
         Self {
@@ -183,6 +193,7 @@ impl Controller {
         self.velocity += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;
         self.velocity += right * (self.amount_right - self.amount_left) * self.speed * dt;
         self.velocity.y -= GRAVITY * dt;
+        self.velocity.y *= 0.99_f32.powf(-dt);
         self.velocity.x -= (self.velocity.x) * dt;
         self.velocity.z -= (self.velocity.z) * dt;
         while let Some(collision) =
@@ -192,7 +203,7 @@ impl Controller {
                 0 | 1 => self.velocity.x = 0.0,
                 2 => {
                     self.velocity.y = 0.0;
-                    camera.position.y = (camera.position.y - 1.5).floor() + 1.5001;
+                    camera.position.y = next_float((camera.position.y - 1.5).floor() + 1.5);
                 }
                 3 => {
                     self.velocity.y = 0.0;
@@ -210,7 +221,7 @@ impl Controller {
                 0 | 1 => self.velocity.x = 0.0,
                 2 => {
                     self.velocity.y = 0.0;
-                    camera.position.y = (camera.position.y - 1.5).floor() + 1.5001;
+                    camera.position.y = next_float((camera.position.y - 1.5).floor() + 1.5);
                 }
                 3 => {
                     self.velocity.y = 0.0;
@@ -228,7 +239,7 @@ impl Controller {
                 0 | 1 => self.velocity.x = 0.0,
                 2 => {
                     self.velocity.y = 0.0;
-                    camera.position.y = (camera.position.y - 1.5).floor() + 1.5001;
+                    camera.position.y = next_float((camera.position.y - 1.5).floor() + 1.5);
                 }
                 3 => {
                     self.velocity.y = 0.0;
@@ -246,7 +257,7 @@ impl Controller {
                 0 | 1 => self.velocity.x = 0.0,
                 2 => {
                     self.velocity.y = 0.0;
-                    camera.position.y = (camera.position.y - 1.5).floor() + 1.5001;
+                    camera.position.y = next_float((camera.position.y - 1.5).floor() + 1.5);
                 }
                 3 => {
                     self.velocity.y = 0.0;
