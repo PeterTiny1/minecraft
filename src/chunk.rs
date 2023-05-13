@@ -318,7 +318,7 @@ fn generate_heightmap(
     for x in 0..CHUNK_WIDTH {
         for z in 0..CHUNK_DEPTH {
             let mut amplitude = 1.0;
-            let mut frequency = 0.01;
+            let mut frequency = 0.007;
             let mut noise_height = 0.0;
 
             for _ in 0..OCTAVES {
