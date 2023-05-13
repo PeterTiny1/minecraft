@@ -278,7 +278,7 @@ fn generate_biomemap(
             let v = noise_at(noise, x as i32, z as i32, chunk_location, BIOME_SCALE, 18.9);
             let biome = if v > 0.2 {
                 Biome::DarklogForest
-            } else if v > 0.0 {
+            } else if v > -0.1 {
                 Biome::GreenGrove
             } else {
                 Biome::BirchFalls
@@ -308,7 +308,7 @@ fn generate_heightmap(
     noise: &OpenSimplex,
     location: [i32; 2],
 ) -> [[f64; CHUNK_DEPTH]; CHUNK_WIDTH] {
-    const OCTAVES: usize = 6;
+    const OCTAVES: usize = 3;
     const PERSISTENCE: f64 = 0.5;
     const LACUNARITY: f64 = 2.0;
     const SEA_LEVEL: f64 = -0.2;
@@ -321,10 +321,10 @@ fn generate_heightmap(
             let mut frequency = 0.007;
             let mut noise_height = 0.0;
 
-            for _ in 0..OCTAVES {
+            for octave in 0..OCTAVES {
                 let sample_x = (location[0] * CHUNK_WIDTH_I32 + x as i32) as f64 * frequency;
                 let sample_z = (location[1] * CHUNK_DEPTH_I32 + z as i32) as f64 * frequency;
-                let octave_noise = noise.get([sample_x, sample_z]) as f64;
+                let octave_noise = noise.get([sample_x, sample_z, octave as f64]) as f64;
                 noise_height += octave_noise * amplitude;
                 amplitude *= PERSISTENCE;
                 frequency *= LACUNARITY;
@@ -392,7 +392,7 @@ fn determine_type(
     if y_i32 < heightmap[x][z] {
         BlockType::Stone
     } else if y_i32 == heightmap[x][z] {
-        if heightmap[x][z] + 1 > WATER_HEIGHT as i32 {
+        if heightmap[x][z] > WATER_HEIGHT as i32 {
             match biome {
                 Biome::BirchFalls => BlockType::GrassBlock0,
                 Biome::GreenGrove => BlockType::GrassBlock1,
@@ -405,7 +405,7 @@ fn determine_type(
         BlockType::Water
     } else if y_i32 > heightmap[x][z]
         && y_i32 <= heightmap[x][z] + 5
-        && heightmap[x][z] >= WATER_HEIGHT as i32
+        && heightmap[x][z] > WATER_HEIGHT as i32
     {
         if noise.get([x as f64, f64::from(heightmap[x][z]), z as f64]) > 0.4 {
             if y_i32 == heightmap[x][z] + 5 {
