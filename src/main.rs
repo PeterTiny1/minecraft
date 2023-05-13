@@ -851,7 +851,7 @@ fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     let mut window = video_subsystem
-        .window("My Minecraft Clone", 720, 480)
+        .window("My Minecraft Clone", 640, 360)
         .position_centered()
         .build()
         .unwrap();
