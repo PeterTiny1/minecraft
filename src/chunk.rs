@@ -294,8 +294,8 @@ fn generate_worldscale_heightmap(
     noise: &OpenSimplex,
     location: [i32; 2],
 ) -> [[i32; CHUNK_DEPTH]; CHUNK_WIDTH] {
-    let heightmap = generate_heightmap(noise, location).map(|a| a.map(|b| b as i32 + 80));
-    heightmap
+    
+    generate_heightmap(noise, location).map(|a| a.map(|b| b as i32 + 80))
 }
 
 enum Material {
@@ -324,7 +324,7 @@ fn generate_heightmap(
             for octave in 0..OCTAVES {
                 let sample_x = (location[0] * CHUNK_WIDTH_I32 + x as i32) as f64 * frequency;
                 let sample_z = (location[1] * CHUNK_DEPTH_I32 + z as i32) as f64 * frequency;
-                let octave_noise = noise.get([sample_x, sample_z, octave as f64]) as f64;
+                let octave_noise = noise.get([sample_x, sample_z, octave as f64]);
                 noise_height += octave_noise * amplitude;
                 amplitude *= PERSISTENCE;
                 frequency *= LACUNARITY;
@@ -336,12 +336,12 @@ fn generate_heightmap(
                 Material::Chalk
             };
 
-            heightmap[x as usize][z as usize] = match material {
+            heightmap[x][z] = match material {
                 Material::Rock => height + rock_erosion(height),
                 Material::Chalk => height + chalk_erosion(height),
             };
 
-            heightmap[x as usize][z as usize] = (noise_height * HEIGHT_SCALE) as f64;
+            heightmap[x][z] = noise_height * HEIGHT_SCALE;
         }
     }
 
@@ -349,12 +349,12 @@ fn generate_heightmap(
     for _ in 0..smoothing_iterations {
         for x in 1..(CHUNK_WIDTH - 1) {
             for z in 1..(CHUNK_DEPTH - 1) {
-                let mut total_height = heightmap[x as usize][z as usize];
-                total_height += heightmap[(x - 1) as usize][z as usize];
-                total_height += heightmap[(x + 1) as usize][z as usize];
-                total_height += heightmap[x as usize][(z - 1) as usize];
-                total_height += heightmap[x as usize][(z + 1) as usize];
-                heightmap[x as usize][z as usize] = total_height / 5.0;
+                let mut total_height = heightmap[x][z];
+                total_height += heightmap[x - 1][z];
+                total_height += heightmap[x + 1][z];
+                total_height += heightmap[x][z - 1];
+                total_height += heightmap[x][z + 1];
+                heightmap[x][z] = total_height / 5.0;
             }
         }
     }
@@ -374,7 +374,7 @@ fn chalk_erosion(height: f64) -> f64 {
     // Erosion algorithm for chalk material
     // Add some erosion based on the height of the voxel
     // Higher voxels are more eroded
-    let height_ratio = height / HEIGHT_SCALE as f64;
+    let height_ratio = height / HEIGHT_SCALE;
     let erosion_factor = height_ratio.powi(2);
     let max_erosion = height_ratio * 32.0; // Max erosion amount of 32 blocks
     erosion_factor * max_erosion
