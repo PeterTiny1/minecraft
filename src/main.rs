@@ -248,6 +248,8 @@ fn create_render_pipeline(
     })
 }
 
+const SEED: u32 = 0;
+
 impl State {
     async fn new(window: &Window) -> Self {
         let size = window.size();
@@ -329,7 +331,7 @@ impl State {
             Some("crosshair_bind_group"),
         );
         let camera = camera::CameraData::new(
-            (0.0, 64.5, 0.0),
+            (0.0, 100.0, 0.0),
             -45.0_f32.to_radians(),
             -20.0_f32.to_radians(),
         );
@@ -392,7 +394,7 @@ impl State {
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
             },
         );
-        let noise = OpenSimplex::new(0);
+        let noise = OpenSimplex::new(SEED);
         let path = Path::new("0,0.bin");
         let chunk = if path.exists() {
             let buffer = std::fs::read(path).unwrap();
