@@ -252,9 +252,9 @@ fn add_arrs(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
 const WATER_HEIGHT: usize = 64;
 const BIOME_SCALE: f64 = 250.0;
 
-pub fn generate(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
-    let heightmap = generate_worldscale_heightmap(noise, chunk_location);
-    let biomemap = generate_biomemap(noise, chunk_location);
+pub fn generate(noise: &OpenSimplex, location: [i32; 2]) -> Chunk {
+    let heightmap = generate_worldscale_heightmap(noise, location);
+    let biomemap = generate_biomemap(noise, location);
     let mut contents = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
     for x in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_HEIGHT {
@@ -263,6 +263,28 @@ pub fn generate(noise: &OpenSimplex, chunk_location: [i32; 2]) -> Chunk {
                 contents[x][y][z] = determine_type(heightmap, x, y, z, biome, noise);
             }
         }
+    }
+    let trees = generate_trees(noise, location);
+    for (x, z) in trees {
+        if heightmap[x][z] as usize <= WATER_HEIGHT {
+            continue;
+        }
+        let wood_type = match biomemap[x][z] {
+            Biome::BirchFalls => BlockType::BirchWood,
+            Biome::GreenGrove => BlockType::Wood,
+            Biome::DarklogForest => BlockType::DarkWood,
+        };
+        let leaf_type = match biomemap[x][z] {
+            Biome::BirchFalls => BlockType::BirchLeaf,
+            Biome::GreenGrove => BlockType::Leaf,
+            Biome::DarklogForest => BlockType::DarkLeaf,
+        };
+        let height = heightmap[x][z] as usize;
+        contents[x][height + 1][z] = wood_type;
+        contents[x][height + 2][z] = wood_type;
+        contents[x][height + 3][z] = wood_type;
+        contents[x][height + 4][z] = wood_type;
+        contents[x][height + 5][z] = leaf_type;
     }
     contents
 }
@@ -294,8 +316,7 @@ fn generate_worldscale_heightmap(
     noise: &OpenSimplex,
     location: [i32; 2],
 ) -> [[i32; CHUNK_DEPTH]; CHUNK_WIDTH] {
-    
-    generate_heightmap(noise, location).map(|a| a.map(|b| b as i32 + 80))
+    generate_heightmap(noise, location).map(|a| a.map(|b| b as i32))
 }
 
 enum Material {
@@ -311,7 +332,7 @@ fn generate_heightmap(
     const OCTAVES: usize = 3;
     const PERSISTENCE: f64 = 0.5;
     const LACUNARITY: f64 = 2.0;
-    const SEA_LEVEL: f64 = -0.2;
+    const SEA_LEVEL: f64 = 64.0;
 
     let mut heightmap = [[0.0; CHUNK_DEPTH]; CHUNK_WIDTH];
 
@@ -319,7 +340,7 @@ fn generate_heightmap(
         for z in 0..CHUNK_DEPTH {
             let mut amplitude = 1.0;
             let mut frequency = 0.007;
-            let mut noise_height = 0.0;
+            let mut noise_height = 1.2;
 
             for octave in 0..OCTAVES {
                 let sample_x = (location[0] * CHUNK_WIDTH_I32 + x as i32) as f64 * frequency;
@@ -407,21 +428,7 @@ fn determine_type(
         && y_i32 <= heightmap[x][z] + 5
         && heightmap[x][z] > WATER_HEIGHT as i32
     {
-        if noise.get([x as f64, f64::from(heightmap[x][z]), z as f64]) > 0.4 {
-            if y_i32 == heightmap[x][z] + 5 {
-                match biome {
-                    Biome::BirchFalls => BlockType::BirchLeaf,
-                    Biome::GreenGrove => BlockType::Leaf,
-                    Biome::DarklogForest => BlockType::DarkLeaf,
-                }
-            } else {
-                match biome {
-                    Biome::BirchFalls => BlockType::BirchWood,
-                    Biome::GreenGrove => BlockType::Wood,
-                    Biome::DarklogForest => BlockType::DarkWood,
-                }
-            }
-        } else if y_i32 == heightmap[x][z] + 1
+        if y_i32 == heightmap[x][z] + 1
             && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
         {
             if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
@@ -443,6 +450,25 @@ fn determine_type(
     } else {
         BlockType::Air
     }
+}
+
+fn generate_trees(noise: &OpenSimplex, location: [i32; 2]) -> Vec<(usize, usize)> {
+    let [chunk_x, chunk_z] = location;
+    let mut trees = vec![];
+    for x in 0..CHUNK_WIDTH_I32 {
+        for z in 0..CHUNK_DEPTH_I32 {
+            let world_x = chunk_x * CHUNK_WIDTH_I32 + x;
+            let world_z = chunk_z * CHUNK_DEPTH_I32 + z;
+
+            let density_threshold =
+                noise.get([world_x as f64 / 40.0, world_z as f64 / 40.0]) / 2.0 + 0.5;
+            if noise.get([world_x as f64 * 3.0, world_z as f64 * 3.0]) > density_threshold {
+                trees.push((x as usize, z as usize))
+            }
+        }
+    }
+
+    return trees;
 }
 
 const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
