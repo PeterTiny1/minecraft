@@ -55,9 +55,18 @@ pub enum BlockType {
 }
 
 impl BlockType {
-    fn get_offset(self) -> [[f32; 2]; 6] {
+    #[inline]
+    const fn get_offset(self) -> [[f32; 2]; 6] {
+        const TEXTURE_WIDTH_2: f32 = TEXTURE_WIDTH * 2.;
+        const TEXTURE_WIDTH_3: f32 = TEXTURE_WIDTH * 3.;
+        const TEXTURE_WIDTH_4: f32 = TEXTURE_WIDTH * 4.;
+        const TEXTURE_WIDTH_5: f32 = TEXTURE_WIDTH * 5.;
+        const TEXTURE_WIDTH_6: f32 = TEXTURE_WIDTH * 6.;
+        const TEXTURE_WIDTH_7: f32 = TEXTURE_WIDTH * 7.;
+        const TEXTURE_WIDTH_8: f32 = TEXTURE_WIDTH * 8.;
+        const TEXTURE_WIDTH_9: f32 = TEXTURE_WIDTH * 9.;
         match self {
-            Self::Stone => [[0., TEXTURE_WIDTH * 8.]; 6],
+            Self::Stone => [[0., TEXTURE_WIDTH_8]; 6],
             Self::GrassBlock0 => [
                 [0., TEXTURE_WIDTH],
                 [TEXTURE_WIDTH, TEXTURE_WIDTH],
@@ -67,71 +76,73 @@ impl BlockType {
                 [0., 0.],
             ],
             Self::GrassBlock1 => [
-                [0., TEXTURE_WIDTH * 2.],
-                [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
-                [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
-                [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
-                [TEXTURE_WIDTH, TEXTURE_WIDTH * 2.],
+                [0., TEXTURE_WIDTH_2],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH_2],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH_2],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH_2],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH_2],
                 [0., 0.],
             ],
             Self::GrassBlock2 => [
-                [0., TEXTURE_WIDTH * 3.],
-                [TEXTURE_WIDTH, TEXTURE_WIDTH * 3.],
-                [TEXTURE_WIDTH, TEXTURE_WIDTH * 3.],
-                [TEXTURE_WIDTH, TEXTURE_WIDTH * 3.],
-                [TEXTURE_WIDTH, TEXTURE_WIDTH * 3.],
+                [0., TEXTURE_WIDTH_3],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH_3],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH_3],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH_3],
+                [TEXTURE_WIDTH, TEXTURE_WIDTH_3],
                 [0., 0.],
             ],
             Self::BirchWood => [
-                [TEXTURE_WIDTH * 7., TEXTURE_WIDTH],
-                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH],
-                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH],
-                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH],
-                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH],
-                [TEXTURE_WIDTH * 7., TEXTURE_WIDTH],
+                [TEXTURE_WIDTH_7, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH_6, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH_6, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH_6, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH_6, TEXTURE_WIDTH],
+                [TEXTURE_WIDTH_7, TEXTURE_WIDTH],
             ],
             Self::Wood => [
-                [TEXTURE_WIDTH * 7., TEXTURE_WIDTH * 2.],
-                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 2.],
-                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 2.],
-                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 2.],
-                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 2.],
-                [TEXTURE_WIDTH * 7., TEXTURE_WIDTH * 2.],
+                [TEXTURE_WIDTH_7, TEXTURE_WIDTH_2],
+                [TEXTURE_WIDTH_6, TEXTURE_WIDTH_2],
+                [TEXTURE_WIDTH_6, TEXTURE_WIDTH_2],
+                [TEXTURE_WIDTH_6, TEXTURE_WIDTH_2],
+                [TEXTURE_WIDTH_6, TEXTURE_WIDTH_2],
+                [TEXTURE_WIDTH_7, TEXTURE_WIDTH_2],
             ],
             Self::DarkWood => [
-                [TEXTURE_WIDTH * 7., TEXTURE_WIDTH * 3.],
-                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 3.],
-                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 3.],
-                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 3.],
-                [TEXTURE_WIDTH * 6., TEXTURE_WIDTH * 3.],
-                [TEXTURE_WIDTH * 7., TEXTURE_WIDTH * 3.],
+                [TEXTURE_WIDTH_7, TEXTURE_WIDTH_3],
+                [TEXTURE_WIDTH_6, TEXTURE_WIDTH_3],
+                [TEXTURE_WIDTH_6, TEXTURE_WIDTH_3],
+                [TEXTURE_WIDTH_6, TEXTURE_WIDTH_3],
+                [TEXTURE_WIDTH_6, TEXTURE_WIDTH_3],
+                [TEXTURE_WIDTH_7, TEXTURE_WIDTH_3],
             ],
-            Self::BirchLeaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH]; 6],
-            Self::Leaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH * 2.]; 6],
-            Self::DarkLeaf => [[TEXTURE_WIDTH * 5., TEXTURE_WIDTH * 3.]; 6],
-            Self::Grass0 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH]; 6],
-            Self::Grass1 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH * 2.]; 6],
-            Self::Grass2 => [[TEXTURE_WIDTH * 2., TEXTURE_WIDTH * 3.]; 6],
-            Self::Flower0 => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH]; 6],
-            Self::Flower1 => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH * 2.]; 6],
-            Self::Flower2 => [[TEXTURE_WIDTH * 3., TEXTURE_WIDTH * 3.]; 6],
+            Self::BirchLeaf => [[TEXTURE_WIDTH_5, TEXTURE_WIDTH]; 6],
+            Self::Leaf => [[TEXTURE_WIDTH_5, TEXTURE_WIDTH_2]; 6],
+            Self::DarkLeaf => [[TEXTURE_WIDTH_5, TEXTURE_WIDTH_3]; 6],
+            Self::Grass0 => [[TEXTURE_WIDTH_2, TEXTURE_WIDTH]; 6],
+            Self::Grass1 => [[TEXTURE_WIDTH_2, TEXTURE_WIDTH_2]; 6],
+            Self::Grass2 => [[TEXTURE_WIDTH_2, TEXTURE_WIDTH_3]; 6],
+            Self::Flower0 => [[TEXTURE_WIDTH_3, TEXTURE_WIDTH]; 6],
+            Self::Flower1 => [[TEXTURE_WIDTH_3, TEXTURE_WIDTH_2]; 6],
+            Self::Flower2 => [[TEXTURE_WIDTH_3, TEXTURE_WIDTH_3]; 6],
             Self::Water => [
-                [TEXTURE_WIDTH * 4., 0.],
-                [TEXTURE_WIDTH * 5., 0.],
-                [TEXTURE_WIDTH * 5., 0.],
-                [TEXTURE_WIDTH * 5., 0.],
-                [TEXTURE_WIDTH * 5., 0.],
-                [TEXTURE_WIDTH * 4., 0.],
+                [TEXTURE_WIDTH_4, 0.],
+                [TEXTURE_WIDTH_5, 0.],
+                [TEXTURE_WIDTH_5, 0.],
+                [TEXTURE_WIDTH_5, 0.],
+                [TEXTURE_WIDTH_5, 0.],
+                [TEXTURE_WIDTH_4, 0.],
             ],
-            Self::Sand => [[TEXTURE_WIDTH * 9., 0.]; 6],
-            Self::Air => panic!("This is not supposed to be called!"),
+            Self::Sand => [[TEXTURE_WIDTH_9, 0.]; 6],
+            Self::Air => [[0.; 2]; 6],
         }
     }
 
+    #[inline]
     pub const fn is_solid(self) -> bool {
         !(matches!(self, Self::Air | Self::Water) || self.is_grasslike())
     }
 
+    #[inline]
     pub const fn is_transparent(self) -> bool {
         matches!(
             self,
@@ -140,10 +151,12 @@ impl BlockType {
             || self.is_grasslike()
     }
 
+    #[inline]
     pub const fn is_liquid(self) -> bool {
         matches!(self, Self::Water)
     }
 
+    #[inline]
     pub const fn is_grasslike(self) -> bool {
         matches!(
             self,
@@ -260,7 +273,8 @@ pub fn generate(noise: &OpenSimplex, location: [i32; 2]) -> Chunk {
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH {
                 let biome = biomemap[x][z];
-                contents[x][y][z] = determine_type(heightmap, x, y, z, biome, noise);
+                let terrain_height = heightmap[x][z];
+                contents[x][y][z] = determine_type(terrain_height, x, y, z, biome, noise);
             }
         }
     }
@@ -336,8 +350,8 @@ fn generate_heightmap(
 
     let mut heightmap = [[0.0; CHUNK_DEPTH]; CHUNK_WIDTH];
 
-    for x in 0..CHUNK_WIDTH {
-        for z in 0..CHUNK_DEPTH {
+    for (x, column) in heightmap.iter_mut().enumerate() {
+        for (z, tile) in column.iter_mut().enumerate() {
             let mut amplitude = 1.0;
             let mut frequency = 0.007;
             let mut noise_height = 1.2;
@@ -357,19 +371,19 @@ fn generate_heightmap(
                 Material::Chalk
             };
 
-            heightmap[x][z] = match material {
+            *tile = match material {
                 Material::Rock => height + rock_erosion(height),
                 Material::Chalk => height + chalk_erosion(height),
             };
 
-            heightmap[x][z] = noise_height * HEIGHT_SCALE;
+            *tile = noise_height * HEIGHT_SCALE;
         }
     }
 
     let smoothing_iterations = 3;
     for _ in 0..smoothing_iterations {
         for x in 1..(CHUNK_WIDTH - 1) {
-            for z in 1..(CHUNK_DEPTH - 1) {
+            for z in 1..(LAST_CHUNK_DEPTH) {
                 let mut total_height = heightmap[x][z];
                 total_height += heightmap[x - 1][z];
                 total_height += heightmap[x + 1][z];
@@ -401,55 +415,50 @@ fn chalk_erosion(height: f64) -> f64 {
     erosion_factor * max_erosion
 }
 
+const WATER_HEIGHT_I32: i32 = WATER_HEIGHT as i32;
+#[inline]
 fn determine_type(
-    heightmap: [[i32; CHUNK_DEPTH]; CHUNK_WIDTH],
+    terrain_height: i32,
     x: usize,
     y: usize,
     z: usize,
     biome: Biome,
     noise: &OpenSimplex,
 ) -> BlockType {
-    let y_i32 = y as i32;
-    if y_i32 < heightmap[x][z] {
-        BlockType::Stone
-    } else if y_i32 == heightmap[x][z] {
-        if heightmap[x][z] > WATER_HEIGHT as i32 {
-            match biome {
+    let y = y as i32;
+    if y < terrain_height {
+        return BlockType::Stone;
+    } else if y == terrain_height {
+        if terrain_height > WATER_HEIGHT_I32 {
+            return match biome {
                 Biome::BirchFalls => BlockType::GrassBlock0,
                 Biome::GreenGrove => BlockType::GrassBlock1,
                 Biome::DarklogForest => BlockType::GrassBlock2,
-            }
+            };
         } else {
-            BlockType::Sand
+            return BlockType::Sand;
         }
-    } else if y < WATER_HEIGHT {
-        BlockType::Water
-    } else if y_i32 > heightmap[x][z]
-        && y_i32 <= heightmap[x][z] + 5
-        && heightmap[x][z] > WATER_HEIGHT as i32
+    } else if y < WATER_HEIGHT_I32 {
+        return BlockType::Water;
+    } else if terrain_height > WATER_HEIGHT_I32
+        && y == terrain_height + 1
+        && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
     {
-        if y_i32 == heightmap[x][z] + 1
-            && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
-        {
-            if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
-                match biome {
-                    Biome::BirchFalls => BlockType::Flower0,
-                    Biome::GreenGrove => BlockType::Flower1,
-                    Biome::DarklogForest => BlockType::Flower2,
-                }
-            } else {
-                match biome {
-                    Biome::BirchFalls => BlockType::Grass0,
-                    Biome::GreenGrove => BlockType::Grass1,
-                    Biome::DarklogForest => BlockType::Grass2,
-                }
-            }
+        if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
+            return match biome {
+                Biome::BirchFalls => BlockType::Flower0,
+                Biome::GreenGrove => BlockType::Flower1,
+                Biome::DarklogForest => BlockType::Flower2,
+            };
         } else {
-            BlockType::Air
+            return match biome {
+                Biome::BirchFalls => BlockType::Grass0,
+                Biome::GreenGrove => BlockType::Grass1,
+                Biome::DarklogForest => BlockType::Grass2,
+            };
         }
-    } else {
-        BlockType::Air
     }
+    BlockType::Air
 }
 
 fn generate_trees(noise: &OpenSimplex, location: [i32; 2]) -> Vec<(usize, usize)> {
@@ -468,7 +477,7 @@ fn generate_trees(noise: &OpenSimplex, location: [i32; 2]) -> Vec<(usize, usize)
         }
     }
 
-    return trees;
+    trees
 }
 
 const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
@@ -478,18 +487,19 @@ const TOP_RIGHT: [f32; 2] = [TEXTURE_WIDTH, 0.0];
 const BOTTOM_LEFT: [f32; 2] = [0.0, TEXTURE_WIDTH];
 const BOTTOM_RIGHT: [f32; 2] = [TEXTURE_WIDTH, TEXTURE_WIDTH];
 
+#[inline]
 fn create_grass_face(
     tex_offset: [f32; 2],
     position: (f32, f32, f32),
     diagonal: bool,
-) -> Vec<Vertex> {
+) -> std::array::IntoIter<Vertex, 4> {
     let (x, y, z) = position;
     let (add0, add1) = if diagonal {
         (FAR_CORNER, CLOSE_CORNER)
     } else {
         (CLOSE_CORNER, FAR_CORNER)
     };
-    vec![
+    [
         Vertex(
             [x + CLOSE_CORNER, y + 1.0, z + add0],
             add_arrs(TOP_LEFT, tex_offset),
@@ -511,6 +521,7 @@ fn create_grass_face(
             1.0,
         ),
     ]
+    .into_iter()
 }
 
 const GRASS_INDICES: [u32; 24] = [
@@ -545,6 +556,7 @@ pub fn generate_chunk_mesh(
     (vertices, indices)
 }
 
+#[inline]
 fn generate_block_mesh(
     chunk: &[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
     position: (usize, usize, usize),
@@ -554,53 +566,64 @@ fn generate_block_mesh(
     surrounding_chunks: [Option<&ChunkData>; 4],
 ) {
     let (x, y, z) = position;
-    if chunk[x][y][z] == BlockType::Air {
-    } else if chunk[x][y][z].is_grasslike() {
-        let tex_offset = chunk[x][y][z].get_offset()[0];
-        let x = (x as i32 + (chunk_location[0] * CHUNK_WIDTH_I32)) as f32;
-        let z = (z as i32 + (chunk_location[1] * CHUNK_DEPTH_I32)) as f32;
-        let y = y as f32;
-        indices.extend(GRASS_INDICES.map(|i| i + vertices.len() as u32));
-        vertices.append(&mut create_grass_face(tex_offset, (x, y, z), false));
-        vertices.append(&mut create_grass_face(tex_offset, (x, y, z), true));
-    } else if chunk[x][y][z].is_liquid() {
-        generate_water(
-            chunk,
-            position,
-            chunk_location,
-            indices,
-            vertices,
-            surrounding_chunks,
-        );
-    } else {
-        generate_solid(
-            chunk,
-            position,
-            chunk_location,
-            surrounding_chunks,
-            indices,
-            vertices,
-        );
+    let block_type = chunk[x][y][z];
+    let tex_offsets = block_type.get_offset();
+    match block_type {
+        BlockType::Air => {}
+        _ if block_type.is_liquid() => {
+            generate_water(
+                chunk,
+                position,
+                chunk_location,
+                tex_offsets,
+                indices,
+                vertices,
+                surrounding_chunks,
+            );
+        }
+        _ if block_type.is_grasslike() => {
+            let tex_offset = tex_offsets[0];
+            let x = (x as i32 + (chunk_location[0] * CHUNK_WIDTH_I32)) as f32;
+            let z = (z as i32 + (chunk_location[1] * CHUNK_DEPTH_I32)) as f32;
+            let y = y as f32;
+            indices.extend(GRASS_INDICES.map(|i| i + vertices.len() as u32));
+            vertices.extend(create_grass_face(tex_offset, (x, y, z), false));
+            vertices.extend(create_grass_face(tex_offset, (x, y, z), true));
+        }
+        _ => {
+            generate_solid(
+                chunk,
+                position,
+                chunk_location,
+                tex_offsets,
+                surrounding_chunks,
+                indices,
+                vertices,
+            );
+        }
     }
 }
 
+const LAST_CHUNK_DEPTH: usize = CHUNK_DEPTH - 1;
+
+#[inline]
 fn generate_solid(
     chunk: &Chunk,
     position: (usize, usize, usize),
     location: [i32; 2],
+    tex_offsets: [[f32; 2]; 6],
     surrounding_chunks: [Option<&ChunkData>; 4],
     indices: &mut Vec<u32>,
     vertices: &mut Vec<Vertex>,
 ) {
     let (x, y, z) = position;
-    let tex_offsets = chunk[x][y][z].get_offset();
     let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH_I32)) as f32;
     let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH_I32)) as f32;
     let y_f32 = y as f32;
     // first face
-    if (z == CHUNK_DEPTH - 1
+    if (z == LAST_CHUNK_DEPTH
         && surrounding_chunks[2].map_or(true, |chunk| chunk.contents[x][y][0].is_transparent()))
-        || (z != CHUNK_DEPTH - 1 && chunk[x][y][z + 1].is_transparent())
+        || (z != LAST_CHUNK_DEPTH && chunk[x][y][z + 1].is_transparent())
     {
         let tex_offset = tex_offsets[1];
         indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
@@ -611,10 +634,10 @@ fn generate_solid(
                 add_arrs(TOP_LEFT, tex_offset),
                 if (x == 0
                     && surrounding_chunks[1].map_or(false, |chunk| {
-                        z != CHUNK_DEPTH - 1
+                        z != LAST_CHUNK_DEPTH
                             && !chunk.contents[CHUNK_WIDTH - 1][y][z + 1].is_transparent()
                     }))
-                    || (x != 0 && z != CHUNK_DEPTH - 1 && !chunk[x - 1][y][z + 1].is_transparent())
+                    || (x != 0 && z != LAST_CHUNK_DEPTH && !chunk[x - 1][y][z + 1].is_transparent())
                 {
                     AO_BRIGHTNESS
                 } else {
@@ -625,8 +648,8 @@ fn generate_solid(
                 [rel_x, y_f32, zplusone],
                 add_arrs(BOTTOM_LEFT, tex_offset),
                 if y != 0
-                    && ((z != CHUNK_DEPTH - 1 && !chunk[x][y - 1][z + 1].is_transparent())
-                        || (z == CHUNK_DEPTH - 1
+                    && ((z != LAST_CHUNK_DEPTH && !chunk[x][y - 1][z + 1].is_transparent())
+                        || (z == LAST_CHUNK_DEPTH
                             && surrounding_chunks[2].map_or(false, |chunk| {
                                 !chunk.contents[x][y - 1][0].is_transparent()
                             })))
@@ -640,8 +663,8 @@ fn generate_solid(
                 [1.0 + rel_x, y_f32, zplusone],
                 add_arrs(BOTTOM_RIGHT, tex_offset),
                 if y != 0
-                    && ((z != CHUNK_DEPTH - 1 && !chunk[x][y - 1][z + 1].is_transparent())
-                        || (z == CHUNK_DEPTH - 1
+                    && ((z != LAST_CHUNK_DEPTH && !chunk[x][y - 1][z + 1].is_transparent())
+                        || (z == LAST_CHUNK_DEPTH
                             && surrounding_chunks[2].map_or(false, |chunk| {
                                 !chunk.contents[x][y - 1][0].is_transparent()
                             })))
@@ -656,10 +679,10 @@ fn generate_solid(
                 add_arrs(TOP_RIGHT, tex_offset),
                 if (x == CHUNK_WIDTH - 1
                     && surrounding_chunks[0].map_or(false, |chunk| {
-                        z != CHUNK_DEPTH - 1 && !chunk.contents[0][y][z + 1].is_transparent()
+                        z != LAST_CHUNK_DEPTH && !chunk.contents[0][y][z + 1].is_transparent()
                     }))
                     || (x != CHUNK_WIDTH - 1
-                        && z != CHUNK_DEPTH - 1
+                        && z != LAST_CHUNK_DEPTH
                         && !chunk[x + 1][y][z + 1].is_transparent())
                 {
                     AO_BRIGHTNESS
@@ -683,10 +706,10 @@ fn generate_solid(
                 add_arrs(TOP_LEFT, tex_offset),
                 if (x == CHUNK_WIDTH - 1
                     && surrounding_chunks[0].map_or(false, |chunk| {
-                        z != CHUNK_DEPTH - 1 && !chunk.contents[0][y][z + 1].is_transparent()
+                        z != LAST_CHUNK_DEPTH && !chunk.contents[0][y][z + 1].is_transparent()
                     }))
                     || (x != CHUNK_WIDTH - 1
-                        && z != CHUNK_DEPTH - 1
+                        && z != LAST_CHUNK_DEPTH
                         && !chunk[x + 1][y][z + 1].is_transparent())
                 {
                     AO_BRIGHTNESS
@@ -731,7 +754,7 @@ fn generate_solid(
     // third face
     if (z == 0
         && surrounding_chunks[3].map_or(true, |chunk| {
-            chunk.contents[x][y][CHUNK_DEPTH - 1].is_transparent()
+            chunk.contents[x][y][LAST_CHUNK_DEPTH].is_transparent()
         }))
         || (z != 0 && chunk[x][y][z - 1].is_transparent())
     {
@@ -844,13 +867,13 @@ fn generate_solid(
                             && (!chunk[x - 1][y + 1][z].is_transparent()
                                 || (z == 0
                                     && surrounding_chunks[3].map_or(false, |chunk| {
-                                        !chunk.contents[x - 1][y + 1][CHUNK_DEPTH - 1]
+                                        !chunk.contents[x - 1][y + 1][LAST_CHUNK_DEPTH]
                                             .is_transparent()
                                     }))
                                 || (z != 0 && !chunk[x - 1][y + 1][z - 1].is_transparent())))
                         || (z == 0
                             && surrounding_chunks[3].map_or(false, |chunk| {
-                                !chunk.contents[x][y + 1][CHUNK_DEPTH - 1].is_transparent()
+                                !chunk.contents[x][y + 1][LAST_CHUNK_DEPTH].is_transparent()
                             }))
                         || (z != 0 && !chunk[x][y + 1][z - 1].is_transparent())
                     {
@@ -865,24 +888,24 @@ fn generate_solid(
                     if (x == 0
                         && surrounding_chunks[1].map_or(false, |chunk| {
                             !chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_transparent()
-                                || (z != CHUNK_DEPTH - 1
+                                || (z != LAST_CHUNK_DEPTH
                                     && !chunk.contents[CHUNK_WIDTH - 1][y + 1][z + 1]
                                         .is_transparent())
                         }))
                         || (x != 0
                             && y != CHUNK_HEIGHT - 1
                             && (!chunk[x - 1][y + 1][z].is_transparent()
-                                || ((z == CHUNK_DEPTH - 1
+                                || ((z == LAST_CHUNK_DEPTH
                                     && surrounding_chunks[2].map_or(false, |chunk| {
                                         !chunk.contents[x - 1][y + 1][0].is_transparent()
                                     }))
-                                    || (z != CHUNK_DEPTH - 1
+                                    || (z != LAST_CHUNK_DEPTH
                                         && !chunk[x - 1][y + 1][z + 1].is_transparent()))))
-                        || (z == CHUNK_DEPTH - 1
+                        || (z == LAST_CHUNK_DEPTH
                             && surrounding_chunks[2].map_or(false, |chunk| {
                                 !chunk.contents[x][y + 1][0].is_transparent()
                             }))
-                        || (z != CHUNK_DEPTH - 1
+                        || (z != LAST_CHUNK_DEPTH
                             && y != CHUNK_HEIGHT - 1
                             && !chunk[x][y + 1][z + 1].is_transparent())
                     {
@@ -897,23 +920,23 @@ fn generate_solid(
                     if (x == CHUNK_WIDTH - 1
                         && surrounding_chunks[0].map_or(false, |chunk| {
                             !chunk.contents[0][y + 1][z].is_transparent()
-                                || (z != CHUNK_DEPTH - 1
+                                || (z != LAST_CHUNK_DEPTH
                                     && !chunk.contents[0][y + 1][z + 1].is_transparent())
                         }))
                         || (x != CHUNK_WIDTH - 1
                             && y != CHUNK_HEIGHT - 1
                             && (!chunk[x + 1][y + 1][z].is_transparent()
-                                || (z == CHUNK_DEPTH - 1
+                                || (z == LAST_CHUNK_DEPTH
                                     && surrounding_chunks[2].map_or(false, |chunk| {
                                         !chunk.contents[x + 1][y + 1][0].is_transparent()
                                     }))
-                                || (z != CHUNK_DEPTH - 1
+                                || (z != LAST_CHUNK_DEPTH
                                     && !chunk[x + 1][y + 1][z + 1].is_transparent())))
-                        || (z == CHUNK_DEPTH - 1
+                        || (z == LAST_CHUNK_DEPTH
                             && surrounding_chunks[2].map_or(false, |chunk| {
                                 !chunk.contents[x][y + 1][0].is_transparent()
                             }))
-                        || (z != CHUNK_DEPTH - 1
+                        || (z != LAST_CHUNK_DEPTH
                             && y != CHUNK_HEIGHT - 1
                             && !chunk[x][y + 1][z + 1].is_transparent())
                     {
@@ -934,13 +957,13 @@ fn generate_solid(
                             && y != CHUNK_HEIGHT - 1
                             && ((z == 0
                                 && surrounding_chunks[3].map_or(false, |chunk| {
-                                    !chunk.contents[x + 1][y + 1][CHUNK_DEPTH - 1].is_transparent()
+                                    !chunk.contents[x + 1][y + 1][LAST_CHUNK_DEPTH].is_transparent()
                                 }))
                                 || (z != 0 && !chunk[x + 1][y + 1][z - 1].is_transparent())
                                 || !chunk[x + 1][y + 1][z].is_transparent()))
                         || (z == 0
                             && surrounding_chunks[3].map_or(false, |chunk| {
-                                !chunk.contents[x][y + 1][CHUNK_DEPTH - 1].is_transparent()
+                                !chunk.contents[x][y + 1][LAST_CHUNK_DEPTH].is_transparent()
                             }))
                         || (z != 0
                             && y != CHUNK_HEIGHT - 1
@@ -984,16 +1007,17 @@ fn generate_solid(
     }
 }
 
+#[inline]
 fn generate_water(
     chunk: &Chunk,
     position: (usize, usize, usize),
     location: [i32; 2],
+    tex_offsets: [[f32; 2]; 6],
     indices: &mut Vec<u32>,
     vertices: &mut Vec<Vertex>,
     surrounding_chunks: [Option<&ChunkData>; 4],
 ) {
     let (x, y, z) = position;
-    let tex_offsets = chunk[x][y][z].get_offset();
     let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH_I32)) as f32;
     let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH_I32)) as f32;
     let y_f32 = y as f32;
@@ -1050,11 +1074,11 @@ fn generate_water(
             ),
         ]);
     }
-    if (z == CHUNK_DEPTH - 1
+    if (z == LAST_CHUNK_DEPTH
         && surrounding_chunks[2].map_or(true, |chunk| {
             chunk.contents[x][y][0].is_transparent() && !chunk.contents[x][y][0].is_liquid()
         }))
-        || (z != CHUNK_DEPTH - 1
+        || (z != LAST_CHUNK_DEPTH
             && (chunk[x][y][z + 1].is_transparent() && !chunk[x][y][z + 1].is_liquid()))
     {
         let tex_offset = tex_offsets[1];
@@ -1167,8 +1191,8 @@ fn generate_water(
     }
     if (z == 0
         && surrounding_chunks[3].map_or(true, |chunk| {
-            chunk.contents[x][y][CHUNK_DEPTH - 1].is_transparent()
-                && !chunk.contents[x][y][CHUNK_DEPTH - 1].is_liquid()
+            chunk.contents[x][y][LAST_CHUNK_DEPTH].is_transparent()
+                && !chunk.contents[x][y][LAST_CHUNK_DEPTH].is_liquid()
         }))
         || (z != 0 && chunk[x][y][z - 1].is_transparent() && !chunk[x][y][z - 1].is_liquid())
     {
