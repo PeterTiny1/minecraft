@@ -204,10 +204,10 @@ fn chunk_at_block(
     generated_chunks: &HashMap<[i32; 2], ChunkData>,
     x: i32,
     z: i32,
-) -> Option<ChunkData> {
+) -> Option<&ChunkData> {
     let chunk_x = x.div_euclid(CHUNK_WIDTH_I32);
     let chunk_z = z.div_euclid(CHUNK_DEPTH_I32);
-    generated_chunks.get(&[chunk_x, chunk_z]).copied()
+    generated_chunks.get(&[chunk_x, chunk_z])
 }
 
 pub fn get_block(
