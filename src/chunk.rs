@@ -254,7 +254,7 @@ pub fn get_nearest_chunk_location(
 
 #[test]
 fn test_add_arrs() {
-    assert_eq!(add_arrs([1.0, 2.0], [3.0, 4.0]), [4.0, 6.0])
+    assert_eq!(add_arrs([1.0, 2.0], [3.0, 4.0]), [4.0, 6.0]);
 }
 
 #[inline]
@@ -357,8 +357,8 @@ fn generate_heightmap(
             let mut noise_height = 1.2;
 
             for octave in 0..OCTAVES {
-                let sample_x = (location[0] * CHUNK_WIDTH_I32 + x as i32) as f64 * frequency;
-                let sample_z = (location[1] * CHUNK_DEPTH_I32 + z as i32) as f64 * frequency;
+                let sample_x = f64::from(location[0] * CHUNK_WIDTH_I32 + x as i32) * frequency;
+                let sample_z = f64::from(location[1] * CHUNK_DEPTH_I32 + z as i32) * frequency;
                 let octave_noise = noise.get([sample_x, sample_z, octave as f64]);
                 noise_height += octave_noise * amplitude;
                 amplitude *= PERSISTENCE;
@@ -442,9 +442,9 @@ fn determine_type(
         return BlockType::Water;
     } else if terrain_height > WATER_HEIGHT_I32
         && y == terrain_height + 1
-        && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
+        && noise.get([x as f64 / 4.0, z as f64 / 4.0, f64::from(y) / 4.0]) > 0.3
     {
-        if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
+        if noise.get([x as f64, f64::from(y), z as f64]) > 0.3 {
             return match biome {
                 Biome::BirchFalls => BlockType::Flower0,
                 Biome::GreenGrove => BlockType::Flower1,
@@ -470,9 +470,9 @@ fn generate_trees(noise: &OpenSimplex, location: [i32; 2]) -> Vec<(usize, usize)
             let world_z = chunk_z * CHUNK_DEPTH_I32 + z;
 
             let density_threshold =
-                noise.get([world_x as f64 / 40.0, world_z as f64 / 40.0]) / 2.0 + 0.5;
-            if noise.get([world_x as f64 * 3.0, world_z as f64 * 3.0]) > density_threshold {
-                trees.push((x as usize, z as usize))
+                noise.get([f64::from(world_x) / 40.0, f64::from(world_z) / 40.0]) / 2.0 + 0.5;
+            if noise.get([f64::from(world_x) * 3.0, f64::from(world_z) * 3.0]) > density_threshold {
+                trees.push((x as usize, z as usize));
             }
         }
     }

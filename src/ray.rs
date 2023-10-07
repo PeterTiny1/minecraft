@@ -119,7 +119,7 @@ impl Iterator for Ray {
             })
             .unwrap();
         self.position += real_change;
-        let direction = direction * 2 + [positive_x, positive_y, positive_z][direction] as usize;
+        let direction = direction * 2 + usize::from([positive_x, positive_y, positive_z][direction]);
         self.block_position += DIRECTION_OFFSETS[direction];
         if self.magnitude() < self.max_len {
             Some((self.block_position, direction))

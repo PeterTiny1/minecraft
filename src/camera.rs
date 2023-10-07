@@ -271,11 +271,11 @@ pub struct Camera {
 
 impl Camera {
     pub fn resize(&mut self, width: u32, height: u32) {
-        self.projection.resize(width, height)
+        self.projection.resize(width, height);
     }
 
     pub fn update(&mut self, dt: Duration, world: &HashMap<[i32; 2], chunk::ChunkData>) {
-        self.controller.update_camera(&mut self.data, dt, world)
+        self.controller.update_camera(&mut self.data, dt, world);
     }
 
     pub const fn get_position(&self) -> Vec3<f32> {

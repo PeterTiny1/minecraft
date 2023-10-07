@@ -876,7 +876,7 @@ fn main() {
         last_render_time = now;
         state.update(dt);
         match state.render() {
-            Ok(_) => {}
+            Ok(()) => {}
             Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
             Err(wgpu::SurfaceError::OutOfMemory) => break 'running,
             Err(e) => eprintln!("{e:?}"),
