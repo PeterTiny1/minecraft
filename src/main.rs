@@ -22,7 +22,6 @@ use std::{
     thread,
     time::Instant,
 };
-use ui::{UiVertex, CROSSHAIR};
 
 use chunk::{
     generate, generate_chunk_mesh, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH,
@@ -173,6 +172,11 @@ impl Uniforms {
     }
 }
 
+struct ChunkGenComms {
+    sender: mpsc::SyncSender<[i32; 2]>,
+    receiver: mpsc::Receiver<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
+}
+
 struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -191,10 +195,9 @@ struct State {
     depth_texture: texture::Texture,
     generated_chunkdata: Arc<Mutex<HashMap<[i32; 2], chunk::ChunkData>>>,
     generated_chunk_buffers: HashMap<[i32; 2], ChunkBuffers>,
-    send_generate: mpsc::SyncSender<[i32; 2]>,
-    recv_chunk: mpsc::Receiver<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
+    chunkgen_comms: ChunkGenComms,
     noise: noise::OpenSimplex,
-    ui: ui::UiState,
+    ui: ui::State,
 }
 
 fn create_render_pipeline(
@@ -318,18 +321,6 @@ impl State {
             .unwrap(),
             Some("diffuse_bind_group"),
         );
-        let crosshair_bind_group = load_texture(
-            &device,
-            &texture_bind_group_layout,
-            &texture::Texture::from_bytes(
-                &device,
-                &queue,
-                include_bytes!("crosshair.png"),
-                "crosshair.png",
-            )
-            .unwrap(),
-            Some("crosshair_bind_group"),
-        );
         let camera = camera::CameraData::new(
             (0.0, 100.0, 0.0),
             -45.0_f32.to_radians(),
@@ -419,90 +410,14 @@ impl State {
                 num_indices: chunk_indices.len() as u32,
             },
         )]);
-        let crosshair = (
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(&CROSSHAIR),
-                usage: wgpu::BufferUsages::VERTEX,
-            }),
-            create_index_buffer(&device, &[0, 1, 2, 0, 2, 3]),
-        );
-        let ui = ui::UiState {
-            pipeline: create_render_pipeline(
-                &device,
-                &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[
-                        &texture_bind_group_layout,
-                        &device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                            entries: &[wgpu::BindGroupLayoutEntry {
-                                binding: 0,
-                                visibility: wgpu::ShaderStages::VERTEX
-                                    | wgpu::ShaderStages::FRAGMENT,
-                                ty: wgpu::BindingType::Buffer {
-                                    ty: wgpu::BufferBindingType::Uniform,
-                                    has_dynamic_offset: false,
-                                    min_binding_size: None,
-                                },
-                                count: None,
-                            }],
-                            label: Some("ui_uniform_bind_group_layout"),
-                        }),
-                    ],
-                    push_constant_ranges: &[],
-                }),
-                config.format,
-                Some(texture::Texture::DEPTH_FORMAT),
-                &[UiVertex::desc()],
-                wgpu::ShaderModuleDescriptor {
-                    label: Some("Shader"),
-                    source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
-                },
-            ),
-            uniform: ui::UiUniform {
-                aspect: size.0 as f32 / size.1 as f32,
-            },
-            crosshair,
-            crosshair_bind_group,
-            uniform_bind_group: device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                    label: Some("ui_uniform_bind_group_layout"),
-                }),
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Uniform Buffer"),
-                            contents: bytemuck::cast_slice(&[ui::UiUniform {
-                                aspect: size.0 as f32 / size.1 as f32,
-                            }]),
-                            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                        })
-                        .as_entire_binding(),
-                }],
-                label: Some("ui_uniform_bind_group"),
-            }),
-            uniform_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Uniform Buffer"),
-                contents: bytemuck::cast_slice(&[ui::UiUniform {
-                    aspect: size.0 as f32 / size.1 as f32,
-                }]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            }),
-        };
+        let ui = ui::init_state(&device, &queue, &texture_bind_group_layout, &config, size);
         let (send_generate, recv_generate) = mpsc::sync_channel(10);
         let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
         start_chunkgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
+        let chunkgen_comms = ChunkGenComms {
+            sender: send_generate,
+            receiver: recv_chunk,
+        };
         Self {
             surface,
             device,
@@ -520,8 +435,7 @@ impl State {
             depth_texture,
             generated_chunkdata,
             generated_chunk_buffers,
-            send_generate,
-            recv_chunk,
+            chunkgen_comms,
             noise,
             last_break: Instant::now(),
             ui,
@@ -567,15 +481,15 @@ impl State {
     }
 
     fn update(&mut self, dt: std::time::Duration) {
-        let mut generated_chunkdata = self.generated_chunkdata.lock().unwrap();
-        self.camera.update(dt, &generated_chunkdata);
-        self.uniforms
-            .update_view_proj(&self.camera.data, &self.camera.projection);
         self.queue.write_buffer(
             &self.uniform_buffer,
             0,
             bytemuck::cast_slice(&[self.uniforms]),
         );
+        let mut generated_chunkdata = self.generated_chunkdata.lock().unwrap();
+        self.camera.update(dt, &generated_chunkdata);
+        self.uniforms
+            .update_view_proj(&self.camera.data, &self.camera.projection);
         let chunk_location = chunk::get_nearest_chunk_location(
             self.camera.get_position().x,
             self.camera.get_position().z,
@@ -596,7 +510,7 @@ impl State {
                 e.insert(ChunkData {
                     contents: chunk_contents,
                 });
-                self.send_generate.send(chunk_location).unwrap();
+                self.chunkgen_comms.sender.send(chunk_location).unwrap();
             }
         }
         if let Some((location, previous_step)) = self.camera.get_looking_at() {
@@ -624,7 +538,7 @@ impl State {
                             chunk.contents[location.x as usize % CHUNK_WIDTH]
                                 [location.y as usize][location.z as usize % CHUNK_DEPTH] =
                                 BlockType::Stone;
-                            self.send_generate.send([chunk_x, chunk_z]).unwrap();
+                            self.chunkgen_comms.sender.send([chunk_x, chunk_z]).unwrap();
                         }
                     }
                 }
@@ -637,11 +551,11 @@ impl State {
                     .unwrap()
                     .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
                     [location.z as usize % CHUNK_DEPTH] = BlockType::Air;
-                self.send_generate.send([chunk_x, chunk_z]).unwrap();
+                self.chunkgen_comms.sender.send([chunk_x, chunk_z]).unwrap();
             }
         }
         drop(generated_chunkdata);
-        while let Ok((mesh, indices, index)) = self.recv_chunk.try_recv() {
+        while let Ok((mesh, indices, index)) = self.chunkgen_comms.receiver.try_recv() {
             self.generated_chunk_buffers.insert(
                 index,
                 ChunkBuffers {
