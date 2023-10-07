@@ -121,6 +121,31 @@ fn next_float(x: f32) -> f32 {
     f32::from_bits(next_bits)
 }
 
+fn handle_collision(
+    velocity: &mut Vec3<f32>,
+    position: &mut Vec3<f32>,
+    corner_offset: Vec3<f32>,
+    dt: f32,
+    world: &HashMap<[i32; 2], ChunkData>,
+) {
+    while let Some(collision) = find_collision(*velocity, *position - corner_offset, dt, world) {
+        match collision.1 {
+            0 | 1 => velocity.x = 0.0,
+            2 => {
+                velocity.y = 0.0;
+                position.y = next_float((position.y - 1.5).floor() + 1.5);
+            }
+            3 => {
+                velocity.y = 0.0;
+            }
+            4 | 5 => {
+                velocity.z = 0.0;
+            }
+            _ => {}
+        }
+    }
+}
+
 impl Controller {
     pub fn new(speed: f32, sensitivity: f32) -> Self {
         Self {
@@ -196,78 +221,10 @@ impl Controller {
         self.velocity.y *= 0.99_f32.powf(-dt);
         self.velocity.x -= (self.velocity.x) * dt;
         self.velocity.z -= (self.velocity.z) * dt;
-        while let Some(collision) =
-            find_collision(self.velocity, camera.position - CORNER0, dt, world)
-        {
-            match collision.1 {
-                0 | 1 => self.velocity.x = 0.0,
-                2 => {
-                    self.velocity.y = 0.0;
-                    camera.position.y = next_float((camera.position.y - 1.5).floor() + 1.5);
-                }
-                3 => {
-                    self.velocity.y = 0.0;
-                }
-                4 | 5 => {
-                    self.velocity.z = 0.0;
-                }
-                _ => {}
-            }
-        }
-        while let Some(collision) =
-            find_collision(self.velocity, camera.position - CORNER1, dt, world)
-        {
-            match collision.1 {
-                0 | 1 => self.velocity.x = 0.0,
-                2 => {
-                    self.velocity.y = 0.0;
-                    camera.position.y = next_float((camera.position.y - 1.5).floor() + 1.5);
-                }
-                3 => {
-                    self.velocity.y = 0.0;
-                }
-                4 | 5 => {
-                    self.velocity.z = 0.0;
-                }
-                _ => {}
-            }
-        }
-        while let Some(collision) =
-            find_collision(self.velocity, camera.position - CORNER2, dt, world)
-        {
-            match collision.1 {
-                0 | 1 => self.velocity.x = 0.0,
-                2 => {
-                    self.velocity.y = 0.0;
-                    camera.position.y = next_float((camera.position.y - 1.5).floor() + 1.5);
-                }
-                3 => {
-                    self.velocity.y = 0.0;
-                }
-                4 | 5 => {
-                    self.velocity.z = 0.0;
-                }
-                _ => {}
-            }
-        }
-        while let Some(collision) =
-            find_collision(self.velocity, camera.position - CORNER3, dt, world)
-        {
-            match collision.1 {
-                0 | 1 => self.velocity.x = 0.0,
-                2 => {
-                    self.velocity.y = 0.0;
-                    camera.position.y = next_float((camera.position.y - 1.5).floor() + 1.5);
-                }
-                3 => {
-                    self.velocity.y = 0.0;
-                }
-                4 | 5 => {
-                    self.velocity.z = 0.0;
-                }
-                _ => {}
-            }
-        }
+        handle_collision(&mut self.velocity, &mut camera.position, CORNER0, dt, world);
+        handle_collision(&mut self.velocity, &mut camera.position, CORNER1, dt, world);
+        handle_collision(&mut self.velocity, &mut camera.position, CORNER2, dt, world);
+        handle_collision(&mut self.velocity, &mut camera.position, CORNER3, dt, world);
         camera.position += self.velocity * dt;
         let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
         let looking_direction =

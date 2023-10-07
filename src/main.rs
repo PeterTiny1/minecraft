@@ -640,6 +640,7 @@ impl State {
                 self.send_generate.send([chunk_x, chunk_z]).unwrap();
             }
         }
+        drop(generated_chunkdata);
         while let Ok((mesh, indices, index)) = self.recv_chunk.try_recv() {
             self.generated_chunk_buffers.insert(
                 index,
@@ -965,7 +966,7 @@ fn process_event(
 }
 
 fn save_file(state: &State) {
-    let generated_chunkdata = state.generated_chunkdata.lock().unwrap();
+    let generated_chunkdata = state.generated_chunkdata.lock().unwrap().clone();
     let iterator = generated_chunkdata.iter();
     for (location, data) in iterator {
         let location = format!("{}.bin", location.iter().join(","));
