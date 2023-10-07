@@ -762,12 +762,12 @@ fn start_chunkgen(
     thread::spawn(move || loop {
         if let Ok(chunk_location) = recv_generate.recv() {
             let generated_chunkdata = chunkdata_arc.lock().unwrap();
-            let chunk_contents = generated_chunkdata[&chunk_location].contents;
+            let chunk_data = generated_chunkdata[&chunk_location];
             let [x, y]: [i32; 2] = chunk_location;
             let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
             let (mesh, index_buffer) = generate_chunk_mesh(
                 chunk_location,
-                &chunk_contents,
+                &chunk_data.contents,
                 chunk_locations.map(|chunk| generated_chunkdata.get(&chunk)),
             );
             let further_chunks = [
@@ -776,15 +776,12 @@ fn start_chunkgen(
                 [[x + 1, y + 1], [x - 1, y + 1], [x, y + 2]],
                 [[x + 1, y - 1], [x - 1, y - 1], [x, y - 2]],
             ];
-            let new_chunkdata = chunk::ChunkData {
-                contents: chunk_contents,
-            };
             for (index, (chunk_index, surrounding_chunks)) in
                 chunk_locations.iter().zip(further_chunks).enumerate()
             {
                 let get_chunk = |a, b| {
                     if index == a {
-                        Some(&new_chunkdata)
+                        Some(&chunk_data)
                     } else {
                         generated_chunkdata.get(&surrounding_chunks[b])
                     }
