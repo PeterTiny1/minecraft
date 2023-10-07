@@ -177,6 +177,12 @@ struct ChunkGenComms {
     receiver: mpsc::Receiver<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
 }
 
+#[derive(Default)]
+struct InputState {
+    left_pressed: bool,
+    right_pressed: bool,
+}
+
 struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
@@ -189,8 +195,7 @@ struct State {
     uniforms: Uniforms,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
-    left_pressed: bool,
-    right_pressed: bool,
+    input: InputState,
     last_break: Instant,
     depth_texture: texture::Texture,
     generated_chunkdata: Arc<Mutex<HashMap<[i32; 2], chunk::ChunkData>>>,
@@ -426,8 +431,7 @@ impl State {
             size,
             render_pipeline,
             diffuse_bind_group,
-            left_pressed: false,
-            right_pressed: false,
+            input: InputState::default(),
             camera,
             uniforms,
             uniform_buffer,
@@ -515,7 +519,7 @@ impl State {
         }
         if let Some((location, previous_step)) = self.camera.get_looking_at() {
             let now = Instant::now();
-            if self.right_pressed {
+            if self.input.right_pressed {
                 let location = location
                     + match previous_step {
                         0 => Vec3 { x: 1, y: 0, z: 0 },
@@ -542,7 +546,7 @@ impl State {
                         }
                     }
                 }
-            } else if self.left_pressed && (now - self.last_break).as_millis() > 250 {
+            } else if self.input.left_pressed && (now - self.last_break).as_millis() > 250 {
                 self.last_break = Instant::now();
                 let chunk_x = location.x.div_euclid(CHUNK_WIDTH as i32);
                 let chunk_z = location.z.div_euclid(CHUNK_DEPTH as i32);
@@ -668,6 +672,7 @@ impl State {
     }
 }
 
+#[inline]
 fn start_chunkgen(
     recv_generate: mpsc::Receiver<[i32; 2]>,
     chunkdata_arc: Arc<Mutex<HashMap<[i32; 2], ChunkData>>>,
@@ -858,16 +863,16 @@ fn process_event(
         },
         Event::MouseButtonDown { mouse_btn, .. } => {
             if *mouse_btn == MouseButton::Left {
-                state.left_pressed = true;
+                state.input.left_pressed = true;
             } else if *mouse_btn == MouseButton::Right {
-                state.right_pressed = true;
+                state.input.right_pressed = true;
             }
         }
         Event::MouseButtonUp { mouse_btn, .. } => {
             if *mouse_btn == MouseButton::Left {
-                state.left_pressed = false;
+                state.input.left_pressed = false;
             } else if *mouse_btn == MouseButton::Right {
-                state.right_pressed = false;
+                state.input.right_pressed = false;
             }
         }
         Event::Quit { .. } => return ControlFlow::Break(()),
