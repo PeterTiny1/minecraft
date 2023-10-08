@@ -140,7 +140,7 @@ impl BlockType {
 
     #[inline]
     pub const fn is_solid(self) -> bool {
-        !(matches!(self, Self::Air | Self::Water) || self.is_grasslike())
+        !self.is_transparent() || matches!(self, Self::Leaf | Self::BirchLeaf | Self::DarkLeaf)
     }
 
     #[inline]
