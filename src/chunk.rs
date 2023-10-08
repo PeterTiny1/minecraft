@@ -3,6 +3,7 @@ use std::{collections::HashMap, f32::consts::FRAC_1_SQRT_2};
 use noise::{NoiseFn, OpenSimplex};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use vek::Vec3;
 
 use crate::{Vertex, MAX_DEPTH};
 #[cfg(target_os = "windows")]
@@ -544,7 +545,7 @@ pub fn generate_chunk_mesh(
             for z in 0..CHUNK_DEPTH {
                 generate_block_mesh(
                     chunk,
-                    (x, y, z),
+                    Vec3 { x, y, z },
                     location,
                     &mut indices,
                     &mut vertices,
@@ -559,19 +560,19 @@ pub fn generate_chunk_mesh(
 #[inline]
 fn generate_block_mesh(
     chunk: &[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
-    position: (usize, usize, usize),
+    position: Vec3<usize>,
     chunk_location: [i32; 2],
     indices: &mut Vec<u32>,
     vertices: &mut Vec<Vertex>,
     surrounding_chunks: [Option<&ChunkData>; 4],
 ) {
-    let (x, y, z) = position;
+    let [x, y, z] = position.into_array();
     let block_type = chunk[x][y][z];
     let tex_offsets = block_type.get_offset();
     match block_type {
         BlockType::Air => {}
         _ if block_type.is_liquid() => {
-            generate_water(
+            generate_liquid(
                 chunk,
                 position,
                 chunk_location,
@@ -609,14 +610,14 @@ const LAST_CHUNK_DEPTH: usize = CHUNK_DEPTH - 1;
 #[inline]
 fn generate_solid(
     chunk: &Chunk,
-    position: (usize, usize, usize),
+    position: Vec3<usize>,
     location: [i32; 2],
     tex_offsets: [[f32; 2]; 6],
     surrounding_chunks: [Option<&ChunkData>; 4],
     indices: &mut Vec<u32>,
     vertices: &mut Vec<Vertex>,
 ) {
-    let (x, y, z) = position;
+    let [x, y, z] = position.into_array();
     let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH_I32)) as f32;
     let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH_I32)) as f32;
     let y_f32 = y as f32;
@@ -1008,16 +1009,16 @@ fn generate_solid(
 }
 
 #[inline]
-fn generate_water(
+fn generate_liquid(
     chunk: &Chunk,
-    position: (usize, usize, usize),
+    position: Vec3<usize>,
     location: [i32; 2],
     tex_offsets: [[f32; 2]; 6],
     indices: &mut Vec<u32>,
     vertices: &mut Vec<Vertex>,
     surrounding_chunks: [Option<&ChunkData>; 4],
 ) {
-    let (x, y, z) = position;
+    let [x, y, z] = position.into_array();
     let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH_I32)) as f32;
     let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH_I32)) as f32;
     let y_f32 = y as f32;
