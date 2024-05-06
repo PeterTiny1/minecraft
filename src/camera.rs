@@ -1,7 +1,8 @@
 use std::{collections::HashMap, f32::consts::FRAC_PI_2, time::Duration};
 
-use sdl2::keyboard::Keycode;
+// use sdl2::keyboard::Keycode;
 use vek::{Mat4, Quaternion, Vec3};
+use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::{
     chunk::{self, get_block, BlockType, ChunkData},
@@ -165,33 +166,36 @@ impl Controller {
         }
     }
 
-    pub fn process_keyboard(&mut self, key: Keycode, pressed: bool) -> bool {
+    pub fn process_keyboard(&mut self, key: PhysicalKey, pressed: bool) -> bool {
         let amount = if pressed { 1.0 } else { 0.0 };
         match key {
-            Keycode::W | Keycode::Up => {
-                self.amount_forward = amount;
-                true
-            }
-            Keycode::S | Keycode::Down => {
-                self.amount_backward = amount;
-                true
-            }
-            Keycode::A | Keycode::Left => {
-                self.amount_left = amount;
-                true
-            }
-            Keycode::D | Keycode::Right => {
-                self.amount_right = amount;
-                true
-            }
-            Keycode::Space => {
-                self.amount_up = amount;
-                true
-            }
-            Keycode::LShift => {
-                self.amount_down = amount;
-                true
-            }
+            PhysicalKey::Code(keycode) => match keycode {
+                KeyCode::KeyW | KeyCode::ArrowUp => {
+                    self.amount_forward = amount;
+                    true
+                }
+                KeyCode::KeyS | KeyCode::ArrowDown => {
+                    self.amount_backward = amount;
+                    true
+                }
+                KeyCode::KeyA | KeyCode::ArrowLeft => {
+                    self.amount_left = amount;
+                    true
+                }
+                KeyCode::KeyD | KeyCode::ArrowRight => {
+                    self.amount_right = amount;
+                    true
+                }
+                KeyCode::Space => {
+                    self.amount_up = amount;
+                    true
+                }
+                KeyCode::ShiftLeft => {
+                    self.amount_down = amount;
+                    true
+                }
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -201,8 +205,8 @@ impl Controller {
         self.rotate_vertical = -dy as f32;
     }
 
-    pub fn process_scroll(&mut self, delta: i32) {
-        self.scroll = (delta * 200) as f32;
+    pub fn process_scroll(&mut self, delta: f32) {
+        self.scroll = delta * 200.0;
     }
 
     fn update_camera(

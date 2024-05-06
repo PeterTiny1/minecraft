@@ -5,31 +5,31 @@ mod texture;
 mod ui;
 
 use itertools::Itertools;
-use sdl2::{
-    event::{Event, WindowEvent},
-    keyboard::Keycode,
-    mouse::MouseButton,
-    video::{FullscreenType, Window},
-};
 use std::{
     collections::HashMap,
     env,
     fs::File,
     io::Write,
-    ops::ControlFlow,
     path::Path,
     sync::{mpsc, Arc, Mutex},
-    thread,
     time::Instant,
+};
+use winit::{
+    application::ApplicationHandler,
+    dpi::PhysicalSize,
+    event::{DeviceEvent, ElementState, KeyEvent, MouseScrollDelta, WindowEvent},
+    event_loop::EventLoop,
+    keyboard::{Key, NamedKey, PhysicalKey},
+    window::Window,
 };
 
 use chunk::{
-    generate, generate_chunk_mesh, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH,
+    generate, start_chunkgen, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH,
 };
 use futures::executor::block_on;
 
 use vek::{Aabb, Mat4, Vec3, Vec4};
-use wgpu::util::DeviceExt;
+use wgpu::{util::DeviceExt, PipelineCompilationOptions};
 
 use noise::OpenSimplex;
 
@@ -183,113 +183,58 @@ struct InputState {
     right_pressed: bool,
 }
 
-struct State {
-    surface: wgpu::Surface,
+struct WindowDependent<'a> {
+    surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    size: (u32, u32),
+    size: PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
     diffuse_bind_group: wgpu::BindGroup,
     camera: camera::Camera,
     uniforms: Uniforms,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
-    input: InputState,
-    last_break: Instant,
+    ui: ui::State,
+    generated_chunk_buffers: HashMap<[i32; 2], ChunkBuffers>,
     depth_texture: texture::Texture,
     generated_chunkdata: Arc<Mutex<HashMap<[i32; 2], chunk::ChunkData>>>,
-    generated_chunk_buffers: HashMap<[i32; 2], ChunkBuffers>,
     chunkgen_comms: ChunkGenComms,
+    input: InputState,
+    last_break: Instant,
     noise: noise::OpenSimplex,
-    ui: ui::State,
+    window: &'static Window,
 }
 
-fn create_render_pipeline(
-    device: &wgpu::Device,
-    layout: &wgpu::PipelineLayout,
-    color_format: wgpu::TextureFormat,
-    depth_format: Option<wgpu::TextureFormat>,
-    vertex_layouts: &[wgpu::VertexBufferLayout],
-    shader: wgpu::ShaderModuleDescriptor,
-) -> wgpu::RenderPipeline {
-    let shader = device.create_shader_module(shader);
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some(&format!("{shader:?}")),
-        layout: Some(layout),
-        vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: "vs_main",
-            buffers: vertex_layouts,
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: "fs_main",
-            targets: &[Some(wgpu::ColorTargetState {
-                format: color_format,
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            strip_index_format: None,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: Some(wgpu::Face::Back),
-            polygon_mode: wgpu::PolygonMode::Fill,
-            conservative: false,
-            unclipped_depth: false,
-        },
-        depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
-            format,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-        }),
-        multisample: wgpu::MultisampleState {
-            count: 1,
-            mask: !0,
-            alpha_to_coverage_enabled: false,
-        },
-        multiview: None,
-    })
-}
-
-const SEED: u32 = 0;
-
-impl State {
-    async fn new(window: &Window) -> Self {
-        let size = window.size();
+impl WindowDependent<'_> {
+    fn new(window: &'static Window) -> Self {
+        let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
-        let surface = unsafe { instance.create_surface(window) }.unwrap();
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(),
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .unwrap();
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    features: wgpu::Features::empty(),
-                    limits: wgpu::Limits::default(),
-                    label: None,
-                },
-                None,
-            )
-            .await
-            .unwrap();
+        let surface: wgpu::Surface<'_> = instance.create_surface(window).unwrap();
+        let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+        }))
+        .unwrap();
+        let (device, queue) = block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+            },
+            None,
+        ))
+        .unwrap();
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
-            width: size.0,
-            height: size.1,
+            width: size.width,
+            height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![wgpu::TextureFormat::Bgra8Unorm],
+            desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
         let texture_bind_group_layout =
@@ -390,40 +335,18 @@ impl State {
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
             },
         );
-        let noise = OpenSimplex::new(SEED);
-        let path = Path::new("0,0.bin");
-        let chunk = if path.exists() {
-            let buffer = std::fs::read(path).unwrap();
-            bincode::deserialize::<ChunkData>(&buffer).unwrap().contents
-        } else {
-            generate(&noise, [0, 0])
-        };
-        let (mesh, chunk_indices) = generate_chunk_mesh([0; 2], &chunk, [None; 4]);
-        let generated_chunkdata = Arc::new(Mutex::new(HashMap::from([(
-            [0; 2],
-            chunk::ChunkData { contents: chunk },
-        )])));
-        let generated_chunk_buffers = HashMap::from([(
-            [0_i32; 2],
-            ChunkBuffers {
-                vertex: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Vertex Buffer"),
-                    contents: bytemuck::cast_slice(&mesh),
-                    usage: wgpu::BufferUsages::VERTEX,
-                }),
-                index: create_index_buffer(&device, &chunk_indices),
-                num_indices: chunk_indices.len() as u32,
-            },
-        )]);
         let ui = ui::init_state(&device, &queue, &texture_bind_group_layout, &config, size);
+        let generated_chunk_buffers = HashMap::new();
         let (send_generate, recv_generate) = mpsc::sync_channel(10);
         let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
-        start_chunkgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
         let chunkgen_comms = ChunkGenComms {
             sender: send_generate,
             receiver: recv_chunk,
         };
-        Self {
+        let generated_chunkdata = Arc::new(Mutex::new(HashMap::new()));
+        start_chunkgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
+        let noise = OpenSimplex::new(SEED);
+        WindowDependent {
             surface,
             device,
             queue,
@@ -431,57 +354,65 @@ impl State {
             size,
             render_pipeline,
             diffuse_bind_group,
-            input: InputState::default(),
             camera,
             uniforms,
             uniform_buffer,
             uniform_bind_group,
+            ui,
+            generated_chunk_buffers,
             depth_texture,
             generated_chunkdata,
-            generated_chunk_buffers,
             chunkgen_comms,
-            noise,
+            input: InputState::default(),
             last_break: Instant::now(),
-            ui,
+            noise,
+            window,
         }
     }
 
-    fn resize(&mut self, new_size: (u32, u32)) {
-        if new_size.1 > 0 {
-            self.camera.resize(new_size.0, new_size.1);
-            self.ui.uniform.aspect = new_size.0 as f32 / new_size.1 as f32;
+    fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        if new_size.height > 0 {
+            self.camera.resize(new_size.width, new_size.height);
+            self.ui.uniform.aspect = new_size.width as f32 / new_size.height as f32;
             self.queue.write_buffer(
                 &self.ui.uniform_buffer,
                 0,
                 bytemuck::cast_slice(&[self.ui.uniform]),
             );
             self.size = new_size;
-            self.config.width = new_size.0;
-            self.config.height = new_size.1;
+            self.config.width = new_size.width;
+            self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
             self.depth_texture =
                 texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
         }
     }
 
-    fn keydown(&mut self, keycode: Keycode, window_focused: bool) {
-        if window_focused {
-            self.camera.controller.process_keyboard(keycode, true);
-        }
+    fn refresh(&mut self) {
+        self.resize(self.size)
     }
 
-    fn keyup(&mut self, keycode: Keycode, window_focused: bool) {
-        if window_focused {
-            self.camera.controller.process_keyboard(keycode, false);
-        }
+    fn keydown(&mut self, key: PhysicalKey) {
+        self.camera.controller.process_keyboard(key, true);
     }
 
-    fn mouse_motion(&mut self, dx: i32, dy: i32) {
-        self.camera.controller.process_mouse(dx.into(), dy.into());
+    fn keyup(&mut self, key: PhysicalKey) {
+        self.camera.controller.process_keyboard(key, false);
     }
 
-    fn mouse_scroll(&mut self, delta: i32) {
+    fn mouse_motion(&mut self, (dx, dy): (f64, f64)) {
+        self.camera.controller.process_mouse(dx, dy);
+    }
+
+    fn mouse_scroll(&mut self, delta: f32) {
         self.camera.controller.process_scroll(delta);
+    }
+
+    fn process_keyevent(&mut self, event: KeyEvent) {
+        match event.state {
+            ElementState::Pressed => self.keydown(event.physical_key),
+            ElementState::Released => self.keyup(event.physical_key),
+        }
     }
 
     fn update(&mut self, dt: std::time::Duration) {
@@ -606,17 +537,19 @@ impl State {
                             b: 0.4,
                             a: 1.0,
                         }),
-                        store: true,
+                        store: wgpu::StoreOp::Store,
                     },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_texture.view,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
-                        store: true,
+                        store: wgpu::StoreOp::Store,
                     }),
                     stencil_ops: None,
                 }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
@@ -672,58 +605,171 @@ impl State {
     }
 }
 
-#[inline]
-fn start_chunkgen(
-    recv_generate: mpsc::Receiver<[i32; 2]>,
-    chunkdata_arc: Arc<Mutex<HashMap<[i32; 2], ChunkData>>>,
-    send_chunk: mpsc::SyncSender<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
-) -> thread::JoinHandle<()> {
-    thread::spawn(move || loop {
-        if let Ok(chunk_location) = recv_generate.recv() {
-            let generated_chunkdata = chunkdata_arc.lock().unwrap();
-            let chunk_data = generated_chunkdata[&chunk_location];
-            let [x, y]: [i32; 2] = chunk_location;
-            let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
-            let (mesh, index_buffer) = generate_chunk_mesh(
-                chunk_location,
-                &chunk_data.contents,
-                chunk_locations.map(|chunk| generated_chunkdata.get(&chunk)),
-            );
-            let further_chunks = [
-                [[x + 2, y], [x + 1, y + 1], [x + 1, y - 1]],
-                [[x - 2, y], [x - 1, y + 1], [x - 1, y - 1]],
-                [[x + 1, y + 1], [x - 1, y + 1], [x, y + 2]],
-                [[x + 1, y - 1], [x - 1, y - 1], [x, y - 2]],
-            ];
-            for (index, (chunk_index, surrounding_chunks)) in
-                chunk_locations.iter().zip(further_chunks).enumerate()
-            {
-                let get_chunk = |a, b| {
-                    if index == a {
-                        Some(&chunk_data)
-                    } else {
-                        generated_chunkdata.get(&surrounding_chunks[b])
-                    }
-                };
-                if let Some(chunk) = generated_chunkdata.get(chunk_index) {
-                    let (mesh, indices) = generate_chunk_mesh(
-                        chunk_locations[index],
-                        &chunk.contents,
-                        [
-                            get_chunk(1, 0),
-                            get_chunk(0, usize::from(index != 1)),
-                            get_chunk(3, if index < 2 { 1 } else { 2 }),
-                            get_chunk(2, 2),
-                        ],
-                    );
-                    send_chunk.send((mesh, indices, *chunk_index)).unwrap();
+struct State<'a> {
+    last_render_time: Instant,
+    save: bool,
+    window_dependent: Option<WindowDependent<'a>>,
+}
+
+fn create_render_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    color_format: wgpu::TextureFormat,
+    depth_format: Option<wgpu::TextureFormat>,
+    vertex_layouts: &[wgpu::VertexBufferLayout],
+    shader: wgpu::ShaderModuleDescriptor,
+) -> wgpu::RenderPipeline {
+    let shader = device.create_shader_module(shader);
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(&format!("{shader:?}")),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: "vs_main",
+            buffers: vertex_layouts,
+            compilation_options: PipelineCompilationOptions::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: "fs_main",
+            targets: &[Some(wgpu::ColorTargetState {
+                format: color_format,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: PipelineCompilationOptions::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: Some(wgpu::Face::Back),
+            polygon_mode: wgpu::PolygonMode::Fill,
+            conservative: false,
+            unclipped_depth: false,
+        },
+        depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
+            format,
+            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::Less,
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: wgpu::MultisampleState {
+            count: 1,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+        multiview: None,
+    })
+}
+
+const SEED: u32 = 0;
+
+impl<'a> State<'a> {
+    fn new(save: bool) -> Self {
+        Self {
+            last_render_time: Instant::now(),
+            save,
+            window_dependent: None,
+        }
+    }
+}
+
+impl<'a> ApplicationHandler for State<'a> {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        let window = Box::leak(Box::new(
+            event_loop
+                .create_window(
+                    Window::default_attributes()
+                        .with_title("Blockcraft")
+                        .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None))),
+                )
+                .unwrap(),
+        ));
+        window
+            .set_cursor_grab(winit::window::CursorGrabMode::Confined)
+            .unwrap();
+        window.set_cursor_visible(false);
+        self.window_dependent = Some(WindowDependent::new(window));
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        _window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
+        match event {
+            WindowEvent::CloseRequested
+            | WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        logical_key: Key::Named(NamedKey::Escape),
+                        ..
+                    },
+                ..
+            } => {
+                event_loop.exit();
+                if self.save {
+                    save_file(self);
                 }
             }
-            send_chunk
-                .send((mesh, index_buffer, chunk_location))
-                .unwrap();
+            WindowEvent::KeyboardInput { event, .. } => {
+                self.window_dependent
+                    .as_mut()
+                    .unwrap()
+                    .process_keyevent(event);
+            }
+            WindowEvent::MouseWheel { delta, .. } => match delta {
+                MouseScrollDelta::LineDelta(_, delta) => {
+                    self.window_dependent.as_mut().unwrap().mouse_scroll(delta);
+                }
+                MouseScrollDelta::PixelDelta(_) => todo!(),
+            },
+            WindowEvent::MouseInput { state, button, .. } => match button {
+                winit::event::MouseButton::Left => {
+                    self.window_dependent.as_mut().unwrap().input.left_pressed = state.is_pressed();
+                }
+                winit::event::MouseButton::Right => {
+                    self.window_dependent.as_mut().unwrap().input.right_pressed =
+                        state.is_pressed();
+                }
+                _ => {}
+            },
+            WindowEvent::RedrawRequested => {
+                let current_time = std::time::Instant::now();
+                let dt = current_time - self.last_render_time;
+                let window_dependent = self.window_dependent.as_mut().unwrap();
+                window_dependent.update(dt);
+                self.last_render_time = current_time;
+                match window_dependent.render() {
+                    Ok(()) => {}
+                    Err(wgpu::SurfaceError::Lost) => window_dependent.refresh(),
+                    Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
+                    Err(e) => eprintln!("{e:?}"),
+                }
+            }
+            _ => {}
         }
-    })
+    }
+
+    fn device_event(
+        &mut self,
+        _event_loop: &winit::event_loop::ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        if let DeviceEvent::MouseMotion { delta } = event {
+            self.window_dependent.as_mut().unwrap().mouse_motion(delta);
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
+        if let Some(window) = self.window_dependent.as_mut() {
+            window.window.request_redraw();
+        }
+    }
 }
 
 fn load_texture(
@@ -756,7 +802,7 @@ fn create_index_buffer(device: &wgpu::Device, chunk_indices: &[u32]) -> wgpu::Bu
     })
 }
 
-fn main() {
+fn main() -> Result<(), impl std::error::Error> {
     env_logger::init();
     let mut save = false;
     let mut args = env::args();
@@ -767,122 +813,22 @@ fn main() {
             _ => println!("Invalid argument {arg}!"),
         }
     }
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
-    let mut window = video_subsystem
-        .window("My Minecraft Clone", 640, 360)
-        .position_centered()
-        .build()
-        .unwrap();
-    let mut state = block_on(State::new(&window));
-    let mut event_pump = sdl_context.event_pump().unwrap();
-    window.set_grab(true);
-    sdl_context.mouse().show_cursor(false);
-    sdl_context.mouse().set_relative_mouse_mode(true);
-    window
-        .set_fullscreen(sdl2::video::FullscreenType::Desktop)
-        .expect("Failed to make the window full screen");
-    let mut last_render_time = std::time::Instant::now();
-    let mut window_focused = true;
-    'running: loop {
-        for event in event_pump.poll_iter() {
-            if process_event(&event, &mut window, &mut state, &mut window_focused).is_break() {
-                break 'running;
-            }
-        }
-        let now = std::time::Instant::now();
-        let dt = now - last_render_time;
-        last_render_time = now;
-        state.update(dt);
-        match state.render() {
-            Ok(()) => {}
-            Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
-            Err(wgpu::SurfaceError::OutOfMemory) => break 'running,
-            Err(e) => eprintln!("{e:?}"),
-        }
-    }
-    if save {
-        save_file(&state);
-    }
-}
+    let event_loop = EventLoop::new().unwrap();
 
-fn process_event(
-    event: &Event,
-    window: &mut Window,
-    state: &mut State,
-    window_focused: &mut bool,
-) -> ControlFlow<()> {
-    match event {
-        Event::KeyDown {
-            keycode: Some(keycode),
-            ..
-        } => match keycode {
-            Keycode::F11 => {
-                if window.fullscreen_state() == FullscreenType::Desktop {
-                    window
-                        .set_fullscreen(FullscreenType::Off)
-                        .expect("Failed to leave fullscreen");
-                } else {
-                    window
-                        .set_fullscreen(FullscreenType::Desktop)
-                        .expect("Failed to make the window fullscreen");
-                }
-            }
-            Keycode::Escape => {
-                return ControlFlow::Break(());
-            }
-            _ => {
-                state.keydown(*keycode, *window_focused);
-            }
-        },
-        Event::KeyUp {
-            keycode: Some(keycode),
-            ..
-        } => {
-            state.keyup(*keycode, *window_focused);
-        }
-        Event::MouseMotion {
-            xrel,
-            yrel,
-            window_id,
-            ..
-        } if *window_id == window.id() => state.mouse_motion(*xrel, *yrel),
-        Event::MouseWheel { y, .. } => state.mouse_scroll(*y),
-        Event::Window {
-            ref win_event,
-            window_id,
-            ..
-        } if *window_id == window.id() => match win_event {
-            WindowEvent::Close => return ControlFlow::Break(()),
-            WindowEvent::FocusGained => *window_focused = true,
-            WindowEvent::FocusLost => *window_focused = false,
-            WindowEvent::Resized(width, height) => {
-                state.resize((*width as u32, *height as u32));
-            }
-            _ => {}
-        },
-        Event::MouseButtonDown { mouse_btn, .. } => {
-            if *mouse_btn == MouseButton::Left {
-                state.input.left_pressed = true;
-            } else if *mouse_btn == MouseButton::Right {
-                state.input.right_pressed = true;
-            }
-        }
-        Event::MouseButtonUp { mouse_btn, .. } => {
-            if *mouse_btn == MouseButton::Left {
-                state.input.left_pressed = false;
-            } else if *mouse_btn == MouseButton::Right {
-                state.input.right_pressed = false;
-            }
-        }
-        Event::Quit { .. } => return ControlFlow::Break(()),
-        _ => {}
-    }
-    ControlFlow::Continue(())
+    let mut state = State::new(save);
+
+    event_loop.run_app(&mut state)
 }
 
 fn save_file(state: &State) {
-    let generated_chunkdata = state.generated_chunkdata.lock().unwrap().clone();
+    let generated_chunkdata = state
+        .window_dependent
+        .as_ref()
+        .unwrap()
+        .generated_chunkdata
+        .lock()
+        .unwrap()
+        .clone();
     let iterator = generated_chunkdata.iter();
     for (location, data) in iterator {
         let location = format!("{}.bin", location.iter().join(","));

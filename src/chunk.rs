@@ -1,4 +1,9 @@
-use std::{collections::HashMap, f32::consts::FRAC_1_SQRT_2};
+use std::{
+    collections::HashMap,
+    f32::consts::FRAC_1_SQRT_2,
+    sync::{mpsc, Arc, Mutex},
+    thread,
+};
 
 use noise::{NoiseFn, OpenSimplex};
 use serde::{Deserialize, Serialize};
@@ -21,6 +26,7 @@ const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
 const TEXTURE_WIDTH: f32 = 1.0 / 16.0;
 const HALF_TEXTURE_WIDTH: f32 = TEXTURE_WIDTH / 2.0;
 
+/// Stores the data of a chunk, 32x256x32 on Linux, 16x256x16 on Windows, accessed in order x, y, z
 type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 
 #[derive(Clone, Copy)]
@@ -53,6 +59,7 @@ pub enum BlockType {
     BirchLeaf,
     Water,
     Sand,
+    Dirt,
 }
 
 impl BlockType {
@@ -134,6 +141,7 @@ impl BlockType {
                 [TEXTURE_WIDTH_4, 0.],
             ],
             Self::Sand => [[TEXTURE_WIDTH_9, 0.]; 6],
+            Self::Dirt => [[0., 0.]; 6],
             Self::Air => [[0.; 2]; 6],
         }
     }
@@ -201,6 +209,22 @@ pub fn noise_at(
     ])
 }
 
+// pub fn noise_3d(
+//     noise: &OpenSimplex,
+//     x: i32,
+//     y: i32,
+//     z: i32,
+//     chunk_location: [i32; 2],
+//     scale: f64,
+//     offset: f64,
+// ) -> f64 {
+//     noise.get([
+//         f64::from(x + (chunk_location[0] * CHUNK_WIDTH_I32)) / scale + offset,
+//         f64::from(y) / scale + offset,
+//         f64::from(z + (chunk_location[1] * CHUNK_DEPTH_I32)) / scale + offset,
+//     ])
+// }
+
 fn chunk_at_block(
     generated_chunks: &HashMap<[i32; 2], ChunkData>,
     x: i32,
@@ -265,23 +289,25 @@ fn add_arrs(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
 
 const WATER_HEIGHT: usize = 64;
 const BIOME_SCALE: f64 = 250.0;
+// const SCALING_FACTOR: f64 = 0.011;
 
 pub fn generate(noise: &OpenSimplex, location: [i32; 2]) -> Chunk {
     let heightmap = generate_worldscale_heightmap(noise, location);
     let biomemap = generate_biomemap(noise, location);
     let mut contents = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+
     for x in 0..CHUNK_WIDTH {
-        for y in 0..CHUNK_HEIGHT {
+        for y in (0..CHUNK_HEIGHT).rev() {
             for z in 0..CHUNK_DEPTH {
-                let biome = biomemap[x][z];
                 let terrain_height = heightmap[x][z];
+                let biome = biomemap[x][z];
                 contents[x][y][z] = determine_type(terrain_height, x, y, z, biome, noise);
             }
         }
     }
     let trees = generate_trees(noise, location);
     for (x, z) in trees {
-        if heightmap[x][z] as usize <= WATER_HEIGHT {
+        if heightmap[x][z] <= WATER_HEIGHT {
             continue;
         }
         let wood_type = match biomemap[x][z] {
@@ -294,7 +320,7 @@ pub fn generate(noise: &OpenSimplex, location: [i32; 2]) -> Chunk {
             Biome::GreenGrove => BlockType::Leaf,
             Biome::DarklogForest => BlockType::DarkLeaf,
         };
-        let height = heightmap[x][z] as usize;
+        let height = heightmap[x][z];
         contents[x][height + 1][z] = wood_type;
         contents[x][height + 2][z] = wood_type;
         contents[x][height + 3][z] = wood_type;
@@ -330,13 +356,8 @@ fn generate_biomemap(
 fn generate_worldscale_heightmap(
     noise: &OpenSimplex,
     location: [i32; 2],
-) -> [[i32; CHUNK_DEPTH]; CHUNK_WIDTH] {
-    generate_heightmap(noise, location).map(|a| a.map(|b| b as i32))
-}
-
-enum Material {
-    Rock,
-    Chalk,
+) -> [[usize; CHUNK_DEPTH]; CHUNK_WIDTH] {
+    generate_heightmap(noise, location).map(|a| a.map(|b| b as usize))
 }
 
 const HEIGHT_SCALE: f64 = 64.0;
@@ -344,93 +365,68 @@ fn generate_heightmap(
     noise: &OpenSimplex,
     location: [i32; 2],
 ) -> [[f64; CHUNK_DEPTH]; CHUNK_WIDTH] {
-    const OCTAVES: usize = 3;
+    const OCTAVES: usize = 5;
     const PERSISTENCE: f64 = 0.5;
     const LACUNARITY: f64 = 2.0;
-    const SEA_LEVEL: f64 = 64.0;
 
     let mut heightmap = [[0.0; CHUNK_DEPTH]; CHUNK_WIDTH];
+    // let mut effect = [[0.0; CHUNK_DEPTH]; CHUNK_WIDTH];
 
     for (x, column) in heightmap.iter_mut().enumerate() {
         for (z, tile) in column.iter_mut().enumerate() {
             let mut amplitude = 1.0;
             let mut frequency = 0.007;
             let mut noise_height = 1.2;
+            let mut gradient_x = 0.0;
+            let mut gradient_z = 0.0;
 
             for octave in 0..OCTAVES {
+                let octave = octave * 5;
                 let sample_x = f64::from(location[0] * CHUNK_WIDTH_I32 + x as i32) * frequency;
                 let sample_z = f64::from(location[1] * CHUNK_DEPTH_I32 + z as i32) * frequency;
+                gradient_x += {
+                    let a = (f64::from(location[0] * CHUNK_WIDTH_I32 + x as i32) - 0.1) * frequency;
+                    let sample_a = noise.get([a, sample_z, octave as f64]);
+                    let b = (f64::from(location[0] * CHUNK_WIDTH_I32 + x as i32) + 0.1) * frequency;
+                    let sample_b = noise.get([b, sample_z, octave as f64]);
+                    (sample_a - sample_b) * amplitude
+                };
+                gradient_z += {
+                    let c = (f64::from(location[1] * CHUNK_DEPTH_I32 + z as i32) - 0.1) * frequency;
+                    let sample_c = noise.get([sample_x, c, octave as f64]);
+                    let d = (f64::from(location[1] * CHUNK_DEPTH_I32 + z as i32) + 0.1) * frequency;
+                    let sample_d = noise.get([sample_x, d, octave as f64]);
+                    (sample_c - sample_d) * amplitude
+                };
+                let effect = 1.0 / (1.0 + gradient_x.hypot(gradient_z));
                 let octave_noise = noise.get([sample_x, sample_z, octave as f64]);
-                noise_height += octave_noise * amplitude;
+                noise_height += octave_noise * amplitude * effect;
                 amplitude *= PERSISTENCE;
                 frequency *= LACUNARITY;
             }
-            let height = noise_height * HEIGHT_SCALE;
-            let material = if height > SEA_LEVEL {
-                Material::Rock
-            } else {
-                Material::Chalk
-            };
 
-            *tile = match material {
-                Material::Rock => height + rock_erosion(height),
-                Material::Chalk => height + chalk_erosion(height),
-            };
-
-            *tile = noise_height * HEIGHT_SCALE;
-        }
-    }
-
-    let smoothing_iterations = 3;
-    for _ in 0..smoothing_iterations {
-        for x in 1..(CHUNK_WIDTH - 1) {
-            for z in 1..(LAST_CHUNK_DEPTH) {
-                let mut total_height = heightmap[x][z];
-                total_height += heightmap[x - 1][z];
-                total_height += heightmap[x + 1][z];
-                total_height += heightmap[x][z - 1];
-                total_height += heightmap[x][z + 1];
-                heightmap[x][z] = total_height / 5.0;
-            }
+            *tile = noise_height * HEIGHT_SCALE
         }
     }
 
     heightmap
 }
 
-fn rock_erosion(height: f64) -> f64 {
-    // Erosion algorithm for rock material
-    // Add some erosion based on the height of the voxel
-    // Higher voxels are less eroded
-    let erosion_factor = (1.0 - height / HEIGHT_SCALE).powi(2);
-    erosion_factor * 16.0 // Max erosion amount of 16 blocks
-}
-
-fn chalk_erosion(height: f64) -> f64 {
-    // Erosion algorithm for chalk material
-    // Add some erosion based on the height of the voxel
-    // Higher voxels are more eroded
-    let height_ratio = height / HEIGHT_SCALE;
-    let erosion_factor = height_ratio.powi(2);
-    let max_erosion = height_ratio * 32.0; // Max erosion amount of 32 blocks
-    erosion_factor * max_erosion
-}
-
-const WATER_HEIGHT_I32: i32 = WATER_HEIGHT as i32;
 #[inline]
 fn determine_type(
-    terrain_height: i32,
+    terrain_height: usize,
     x: usize,
     y: usize,
     z: usize,
     biome: Biome,
     noise: &OpenSimplex,
 ) -> BlockType {
-    let y = y as i32;
-    if y < terrain_height {
-        return BlockType::Stone;
+    if y < terrain_height - 3 {
+        BlockType::Stone
+    } else if y < terrain_height {
+        return BlockType::Dirt;
     } else if y == terrain_height {
-        if terrain_height > WATER_HEIGHT_I32 {
+        if terrain_height > WATER_HEIGHT {
             return match biome {
                 Biome::BirchFalls => BlockType::GrassBlock0,
                 Biome::GreenGrove => BlockType::GrassBlock1,
@@ -439,13 +435,13 @@ fn determine_type(
         } else {
             return BlockType::Sand;
         }
-    } else if y < WATER_HEIGHT_I32 {
+    } else if y < WATER_HEIGHT {
         return BlockType::Water;
-    } else if terrain_height > WATER_HEIGHT_I32
+    } else if terrain_height > WATER_HEIGHT
         && y == terrain_height + 1
-        && noise.get([x as f64 / 4.0, z as f64 / 4.0, f64::from(y) / 4.0]) > 0.3
+        && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
     {
-        if noise.get([x as f64, f64::from(y), z as f64]) > 0.3 {
+        if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
             return match biome {
                 Biome::BirchFalls => BlockType::Flower0,
                 Biome::GreenGrove => BlockType::Flower1,
@@ -458,8 +454,9 @@ fn determine_type(
                 Biome::DarklogForest => BlockType::Grass2,
             };
         }
+    } else {
+        return BlockType::Air;
     }
-    BlockType::Air
 }
 
 fn generate_trees(noise: &OpenSimplex, location: [i32; 2]) -> Vec<(usize, usize)> {
@@ -479,6 +476,60 @@ fn generate_trees(noise: &OpenSimplex, location: [i32; 2]) -> Vec<(usize, usize)
     }
 
     trees
+}
+
+#[inline]
+pub fn start_chunkgen(
+    recv_generate: mpsc::Receiver<[i32; 2]>,
+    chunkdata_arc: Arc<Mutex<HashMap<[i32; 2], ChunkData>>>,
+    send_chunk: mpsc::SyncSender<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || loop {
+        if let Ok(chunk_location) = recv_generate.recv() {
+            let generated_chunkdata = chunkdata_arc.lock().unwrap();
+            let chunk_data = generated_chunkdata[&chunk_location];
+            let [x, y]: [i32; 2] = chunk_location;
+            let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+            let (mesh, index_buffer) = generate_chunk_mesh(
+                chunk_location,
+                &chunk_data.contents,
+                chunk_locations.map(|chunk| generated_chunkdata.get(&chunk)),
+            );
+            let further_chunks = [
+                [[x + 2, y], [x + 1, y + 1], [x + 1, y - 1]],
+                [[x - 2, y], [x - 1, y + 1], [x - 1, y - 1]],
+                [[x + 1, y + 1], [x - 1, y + 1], [x, y + 2]],
+                [[x + 1, y - 1], [x - 1, y - 1], [x, y - 2]],
+            ];
+            for (index, (chunk_index, surrounding_chunks)) in
+                chunk_locations.iter().zip(further_chunks).enumerate()
+            {
+                let get_chunk = |a, b| {
+                    if index == a {
+                        Some(&chunk_data)
+                    } else {
+                        generated_chunkdata.get(&surrounding_chunks[b])
+                    }
+                };
+                if let Some(chunk) = generated_chunkdata.get(chunk_index) {
+                    let (mesh, indices) = generate_chunk_mesh(
+                        chunk_locations[index],
+                        &chunk.contents,
+                        [
+                            get_chunk(1, 0),
+                            get_chunk(0, usize::from(index != 1)),
+                            get_chunk(3, if index < 2 { 1 } else { 2 }),
+                            get_chunk(2, 2),
+                        ],
+                    );
+                    send_chunk.send((mesh, indices, *chunk_index)).unwrap();
+                }
+            }
+            send_chunk
+                .send((mesh, index_buffer, chunk_location))
+                .unwrap();
+        }
+    })
 }
 
 const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
@@ -519,6 +570,45 @@ fn create_grass_face(
         Vertex(
             [x + FAR_CORNER, y + 1.0, z + add1],
             add_arrs(TOP_RIGHT, tex_offset),
+            1.0,
+        ),
+    ]
+    .into_iter()
+}
+
+const FLOWER_INDICES: [u32; 12] = [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0];
+const STEM_CORNERS: [[f32; 2]; 4] = [
+    [TEXTURE_WIDTH * (3.0 + (6.0 / 16.0)), TEXTURE_WIDTH],
+    [
+        TEXTURE_WIDTH * (3.0 + (6.0 / 16.0)),
+        TEXTURE_WIDTH * (23.0 / 16.0),
+    ],
+    [TEXTURE_WIDTH * 3.0, TEXTURE_WIDTH * (23.0 / 16.0)],
+    [TEXTURE_WIDTH * 3.0, TEXTURE_WIDTH],
+];
+const CLOSE_FLOWER_CORNER: f32 = 0.71650635;
+#[inline]
+fn generate_flower(position: (f32, f32, f32)) -> std::array::IntoIter<Vertex, 4> {
+    let (x, y, z) = position;
+    [
+        Vertex(
+            [x + CLOSE_FLOWER_CORNER, y + 1.0, z + FAR_CORNER],
+            STEM_CORNERS[0],
+            1.0,
+        ),
+        Vertex(
+            [x + CLOSE_FLOWER_CORNER, y, z + FAR_CORNER],
+            STEM_CORNERS[1],
+            1.0,
+        ),
+        Vertex(
+            [x + FAR_CORNER, y, z + CLOSE_FLOWER_CORNER],
+            STEM_CORNERS[2],
+            1.0,
+        ),
+        Vertex(
+            [x + FAR_CORNER, y + 1.0, z + CLOSE_FLOWER_CORNER],
+            STEM_CORNERS[3],
             1.0,
         ),
     ]
@@ -571,6 +661,14 @@ fn generate_block_mesh(
     let tex_offsets = block_type.get_offset();
     match block_type {
         BlockType::Air => {}
+        BlockType::Flower0 => {
+            indices.extend(FLOWER_INDICES.map(|i| i + vertices.len() as u32));
+            vertices.extend(generate_flower((
+                (x as i32 + (chunk_location[0] * CHUNK_WIDTH_I32)) as f32,
+                y as f32,
+                (z as i32 + (chunk_location[1] * CHUNK_DEPTH_I32)) as f32,
+            )));
+        }
         _ if block_type.is_liquid() => {
             generate_liquid(
                 chunk,
@@ -628,70 +726,17 @@ fn generate_solid(
     {
         let tex_offset = tex_offsets[1];
         indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
-        let zplusone = 1.0 + rel_z;
-        vertices.append(&mut vec![
-            Vertex(
-                [rel_x, 1.0 + y_f32, zplusone],
-                add_arrs(TOP_LEFT, tex_offset),
-                if (x == 0
-                    && surrounding_chunks[1].map_or(false, |chunk| {
-                        z != LAST_CHUNK_DEPTH
-                            && !chunk.contents[CHUNK_WIDTH - 1][y][z + 1].is_transparent()
-                    }))
-                    || (x != 0 && z != LAST_CHUNK_DEPTH && !chunk[x - 1][y][z + 1].is_transparent())
-                {
-                    AO_BRIGHTNESS
-                } else {
-                    FRONT_BRIGHTNESS
-                },
-            ),
-            Vertex(
-                [rel_x, y_f32, zplusone],
-                add_arrs(BOTTOM_LEFT, tex_offset),
-                if y != 0
-                    && ((z != LAST_CHUNK_DEPTH && !chunk[x][y - 1][z + 1].is_transparent())
-                        || (z == LAST_CHUNK_DEPTH
-                            && surrounding_chunks[2].map_or(false, |chunk| {
-                                !chunk.contents[x][y - 1][0].is_transparent()
-                            })))
-                {
-                    AO_BRIGHTNESS
-                } else {
-                    FRONT_BRIGHTNESS
-                },
-            ),
-            Vertex(
-                [1.0 + rel_x, y_f32, zplusone],
-                add_arrs(BOTTOM_RIGHT, tex_offset),
-                if y != 0
-                    && ((z != LAST_CHUNK_DEPTH && !chunk[x][y - 1][z + 1].is_transparent())
-                        || (z == LAST_CHUNK_DEPTH
-                            && surrounding_chunks[2].map_or(false, |chunk| {
-                                !chunk.contents[x][y - 1][0].is_transparent()
-                            })))
-                {
-                    AO_BRIGHTNESS
-                } else {
-                    FRONT_BRIGHTNESS
-                },
-            ),
-            Vertex(
-                [1.0 + rel_x, 1.0 + y_f32, zplusone],
-                add_arrs(TOP_RIGHT, tex_offset),
-                if (x == CHUNK_WIDTH - 1
-                    && surrounding_chunks[0].map_or(false, |chunk| {
-                        z != LAST_CHUNK_DEPTH && !chunk.contents[0][y][z + 1].is_transparent()
-                    }))
-                    || (x != CHUNK_WIDTH - 1
-                        && z != LAST_CHUNK_DEPTH
-                        && !chunk[x + 1][y][z + 1].is_transparent())
-                {
-                    AO_BRIGHTNESS
-                } else {
-                    FRONT_BRIGHTNESS
-                },
-            ),
-        ]);
+        vertices.append(&mut gen_face_1(
+            rel_x,
+            y_f32,
+            1.0 + rel_z,
+            tex_offset,
+            x,
+            surrounding_chunks,
+            z,
+            y,
+            chunk,
+        ));
     }
     // second face
     if (x == CHUNK_WIDTH - 1
@@ -700,57 +745,17 @@ fn generate_solid(
     {
         let tex_offset = tex_offsets[2];
         indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
-        let xplusone = 1.0 + rel_x;
-        vertices.append(&mut vec![
-            Vertex(
-                [xplusone, 1.0 + y_f32, 1.0 + rel_z],
-                add_arrs(TOP_LEFT, tex_offset),
-                if (x == CHUNK_WIDTH - 1
-                    && surrounding_chunks[0].map_or(false, |chunk| {
-                        z != LAST_CHUNK_DEPTH && !chunk.contents[0][y][z + 1].is_transparent()
-                    }))
-                    || (x != CHUNK_WIDTH - 1
-                        && z != LAST_CHUNK_DEPTH
-                        && !chunk[x + 1][y][z + 1].is_transparent())
-                {
-                    AO_BRIGHTNESS
-                } else {
-                    SIDE_BRIGHTNESS
-                },
-            ),
-            Vertex(
-                [xplusone, y_f32, 1.0 + rel_z],
-                add_arrs(BOTTOM_LEFT, tex_offset),
-                if y != 0 && x != CHUNK_WIDTH - 1 && !chunk[x + 1][y - 1][z].is_transparent() {
-                    AO_BRIGHTNESS
-                } else {
-                    SIDE_BRIGHTNESS
-                },
-            ),
-            Vertex(
-                [xplusone, y_f32, rel_z],
-                add_arrs(BOTTOM_RIGHT, tex_offset),
-                if y != 0 && x != CHUNK_WIDTH - 1 && !chunk[x + 1][y - 1][z].is_transparent() {
-                    AO_BRIGHTNESS
-                } else {
-                    SIDE_BRIGHTNESS
-                },
-            ),
-            Vertex(
-                [xplusone, 1.0 + y_f32, rel_z],
-                add_arrs(TOP_RIGHT, tex_offset),
-                if (x == CHUNK_WIDTH - 1
-                    && surrounding_chunks[1].map_or(false, |chunk| {
-                        z != 0 && !chunk.contents[0][y][z - 1].is_transparent()
-                    }))
-                    || (x != CHUNK_WIDTH - 1 && z != 0 && !chunk[x + 1][y][z - 1].is_transparent())
-                {
-                    AO_BRIGHTNESS
-                } else {
-                    SIDE_BRIGHTNESS
-                },
-            ),
-        ]);
+        vertices.append(&mut gen_face_2(
+            1.0 + rel_x,
+            y_f32,
+            rel_z,
+            tex_offset,
+            x,
+            surrounding_chunks,
+            z,
+            y,
+            chunk,
+        ));
     }
     // third face
     if (z == 0
@@ -761,36 +766,9 @@ fn generate_solid(
     {
         let tex_offset = tex_offsets[3];
         indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
-        vertices.append(&mut vec![
-            Vertex(
-                [1.0 + rel_x, 1.0 + y_f32, rel_z],
-                add_arrs(TOP_LEFT, tex_offset),
-                BACK_BRIGHTNESS,
-            ),
-            Vertex(
-                [1.0 + rel_x, y_f32, rel_z],
-                add_arrs(BOTTOM_LEFT, tex_offset),
-                if y != 0 && z != 0 && !chunk[x][y - 1][z - 1].is_transparent() {
-                    AO_BRIGHTNESS
-                } else {
-                    BACK_BRIGHTNESS
-                },
-            ),
-            Vertex(
-                [rel_x, y_f32, rel_z],
-                add_arrs(BOTTOM_RIGHT, tex_offset),
-                if y != 0 && z != 0 && !chunk[x][y - 1][z - 1].is_transparent() {
-                    AO_BRIGHTNESS
-                } else {
-                    BACK_BRIGHTNESS
-                },
-            ),
-            Vertex(
-                [rel_x, 1.0 + y_f32, rel_z],
-                add_arrs(TOP_RIGHT, tex_offset),
-                BACK_BRIGHTNESS,
-            ),
-        ]);
+        vertices.append(&mut gen_face_3(
+            rel_x, y_f32, rel_z, tex_offset, y, z, chunk, x,
+        ));
     }
     // fourth face
     if (x == 0
@@ -801,211 +779,461 @@ fn generate_solid(
     {
         let tex_offset = tex_offsets[4];
         indices.extend(&mut QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
-        vertices.append(&mut vec![
-            Vertex(
-                [rel_x, 1.0 + y_f32, rel_z],
-                add_arrs(TOP_LEFT, tex_offset),
-                SIDE_BRIGHTNESS,
-            ),
-            Vertex(
-                [rel_x, y_f32, rel_z],
-                add_arrs(BOTTOM_LEFT, tex_offset),
-                SIDE_BRIGHTNESS,
-            ),
-            Vertex(
-                [rel_x, y_f32, 1.0 + rel_z],
-                add_arrs(BOTTOM_RIGHT, tex_offset),
-                SIDE_BRIGHTNESS,
-            ),
-            Vertex(
-                [rel_x, 1.0 + y_f32, 1.0 + rel_z],
-                add_arrs(TOP_RIGHT, tex_offset),
-                SIDE_BRIGHTNESS,
-            ),
-        ]);
+        vertices.append(&mut gen_face_4(
+            rel_x,
+            y_f32,
+            rel_z,
+            tex_offset,
+            x,
+            surrounding_chunks,
+            y,
+            z,
+            chunk,
+        ));
     }
     // top face
     if y == CHUNK_HEIGHT - 1 || chunk[x][y + 1][z].is_transparent() {
         let tex_offset = tex_offsets[0];
         indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
         let yplusone = y_f32 + 1.0;
-        if y >= CHUNK_HEIGHT - 2 {
-            vertices.append(&mut vec![
-                Vertex(
-                    [rel_x, yplusone, rel_z],
-                    add_arrs(TOP_LEFT, tex_offset),
-                    TOP_BRIGHTNESS,
-                ),
-                Vertex(
-                    [rel_x, yplusone, 1.0 + rel_z],
-                    add_arrs(BOTTOM_LEFT, tex_offset),
-                    TOP_BRIGHTNESS,
-                ),
-                Vertex(
-                    [1.0 + rel_x, yplusone, 1.0 + rel_z],
-                    add_arrs(BOTTOM_RIGHT, tex_offset),
-                    TOP_BRIGHTNESS,
-                ),
-                Vertex(
-                    [1.0 + rel_x, yplusone, rel_z],
-                    add_arrs(TOP_RIGHT, tex_offset),
-                    TOP_BRIGHTNESS,
-                ),
-            ]);
+        if y == CHUNK_HEIGHT - 1 {
+            vertices.append(&mut gen_top_face_a(rel_x, yplusone, rel_z, tex_offset));
         } else {
-            vertices.append(&mut vec![
-                Vertex(
-                    [rel_x, yplusone, rel_z],
-                    add_arrs(TOP_LEFT, tex_offset),
-                    if (x == 0
-                        && surrounding_chunks[1].map_or(false, |chunk| {
-                            !chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_transparent()
-                                || (z != 0
-                                    && !chunk.contents[CHUNK_WIDTH - 1][y + 1][z - 1]
-                                        .is_transparent())
-                        }))
-                        || (x != 0
-                            && (!chunk[x - 1][y + 1][z].is_transparent()
-                                || (z == 0
-                                    && surrounding_chunks[3].map_or(false, |chunk| {
-                                        !chunk.contents[x - 1][y + 1][LAST_CHUNK_DEPTH]
-                                            .is_transparent()
-                                    }))
-                                || (z != 0 && !chunk[x - 1][y + 1][z - 1].is_transparent())))
-                        || (z == 0
-                            && surrounding_chunks[3].map_or(false, |chunk| {
-                                !chunk.contents[x][y + 1][LAST_CHUNK_DEPTH].is_transparent()
-                            }))
-                        || (z != 0 && !chunk[x][y + 1][z - 1].is_transparent())
-                    {
-                        AO_BRIGHTNESS
-                    } else {
-                        TOP_BRIGHTNESS
-                    },
-                ),
-                Vertex(
-                    [rel_x, yplusone, 1.0 + rel_z],
-                    add_arrs(BOTTOM_LEFT, tex_offset),
-                    if (x == 0
-                        && surrounding_chunks[1].map_or(false, |chunk| {
-                            !chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_transparent()
-                                || (z != LAST_CHUNK_DEPTH
-                                    && !chunk.contents[CHUNK_WIDTH - 1][y + 1][z + 1]
-                                        .is_transparent())
-                        }))
-                        || (x != 0
-                            && y != CHUNK_HEIGHT - 1
-                            && (!chunk[x - 1][y + 1][z].is_transparent()
-                                || ((z == LAST_CHUNK_DEPTH
-                                    && surrounding_chunks[2].map_or(false, |chunk| {
-                                        !chunk.contents[x - 1][y + 1][0].is_transparent()
-                                    }))
-                                    || (z != LAST_CHUNK_DEPTH
-                                        && !chunk[x - 1][y + 1][z + 1].is_transparent()))))
-                        || (z == LAST_CHUNK_DEPTH
-                            && surrounding_chunks[2].map_or(false, |chunk| {
-                                !chunk.contents[x][y + 1][0].is_transparent()
-                            }))
-                        || (z != LAST_CHUNK_DEPTH
-                            && y != CHUNK_HEIGHT - 1
-                            && !chunk[x][y + 1][z + 1].is_transparent())
-                    {
-                        AO_BRIGHTNESS
-                    } else {
-                        TOP_BRIGHTNESS
-                    },
-                ),
-                Vertex(
-                    [1.0 + rel_x, yplusone, 1.0 + rel_z],
-                    add_arrs(BOTTOM_RIGHT, tex_offset),
-                    if (x == CHUNK_WIDTH - 1
-                        && surrounding_chunks[0].map_or(false, |chunk| {
-                            !chunk.contents[0][y + 1][z].is_transparent()
-                                || (z != LAST_CHUNK_DEPTH
-                                    && !chunk.contents[0][y + 1][z + 1].is_transparent())
-                        }))
-                        || (x != CHUNK_WIDTH - 1
-                            && y != CHUNK_HEIGHT - 1
-                            && (!chunk[x + 1][y + 1][z].is_transparent()
-                                || (z == LAST_CHUNK_DEPTH
-                                    && surrounding_chunks[2].map_or(false, |chunk| {
-                                        !chunk.contents[x + 1][y + 1][0].is_transparent()
-                                    }))
-                                || (z != LAST_CHUNK_DEPTH
-                                    && !chunk[x + 1][y + 1][z + 1].is_transparent())))
-                        || (z == LAST_CHUNK_DEPTH
-                            && surrounding_chunks[2].map_or(false, |chunk| {
-                                !chunk.contents[x][y + 1][0].is_transparent()
-                            }))
-                        || (z != LAST_CHUNK_DEPTH
-                            && y != CHUNK_HEIGHT - 1
-                            && !chunk[x][y + 1][z + 1].is_transparent())
-                    {
-                        AO_BRIGHTNESS
-                    } else {
-                        TOP_BRIGHTNESS
-                    },
-                ),
-                Vertex(
-                    [1.0 + rel_x, yplusone, rel_z],
-                    add_arrs(TOP_RIGHT, tex_offset),
-                    if (x == CHUNK_WIDTH - 1
-                        && surrounding_chunks[0].map_or(false, |chunk| {
-                            !chunk.contents[0][y + 1][z].is_transparent()
-                                || (z != 0 && !chunk.contents[0][y + 1][z - 1].is_transparent())
-                        }))
-                        || (x != CHUNK_WIDTH - 1
-                            && y != CHUNK_HEIGHT - 1
-                            && ((z == 0
-                                && surrounding_chunks[3].map_or(false, |chunk| {
-                                    !chunk.contents[x + 1][y + 1][LAST_CHUNK_DEPTH].is_transparent()
-                                }))
-                                || (z != 0 && !chunk[x + 1][y + 1][z - 1].is_transparent())
-                                || !chunk[x + 1][y + 1][z].is_transparent()))
-                        || (z == 0
-                            && surrounding_chunks[3].map_or(false, |chunk| {
-                                !chunk.contents[x][y + 1][LAST_CHUNK_DEPTH].is_transparent()
-                            }))
-                        || (z != 0
-                            && y != CHUNK_HEIGHT - 1
-                            && !chunk[x][y + 1][z - 1].is_transparent())
-                    {
-                        AO_BRIGHTNESS
-                    } else {
-                        TOP_BRIGHTNESS
-                    },
-                ),
-            ]);
+            vertices.append(&mut gen_top_face_b(
+                rel_x,
+                yplusone,
+                rel_z,
+                tex_offset,
+                x,
+                surrounding_chunks,
+                y,
+                z,
+                chunk,
+            ));
         }
     }
     // bottom face
     if y == 0 || chunk[x][y - 1][z].is_transparent() {
         let tex_offset = tex_offsets[5];
         indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
-        vertices.append(&mut vec![
-            // start of bottom
-            Vertex(
-                [1.0 + rel_x, y_f32, rel_z],
-                add_arrs(TOP_LEFT, tex_offset),
-                BOTTOM_BRIGHTNESS,
-            ),
-            Vertex(
-                [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                add_arrs(BOTTOM_LEFT, tex_offset),
-                BOTTOM_BRIGHTNESS,
-            ),
-            Vertex(
-                [rel_x, y_f32, 1.0 + rel_z],
-                add_arrs(BOTTOM_RIGHT, tex_offset),
-                BOTTOM_BRIGHTNESS,
-            ),
-            Vertex(
-                [rel_x, y_f32, rel_z],
-                add_arrs(TOP_RIGHT, tex_offset),
-                BOTTOM_BRIGHTNESS,
-            ),
-        ]);
+        vertices.append(&mut gen_bottom_face(rel_x, y_f32, rel_z, tex_offset));
     }
+}
+
+fn gen_bottom_face(rel_x: f32, y_f32: f32, rel_z: f32, tex_offset: [f32; 2]) -> Vec<Vertex> {
+    vec![
+        Vertex(
+            [1.0 + rel_x, y_f32, rel_z],
+            add_arrs(TOP_LEFT, tex_offset),
+            BOTTOM_BRIGHTNESS,
+        ),
+        Vertex(
+            [1.0 + rel_x, y_f32, 1.0 + rel_z],
+            add_arrs(BOTTOM_LEFT, tex_offset),
+            BOTTOM_BRIGHTNESS,
+        ),
+        Vertex(
+            [rel_x, y_f32, 1.0 + rel_z],
+            add_arrs(BOTTOM_RIGHT, tex_offset),
+            BOTTOM_BRIGHTNESS,
+        ),
+        Vertex(
+            [rel_x, y_f32, rel_z],
+            add_arrs(TOP_RIGHT, tex_offset),
+            BOTTOM_BRIGHTNESS,
+        ),
+    ]
+}
+// This is the face that faces toward negative x
+fn gen_face_4(
+    rel_x: f32,
+    y_f32: f32,
+    rel_z: f32,
+    tex_offset: [f32; 2],
+    x: usize,
+    _surrounding_chunks: [Option<&ChunkData>; 4],
+    y: usize,
+    z: usize,
+    chunk: &Chunk,
+) -> Vec<Vertex> {
+    // let left_is_solid =
+    vec![
+        Vertex(
+            [rel_x, 1.0 + y_f32, rel_z],
+            add_arrs(TOP_LEFT, tex_offset),
+            if x != 0
+                && ((y != CHUNK_HEIGHT && !chunk[x - 1][y + 1][z].is_transparent())
+                    || (z != 0
+                        && (!chunk[x - 1][y + 1][z - 1].is_transparent()
+                            || !chunk[x - 1][y][z - 1].is_transparent())))
+            {
+                AO_BRIGHTNESS
+            } else {
+                SIDE_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [rel_x, y_f32, rel_z],
+            add_arrs(BOTTOM_LEFT, tex_offset),
+            if x != 0 && (!chunk[x - 1][y - 1][z].is_transparent()) {
+                AO_BRIGHTNESS
+            } else {
+                SIDE_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [rel_x, y_f32, 1.0 + rel_z],
+            add_arrs(BOTTOM_RIGHT, tex_offset),
+            if x != 0 {
+                AO_BRIGHTNESS
+            } else {
+                SIDE_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [rel_x, 1.0 + y_f32, 1.0 + rel_z],
+            add_arrs(TOP_RIGHT, tex_offset),
+            if x != 0 {
+                AO_BRIGHTNESS
+            } else {
+                SIDE_BRIGHTNESS
+            },
+        ),
+    ]
+}
+
+fn gen_top_face_b(
+    rel_x: f32,
+    yplusone: f32,
+    rel_z: f32,
+    tex_offset: [f32; 2],
+    x: usize,
+    surrounding_chunks: [Option<&ChunkData>; 4],
+    y: usize,
+    z: usize,
+    chunk: &Chunk,
+) -> Vec<Vertex> {
+    vec![
+        Vertex(
+            [rel_x, yplusone, rel_z],
+            add_arrs(TOP_LEFT, tex_offset),
+            if (x == 0
+                && surrounding_chunks[1].map_or(false, |chunk| {
+                    !chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_transparent()
+                        || (z != 0
+                            && !chunk.contents[CHUNK_WIDTH - 1][y + 1][z - 1].is_transparent())
+                }))
+                || (x != 0
+                    && (!chunk[x - 1][y + 1][z].is_transparent()
+                        || (z == 0
+                            && surrounding_chunks[3].map_or(false, |chunk| {
+                                !chunk.contents[x - 1][y + 1][LAST_CHUNK_DEPTH].is_transparent()
+                            }))
+                        || (z != 0 && !chunk[x - 1][y + 1][z - 1].is_transparent())))
+                || (z == 0
+                    && surrounding_chunks[3].map_or(false, |chunk| {
+                        !chunk.contents[x][y + 1][LAST_CHUNK_DEPTH].is_transparent()
+                    }))
+                || (z != 0 && !chunk[x][y + 1][z - 1].is_transparent())
+            {
+                AO_BRIGHTNESS
+            } else {
+                TOP_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [rel_x, yplusone, 1.0 + rel_z],
+            add_arrs(BOTTOM_LEFT, tex_offset),
+            if (x == 0
+                && surrounding_chunks[1].map_or(false, |chunk| {
+                    !chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_transparent()
+                        || (z != LAST_CHUNK_DEPTH
+                            && !chunk.contents[CHUNK_WIDTH - 1][y + 1][z + 1].is_transparent())
+                }))
+                || (x != 0
+                    && y != CHUNK_HEIGHT - 1
+                    && (!chunk[x - 1][y + 1][z].is_transparent()
+                        || ((z == LAST_CHUNK_DEPTH
+                            && surrounding_chunks[2].map_or(false, |chunk| {
+                                !chunk.contents[x - 1][y + 1][0].is_transparent()
+                            }))
+                            || (z != LAST_CHUNK_DEPTH
+                                && !chunk[x - 1][y + 1][z + 1].is_transparent()))))
+                || (z == LAST_CHUNK_DEPTH
+                    && surrounding_chunks[2]
+                        .map_or(false, |chunk| !chunk.contents[x][y + 1][0].is_transparent()))
+                || (z != LAST_CHUNK_DEPTH
+                    && y != CHUNK_HEIGHT - 1
+                    && !chunk[x][y + 1][z + 1].is_transparent())
+            {
+                AO_BRIGHTNESS
+            } else {
+                TOP_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [1.0 + rel_x, yplusone, 1.0 + rel_z],
+            add_arrs(BOTTOM_RIGHT, tex_offset),
+            if (x == CHUNK_WIDTH - 1
+                && surrounding_chunks[0].map_or(false, |chunk| {
+                    !chunk.contents[0][y + 1][z].is_transparent()
+                        || (z != LAST_CHUNK_DEPTH
+                            && !chunk.contents[0][y + 1][z + 1].is_transparent())
+                }))
+                || (x != CHUNK_WIDTH - 1
+                    && y != CHUNK_HEIGHT - 1
+                    && (!chunk[x + 1][y + 1][z].is_transparent()
+                        || (z == LAST_CHUNK_DEPTH
+                            && surrounding_chunks[2].map_or(false, |chunk| {
+                                !chunk.contents[x + 1][y + 1][0].is_transparent()
+                            }))
+                        || (z != LAST_CHUNK_DEPTH && !chunk[x + 1][y + 1][z + 1].is_transparent())))
+                || (z == LAST_CHUNK_DEPTH
+                    && surrounding_chunks[2]
+                        .map_or(false, |chunk| !chunk.contents[x][y + 1][0].is_transparent()))
+                || (z != LAST_CHUNK_DEPTH
+                    && y != CHUNK_HEIGHT - 1
+                    && !chunk[x][y + 1][z + 1].is_transparent())
+            {
+                AO_BRIGHTNESS
+            } else {
+                TOP_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [1.0 + rel_x, yplusone, rel_z],
+            add_arrs(TOP_RIGHT, tex_offset),
+            if (x == CHUNK_WIDTH - 1
+                && surrounding_chunks[0].map_or(false, |chunk| {
+                    !chunk.contents[0][y + 1][z].is_transparent()
+                        || (z != 0 && !chunk.contents[0][y + 1][z - 1].is_transparent())
+                }))
+                || (x != CHUNK_WIDTH - 1
+                    && y != CHUNK_HEIGHT - 1
+                    && ((z == 0
+                        && surrounding_chunks[3].map_or(false, |chunk| {
+                            !chunk.contents[x + 1][y + 1][LAST_CHUNK_DEPTH].is_transparent()
+                        }))
+                        || (z != 0 && !chunk[x + 1][y + 1][z - 1].is_transparent())
+                        || !chunk[x + 1][y + 1][z].is_transparent()))
+                || (z == 0
+                    && surrounding_chunks[3].map_or(false, |chunk| {
+                        !chunk.contents[x][y + 1][LAST_CHUNK_DEPTH].is_transparent()
+                    }))
+                || (z != 0 && y != CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z - 1].is_transparent())
+            {
+                AO_BRIGHTNESS
+            } else {
+                TOP_BRIGHTNESS
+            },
+        ),
+    ]
+}
+
+fn gen_top_face_a(rel_x: f32, yplusone: f32, rel_z: f32, tex_offset: [f32; 2]) -> Vec<Vertex> {
+    vec![
+        Vertex(
+            [rel_x, yplusone, rel_z],
+            add_arrs(TOP_LEFT, tex_offset),
+            TOP_BRIGHTNESS,
+        ),
+        Vertex(
+            [rel_x, yplusone, 1.0 + rel_z],
+            add_arrs(BOTTOM_LEFT, tex_offset),
+            TOP_BRIGHTNESS,
+        ),
+        Vertex(
+            [1.0 + rel_x, yplusone, 1.0 + rel_z],
+            add_arrs(BOTTOM_RIGHT, tex_offset),
+            TOP_BRIGHTNESS,
+        ),
+        Vertex(
+            [1.0 + rel_x, yplusone, rel_z],
+            add_arrs(TOP_RIGHT, tex_offset),
+            TOP_BRIGHTNESS,
+        ),
+    ]
+}
+// This is the face that faces toward negative z
+fn gen_face_3(
+    rel_x: f32,
+    y_f32: f32,
+    rel_z: f32,
+    tex_offset: [f32; 2],
+    y: usize,
+    z: usize,
+    chunk: &Chunk,
+    x: usize,
+) -> Vec<Vertex> {
+    vec![
+        Vertex(
+            [1.0 + rel_x, 1.0 + y_f32, rel_z],
+            add_arrs(TOP_LEFT, tex_offset),
+            BACK_BRIGHTNESS,
+        ),
+        Vertex(
+            [1.0 + rel_x, y_f32, rel_z],
+            add_arrs(BOTTOM_LEFT, tex_offset),
+            if y != 0 && z != 0 && !chunk[x][y - 1][z - 1].is_transparent() {
+                AO_BRIGHTNESS
+            } else {
+                BACK_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [rel_x, y_f32, rel_z],
+            add_arrs(BOTTOM_RIGHT, tex_offset),
+            if y != 0 && z != 0 && !chunk[x][y - 1][z - 1].is_transparent() {
+                AO_BRIGHTNESS
+            } else {
+                BACK_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [rel_x, 1.0 + y_f32, rel_z],
+            add_arrs(TOP_RIGHT, tex_offset),
+            BACK_BRIGHTNESS,
+        ),
+    ]
+}
+
+// This face faces towards positive x
+fn gen_face_2(
+    xplusone: f32,
+    y_f32: f32,
+    rel_z: f32,
+    tex_offset: [f32; 2],
+    x: usize,
+    surrounding_chunks: [Option<&ChunkData>; 4],
+    z: usize,
+    y: usize,
+    chunk: &Chunk,
+) -> Vec<Vertex> {
+    vec![
+        Vertex(
+            [xplusone, 1.0 + y_f32, 1.0 + rel_z],
+            add_arrs(TOP_LEFT, tex_offset),
+            if (x == CHUNK_WIDTH - 1
+                && surrounding_chunks[0].map_or(false, |chunk| {
+                    z != LAST_CHUNK_DEPTH && !chunk.contents[0][y][z + 1].is_transparent()
+                }))
+                || (x != CHUNK_WIDTH - 1
+                    && z != LAST_CHUNK_DEPTH
+                    && !chunk[x + 1][y][z + 1].is_transparent())
+            {
+                AO_BRIGHTNESS
+            } else {
+                SIDE_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [xplusone, y_f32, 1.0 + rel_z],
+            add_arrs(BOTTOM_LEFT, tex_offset),
+            if y != 0 && x != CHUNK_WIDTH - 1 && !chunk[x + 1][y - 1][z].is_transparent() {
+                AO_BRIGHTNESS
+            } else {
+                SIDE_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [xplusone, y_f32, rel_z],
+            add_arrs(BOTTOM_RIGHT, tex_offset),
+            if y != 0 && x != CHUNK_WIDTH - 1 && !chunk[x + 1][y - 1][z].is_transparent() {
+                AO_BRIGHTNESS
+            } else {
+                SIDE_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [xplusone, 1.0 + y_f32, rel_z],
+            add_arrs(TOP_RIGHT, tex_offset),
+            if (x == CHUNK_WIDTH - 1
+                && surrounding_chunks[1].map_or(false, |chunk| {
+                    z != 0 && !chunk.contents[0][y][z - 1].is_transparent()
+                }))
+                || (x != CHUNK_WIDTH - 1 && z != 0 && !chunk[x + 1][y][z - 1].is_transparent())
+            {
+                AO_BRIGHTNESS
+            } else {
+                SIDE_BRIGHTNESS
+            },
+        ),
+    ]
+}
+
+// This is the face that faces positive z
+fn gen_face_1(
+    rel_x: f32,
+    y_f32: f32,
+    zplusone: f32,
+    tex_offset: [f32; 2],
+    x: usize,
+    surrounding_chunks: [Option<&ChunkData>; 4],
+    z: usize,
+    y: usize,
+    chunk: &Chunk,
+) -> Vec<Vertex> {
+    vec![
+        Vertex(
+            [rel_x, 1.0 + y_f32, zplusone],
+            add_arrs(TOP_LEFT, tex_offset),
+            if (x == 0
+                && surrounding_chunks[1].map_or(false, |chunk| {
+                    z != LAST_CHUNK_DEPTH
+                        && !chunk.contents[CHUNK_WIDTH - 1][y][z + 1].is_transparent()
+                }))
+                || (x != 0 && z != LAST_CHUNK_DEPTH && !chunk[x - 1][y][z + 1].is_transparent())
+            {
+                AO_BRIGHTNESS
+            } else {
+                FRONT_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [rel_x, y_f32, zplusone],
+            add_arrs(BOTTOM_LEFT, tex_offset),
+            if y != 0
+                && ((z != LAST_CHUNK_DEPTH && !chunk[x][y - 1][z + 1].is_transparent())
+                    || (z == LAST_CHUNK_DEPTH
+                        && surrounding_chunks[2]
+                            .map_or(false, |chunk| !chunk.contents[x][y - 1][0].is_transparent())))
+            {
+                AO_BRIGHTNESS
+            } else {
+                FRONT_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [1.0 + rel_x, y_f32, zplusone],
+            add_arrs(BOTTOM_RIGHT, tex_offset),
+            if y != 0
+                && ((z != LAST_CHUNK_DEPTH && !chunk[x][y - 1][z + 1].is_transparent())
+                    || (z == LAST_CHUNK_DEPTH
+                        && surrounding_chunks[2]
+                            .map_or(false, |chunk| !chunk.contents[x][y - 1][0].is_transparent())))
+            {
+                AO_BRIGHTNESS
+            } else {
+                FRONT_BRIGHTNESS
+            },
+        ),
+        Vertex(
+            [1.0 + rel_x, 1.0 + y_f32, zplusone],
+            add_arrs(TOP_RIGHT, tex_offset),
+            if (x == CHUNK_WIDTH - 1
+                && surrounding_chunks[0].map_or(false, |chunk| {
+                    z != LAST_CHUNK_DEPTH && !chunk.contents[0][y][z + 1].is_transparent()
+                }))
+                || (x != CHUNK_WIDTH - 1
+                    && z != LAST_CHUNK_DEPTH
+                    && !chunk[x + 1][y][z + 1].is_transparent())
+            {
+                AO_BRIGHTNESS
+            } else {
+                FRONT_BRIGHTNESS
+            },
+        ),
+    ]
 }
 
 #[inline]

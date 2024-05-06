@@ -1,4 +1,5 @@
 use wgpu::util::DeviceExt;
+use winit::dpi::PhysicalSize;
 
 use crate::{create_index_buffer, create_render_pipeline, load_texture, texture};
 
@@ -55,7 +56,7 @@ pub fn init_state(
     queue: &wgpu::Queue,
     texture_bind_group_layout: &wgpu::BindGroupLayout,
     config: &wgpu::SurfaceConfiguration,
-    size: (u32, u32),
+    size: PhysicalSize<u32>,
 ) -> State {
     let crosshair_bind_group = load_texture(
         device,
@@ -77,13 +78,14 @@ pub fn init_state(
         }),
         create_index_buffer(device, &[0, 1, 2, 0, 2, 3]),
     );
+    let aspect = size.width as f32 / size.height as f32;
     State {
         pipeline: create_render_pipeline(
             device,
             &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[
-                    &texture_bind_group_layout,
+                    texture_bind_group_layout,
                     &device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                         entries: &[wgpu::BindGroupLayoutEntry {
                             binding: 0,
@@ -108,9 +110,7 @@ pub fn init_state(
                 source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
             },
         ),
-        uniform: Uniform {
-            aspect: size.0 as f32 / size.1 as f32,
-        },
+        uniform: Uniform { aspect },
         crosshair,
         crosshair_bind_group,
         uniform_bind_group: device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -132,9 +132,7 @@ pub fn init_state(
                 resource: device
                     .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some("Uniform Buffer"),
-                        contents: bytemuck::cast_slice(&[Uniform {
-                            aspect: size.0 as f32 / size.1 as f32,
-                        }]),
+                        contents: bytemuck::cast_slice(&[Uniform { aspect }]),
                         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                     })
                     .as_entire_binding(),
@@ -143,9 +141,7 @@ pub fn init_state(
         }),
         uniform_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
-            contents: bytemuck::cast_slice(&[Uniform {
-                aspect: size.0 as f32 / size.1 as f32,
-            }]),
+            contents: bytemuck::cast_slice(&[Uniform { aspect }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         }),
     }

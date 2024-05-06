@@ -33,24 +33,23 @@ impl Ray {
     }
 }
 
+#[inline]
 fn calculate_delta(
-    axis_position: f32,
+    pos_on_axis: f32,
     direction: Vec3<f32>,
-    axis_direction: f32,
+    amount_in_direction: f32,
 ) -> (bool, Vec3<f32>) {
-    let positive_direction = axis_direction.is_sign_positive();
+    let positive_direction = amount_in_direction.is_sign_positive();
     let delta = {
         let possible = (if positive_direction {
-            axis_direction.ceil()
+            pos_on_axis.ceil()
         } else {
-            axis_position.floor()
-        } - axis_position)
-            / axis_direction
+            pos_on_axis.floor()
+        } - pos_on_axis)
+            / amount_in_direction
             * direction;
         if possible.is_zero() {
-            assert!(axis_direction != 0.0);
-            assert!(!direction.is_zero());
-            1.0 / axis_direction.abs() * direction
+            1.0 / amount_in_direction.abs() * direction
         } else {
             possible
         }
@@ -61,52 +60,10 @@ fn calculate_delta(
 impl Iterator for Ray {
     type Item = (Vec3<i32>, usize);
     fn next(&mut self) -> Option<Self::Item> {
-        let positive_x = self.direction.x.is_sign_positive();
-        let dx: Vec3<f32> = {
-            let possible = (if positive_x {
-                self.position.x.ceil()
-            } else {
-                self.position.x.floor()
-            } - self.position.x)
-                / self.direction.x
-                * self.direction;
+        let (positive_x, dx) = calculate_delta(self.position.x, self.direction, self.direction.x);
+        let (positive_y, dy) = calculate_delta(self.position.y, self.direction, self.direction.y);
+        let (positive_z, dz) = calculate_delta(self.position.z, self.direction, self.direction.z);
 
-            if possible.is_zero() {
-                1.0 / self.direction.x.abs() * self.direction
-            } else {
-                possible
-            }
-        };
-        let positive_y = self.direction.y.is_sign_positive();
-        let dy: Vec3<f32> = {
-            let possible = (if positive_y {
-                self.position.y.ceil()
-            } else {
-                self.position.y.floor()
-            } - self.position.y)
-                / self.direction.y
-                * self.direction;
-            if possible.is_zero() {
-                1.0 / self.direction.y.abs() * self.direction
-            } else {
-                possible
-            }
-        };
-        let positive_z = self.direction.z.is_sign_positive();
-        let dz: Vec3<f32> = {
-            let possible = (if positive_z {
-                self.position.z.ceil()
-            } else {
-                self.position.z.floor()
-            } - self.position.z)
-                / self.direction.z
-                * self.direction;
-            if possible.is_zero() {
-                1.0 / self.direction.z.abs() * self.direction
-            } else {
-                possible
-            }
-        };
         let (direction, &real_change) = [dx, dy, dz]
             .iter()
             .enumerate()
@@ -119,7 +76,8 @@ impl Iterator for Ray {
             })
             .unwrap();
         self.position += real_change;
-        let direction = direction * 2 + usize::from([positive_x, positive_y, positive_z][direction]);
+        let direction =
+            direction * 2 + usize::from([positive_x, positive_y, positive_z][direction]);
         self.block_position += DIRECTION_OFFSETS[direction];
         if self.magnitude() < self.max_len {
             Some((self.block_position, direction))
