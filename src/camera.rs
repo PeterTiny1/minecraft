@@ -1,6 +1,5 @@
 use std::{collections::HashMap, f32::consts::FRAC_PI_2, time::Duration};
 
-// use sdl2::keyboard::Keycode;
 use vek::{Mat4, Quaternion, Vec3};
 use winit::keyboard::{KeyCode, PhysicalKey};
 

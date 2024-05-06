@@ -209,22 +209,6 @@ pub fn noise_at(
     ])
 }
 
-// pub fn noise_3d(
-//     noise: &OpenSimplex,
-//     x: i32,
-//     y: i32,
-//     z: i32,
-//     chunk_location: [i32; 2],
-//     scale: f64,
-//     offset: f64,
-// ) -> f64 {
-//     noise.get([
-//         f64::from(x + (chunk_location[0] * CHUNK_WIDTH_I32)) / scale + offset,
-//         f64::from(y) / scale + offset,
-//         f64::from(z + (chunk_location[1] * CHUNK_DEPTH_I32)) / scale + offset,
-//     ])
-// }
-
 fn chunk_at_block(
     generated_chunks: &HashMap<[i32; 2], ChunkData>,
     x: i32,
