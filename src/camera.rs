@@ -146,7 +146,7 @@ fn handle_collision(
     }
 }
 
-const FRICTION: f32 = 1.0;
+const FRICTION: f32 = 2.0;
 
 impl Controller {
     pub fn new(speed: f32, sensitivity: f32) -> Self {
@@ -197,7 +197,7 @@ impl Controller {
                 }
                 _ => false,
             },
-            _ => false,
+            PhysicalKey::Unidentified(_) => false,
         }
     }
 
@@ -223,7 +223,7 @@ impl Controller {
         self.velocity += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;
         self.velocity += right * (self.amount_right - self.amount_left) * self.speed * dt;
         self.velocity.y -= GRAVITY * dt;
-        self.velocity.y *= 0.99_f32.powf(-dt);
+        self.velocity *= 0.95_f32.powf(dt);
         let velocity_xz = Vec2::new(self.velocity.x, self.velocity.z);
         if velocity_xz.magnitude() > FRICTION * dt {
             let friction = velocity_xz.normalized() * FRICTION * dt;
@@ -233,6 +233,7 @@ impl Controller {
             self.velocity.x = 0.0;
             self.velocity.z = 0.0;
         }
+        self.velocity.y += (self.amount_up - self.amount_down) * self.speed * dt * 5.0;
         handle_collision(&mut self.velocity, &mut camera.position, CORNER0, dt, world);
         handle_collision(&mut self.velocity, &mut camera.position, CORNER1, dt, world);
         handle_collision(&mut self.velocity, &mut camera.position, CORNER2, dt, world);
@@ -246,12 +247,11 @@ impl Controller {
         );
         self.looking_at_block = looking_at_block;
         if camera.position.y < -64.0 {
-            camera.position.y = 64.0;
+            camera.position.y = 128.0;
         }
         self.scroll = 0.0;
 
         // camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;
-        self.velocity.y += (self.amount_up - self.amount_down) * self.speed * dt * 5.0;
 
         camera.yaw += (self.rotate_horizontal) * self.sensitivity / 10.0;
         camera.pitch += (self.rotate_vertical) * self.sensitivity / 10.0;

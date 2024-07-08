@@ -389,7 +389,7 @@ fn generate_heightmap(
                 frequency *= LACUNARITY;
             }
 
-            *tile = noise_height * HEIGHT_SCALE
+            *tile = noise_height * HEIGHT_SCALE;
         }
     }
 
@@ -416,9 +416,8 @@ fn determine_type(
                 Biome::GreenGrove => BlockType::GrassBlock1,
                 Biome::DarklogForest => BlockType::GrassBlock2,
             };
-        } else {
-            return BlockType::Sand;
         }
+        return BlockType::Sand;
     } else if y < WATER_HEIGHT {
         return BlockType::Water;
     } else if terrain_height > WATER_HEIGHT
@@ -431,13 +430,12 @@ fn determine_type(
                 Biome::GreenGrove => BlockType::Flower1,
                 Biome::DarklogForest => BlockType::Flower2,
             };
-        } else {
-            return match biome {
-                Biome::BirchFalls => BlockType::Grass0,
-                Biome::GreenGrove => BlockType::Grass1,
-                Biome::DarklogForest => BlockType::Grass2,
-            };
         }
+        return match biome {
+            Biome::BirchFalls => BlockType::Grass0,
+            Biome::GreenGrove => BlockType::Grass1,
+            Biome::DarklogForest => BlockType::Grass2,
+        };
     } else {
         return BlockType::Air;
     }

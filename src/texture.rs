@@ -1,11 +1,57 @@
-use image::{
-    imageops::{resize, FilterType},
-    GenericImageView, ImageBuffer, ImageError, Rgba,
-};
+use image::{GenericImageView, ImageBuffer, ImageError, Rgba};
 
 pub struct Texture {
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
+}
+
+fn halve_image(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+    let (width, height) = img.dimensions();
+
+    // New dimensions after halving
+    let new_width = width / 2;
+    let new_height = height / 2;
+
+    // Create a new ImageBuffer to store the halved size image
+    let mut new_img = ImageBuffer::new(new_width, new_height);
+
+    // Process each 2x2 block
+    for x in 0..new_width {
+        for y in 0..new_height {
+            // Compute the average color of the 2x2 block
+            let mut sum_r = 0;
+            let mut sum_g = 0;
+            let mut sum_b = 0;
+            let mut sum_a = 0;
+            let mut count = 0;
+
+            for dx in 0..2 {
+                for dy in 0..2 {
+                    let pixel = img.get_pixel(2 * x + dx, 2 * y + dy);
+                    sum_r += u32::from(pixel[0]);
+                    sum_g += u32::from(pixel[1]);
+                    sum_b += u32::from(pixel[2]);
+                    sum_a += u32::from(pixel[3]);
+                    if pixel[3] != 0 {
+                        count += 1;
+                    }
+                }
+            }
+
+            if count != 0 {
+                // Average values
+                let avg_r = (sum_r / count) as u8;
+                let avg_g = (sum_g / count) as u8;
+                let avg_b = (sum_b / count) as u8;
+                let avg_a = (sum_a / count) as u8;
+
+                // Set the pixel in the new ImageBuffer
+                new_img.put_pixel(x, y, Rgba([avg_r, avg_g, avg_b, avg_a]));
+            }
+        }
+    }
+
+    new_img
 }
 
 impl Texture {
@@ -138,24 +184,9 @@ impl Texture {
         let size1 = half_size(size);
         let size2 = half_size(size1);
         let size3 = half_size(size2);
-        let rgba1 = resize(
-            &rgba,
-            dimensions.0 / 2,
-            dimensions.1 / 2,
-            FilterType::Nearest,
-        );
-        let rgba2 = resize(
-            &rgba1,
-            dimensions.0 / 4,
-            dimensions.1 / 4,
-            FilterType::Nearest,
-        );
-        let rgba3 = resize(
-            &rgba2,
-            dimensions.0 / 8,
-            dimensions.1 / 8,
-            FilterType::Nearest,
-        );
+        let rgba1 = halve_image(&rgba);
+        let rgba2 = halve_image(&rgba1);
+        let rgba3 = halve_image(&rgba2);
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label,
             size,
@@ -179,7 +210,7 @@ impl Texture {
             address_mode_w: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
 
