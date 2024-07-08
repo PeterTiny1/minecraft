@@ -6,7 +6,7 @@ mod ui;
 
 use itertools::Itertools;
 use std::{
-    collections::HashMap,
+    collections::{hash_map::Entry, HashMap},
     env,
     fs::File,
     io::Write,
@@ -24,7 +24,8 @@ use winit::{
 };
 
 use chunk::{
-    generate, start_chunkgen, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH,
+    generate, start_chunkgen, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT,
+    CHUNK_WIDTH, CHUNK_WIDTH_I32,
 };
 use futures::executor::block_on;
 
@@ -389,7 +390,7 @@ impl WindowDependent<'_> {
     }
 
     fn refresh(&mut self) {
-        self.resize(self.size)
+        self.resize(self.size);
     }
 
     fn keydown(&mut self, key: PhysicalKey) {
@@ -408,7 +409,7 @@ impl WindowDependent<'_> {
         self.camera.controller.process_scroll(delta);
     }
 
-    fn process_keyevent(&mut self, event: KeyEvent) {
+    fn process_keyevent(&mut self, event: &KeyEvent) {
         match event.state {
             ElementState::Pressed => self.keydown(event.physical_key),
             ElementState::Released => self.keyup(event.physical_key),
@@ -431,9 +432,7 @@ impl WindowDependent<'_> {
             &generated_chunkdata,
         );
         if let Some(chunk_location) = chunk_location {
-            if let std::collections::hash_map::Entry::Vacant(e) =
-                generated_chunkdata.entry(chunk_location)
-            {
+            if let Entry::Vacant(e) = generated_chunkdata.entry(chunk_location) {
                 let location = &format!("{}.bin", chunk_location.iter().join(","));
                 let path = Path::new(location);
                 let chunk_contents = if path.exists() {
@@ -462,16 +461,14 @@ impl WindowDependent<'_> {
                         _ => panic!("Invalid return"),
                     };
                 if location.y < 256 && location.y > -1 {
-                    let chunk_x = location.x.div_euclid(CHUNK_WIDTH as i32);
-                    let chunk_z = location.z.div_euclid(CHUNK_DEPTH as i32);
+                    let chunk_x = location.x.div_euclid(CHUNK_WIDTH_I32);
+                    let chunk_z = location.z.div_euclid(CHUNK_DEPTH_I32);
                     let chunk = generated_chunkdata.get_mut(&[chunk_x, chunk_z]);
+                    let local_x = location.x.rem_euclid(CHUNK_WIDTH_I32) as usize;
+                    let local_z = location.z.rem_euclid(CHUNK_DEPTH_I32) as usize;
                     if let Some(chunk) = chunk {
-                        if chunk.contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
-                            [location.z as usize % CHUNK_DEPTH]
-                            == BlockType::Air
-                        {
-                            chunk.contents[location.x as usize % CHUNK_WIDTH]
-                                [location.y as usize][location.z as usize % CHUNK_DEPTH] =
+                        if chunk.contents[local_x][location.y as usize][local_z] == BlockType::Air {
+                            chunk.contents[local_x][location.y as usize][local_z] =
                                 BlockType::Stone;
                             self.chunkgen_comms.sender.send([chunk_x, chunk_z]).unwrap();
                         }
@@ -479,13 +476,14 @@ impl WindowDependent<'_> {
                 }
             } else if self.input.left_pressed && (now - self.last_break).as_millis() > 250 {
                 self.last_break = Instant::now();
-                let chunk_x = location.x.div_euclid(CHUNK_WIDTH as i32);
-                let chunk_z = location.z.div_euclid(CHUNK_DEPTH as i32);
+                let chunk_x = location.x.div_euclid(CHUNK_WIDTH_I32);
+                let chunk_z = location.z.div_euclid(CHUNK_DEPTH_I32);
+                let local_x = location.x.rem_euclid(CHUNK_WIDTH_I32) as usize;
+                let local_z = location.z.rem_euclid(CHUNK_DEPTH_I32) as usize;
                 generated_chunkdata
                     .get_mut(&[chunk_x, chunk_z])
                     .unwrap()
-                    .contents[location.x as usize % CHUNK_WIDTH][location.y as usize]
-                    [location.z as usize % CHUNK_DEPTH] = BlockType::Air;
+                    .contents[local_x][location.y as usize][local_z] = BlockType::Air;
                 self.chunkgen_comms.sender.send([chunk_x, chunk_z]).unwrap();
             }
         }
@@ -558,19 +556,19 @@ impl WindowDependent<'_> {
                 .generated_chunk_buffers
                 .keys()
                 .sorted_by(|&x, &y| {
-                    ((y[0] * CHUNK_WIDTH as i32 - self.camera.get_position().x as i32).pow(2)
-                        + (y[1] * CHUNK_DEPTH as i32 - self.camera.get_position().z as i32).pow(2))
+                    ((y[0] * CHUNK_WIDTH_I32 - self.camera.get_position().x as i32).pow(2)
+                        + (y[1] * CHUNK_DEPTH_I32 - self.camera.get_position().z as i32).pow(2))
                     .cmp(
-                        &((x[0] * CHUNK_WIDTH as i32 - self.camera.get_position().x as i32).pow(2)
-                            + (x[1] * CHUNK_DEPTH as i32 + -self.camera.get_position().z as i32)
+                        &((x[0] * CHUNK_WIDTH_I32 - self.camera.get_position().x as i32).pow(2)
+                            + (x[1] * CHUNK_DEPTH_I32 + -self.camera.get_position().z as i32)
                                 .pow(2)),
                     )
                 })
                 .filter(|c| {
                     let min = Vec3::new(
-                        (c[0] * CHUNK_WIDTH as i32) as f32,
+                        (c[0] * CHUNK_WIDTH_I32) as f32,
                         0.0,
-                        (c[1] * CHUNK_DEPTH as i32) as f32,
+                        (c[1] * CHUNK_DEPTH_I32) as f32,
                     );
                     cuboid_intersects_frustum(
                         &Aabb {
@@ -719,7 +717,7 @@ impl<'a> ApplicationHandler for State<'a> {
                 self.window_dependent
                     .as_mut()
                     .unwrap()
-                    .process_keyevent(event);
+                    .process_keyevent(&event);
             }
             WindowEvent::MouseWheel { delta, .. } => match delta {
                 MouseScrollDelta::LineDelta(_, delta) => {

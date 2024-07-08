@@ -15,13 +15,13 @@ use crate::{Vertex, MAX_DEPTH};
 pub const CHUNK_WIDTH: usize = 16;
 #[cfg(not(target_os = "windows"))]
 pub const CHUNK_WIDTH: usize = 32;
-const CHUNK_WIDTH_I32: i32 = CHUNK_WIDTH as i32;
+pub const CHUNK_WIDTH_I32: i32 = CHUNK_WIDTH as i32;
 pub const CHUNK_HEIGHT: usize = 256;
 #[cfg(target_os = "windows")]
 pub const CHUNK_DEPTH: usize = 16;
 #[cfg(not(target_os = "windows"))]
 pub const CHUNK_DEPTH: usize = 32;
-const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
+pub const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
 
 const TEXTURE_WIDTH: f32 = 1.0 / 16.0;
 const HALF_TEXTURE_WIDTH: f32 = TEXTURE_WIDTH / 2.0;
@@ -633,7 +633,7 @@ pub fn generate_chunk_mesh(
 
 #[inline]
 fn generate_block_mesh(
-    chunk: &[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH],
+    chunk: &Chunk,
     position: Vec3<usize>,
     chunk_location: [i32; 2],
     indices: &mut Vec<u32>,
@@ -715,10 +715,8 @@ fn generate_solid(
             y_f32,
             1.0 + rel_z,
             tex_offset,
-            x,
             surrounding_chunks,
-            z,
-            y,
+            (x, y, z),
             chunk,
         ));
     }
@@ -734,10 +732,8 @@ fn generate_solid(
             y_f32,
             rel_z,
             tex_offset,
-            x,
             surrounding_chunks,
-            z,
-            y,
+            (x, y, z),
             chunk,
         ));
     }
@@ -751,7 +747,12 @@ fn generate_solid(
         let tex_offset = tex_offsets[3];
         indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
         vertices.append(&mut gen_face_3(
-            rel_x, y_f32, rel_z, tex_offset, y, z, chunk, x,
+            rel_x,
+            y_f32,
+            rel_z,
+            tex_offset,
+            chunk,
+            (x, y, z),
         ));
     }
     // fourth face
@@ -768,10 +769,8 @@ fn generate_solid(
             y_f32,
             rel_z,
             tex_offset,
-            x,
             surrounding_chunks,
-            y,
-            z,
+            (x, y, z),
             chunk,
         ));
     }
@@ -788,10 +787,8 @@ fn generate_solid(
                 yplusone,
                 rel_z,
                 tex_offset,
-                x,
                 surrounding_chunks,
-                y,
-                z,
+                (x, y, z),
                 chunk,
             ));
         }
@@ -834,13 +831,11 @@ fn gen_face_4(
     y_f32: f32,
     rel_z: f32,
     tex_offset: [f32; 2],
-    x: usize,
     _surrounding_chunks: [Option<&ChunkData>; 4],
-    y: usize,
-    z: usize,
+    xyz: (usize, usize, usize),
     chunk: &Chunk,
 ) -> Vec<Vertex> {
-    // let left_is_solid =
+    let (x, y, z) = xyz;
     vec![
         Vertex(
             [rel_x, 1.0 + y_f32, rel_z],
@@ -891,12 +886,11 @@ fn gen_top_face_b(
     yplusone: f32,
     rel_z: f32,
     tex_offset: [f32; 2],
-    x: usize,
     surrounding_chunks: [Option<&ChunkData>; 4],
-    y: usize,
-    z: usize,
+    xyz: (usize, usize, usize),
     chunk: &Chunk,
 ) -> Vec<Vertex> {
+    let (x, y, z) = xyz;
     vec![
         Vertex(
             [rel_x, yplusone, rel_z],
@@ -1044,11 +1038,10 @@ fn gen_face_3(
     y_f32: f32,
     rel_z: f32,
     tex_offset: [f32; 2],
-    y: usize,
-    z: usize,
     chunk: &Chunk,
-    x: usize,
+    xyz: (usize, usize, usize),
 ) -> Vec<Vertex> {
+    let (x, y, z) = xyz;
     vec![
         Vertex(
             [1.0 + rel_x, 1.0 + y_f32, rel_z],
@@ -1087,12 +1080,11 @@ fn gen_face_2(
     y_f32: f32,
     rel_z: f32,
     tex_offset: [f32; 2],
-    x: usize,
     surrounding_chunks: [Option<&ChunkData>; 4],
-    z: usize,
-    y: usize,
+    xyz: (usize, usize, usize),
     chunk: &Chunk,
 ) -> Vec<Vertex> {
+    let (x, y, z) = xyz;
     vec![
         Vertex(
             [xplusone, 1.0 + y_f32, 1.0 + rel_z],
@@ -1151,12 +1143,11 @@ fn gen_face_1(
     y_f32: f32,
     zplusone: f32,
     tex_offset: [f32; 2],
-    x: usize,
     surrounding_chunks: [Option<&ChunkData>; 4],
-    z: usize,
-    y: usize,
+    xyz: (usize, usize, usize),
     chunk: &Chunk,
 ) -> Vec<Vertex> {
+    let (x, y, z) = xyz;
     vec![
         Vertex(
             [rel_x, 1.0 + y_f32, zplusone],

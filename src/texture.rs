@@ -1,44 +1,11 @@
-use image::{GenericImageView, ImageBuffer, ImageError, Rgba};
+use image::{
+    imageops::{resize, FilterType},
+    GenericImageView, ImageBuffer, ImageError, Rgba,
+};
 
 pub struct Texture {
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
-}
-
-fn average(pixels: [&Rgba<u8>; 4]) -> Rgba<u8> {
-    let total = pixels.map(|p| u16::from(p.0[3])).iter().sum::<u16>();
-    if total == 0 {
-        Rgba([0, 0, 0, 0])
-    } else {
-        Rgba({
-            let mut d = pixels
-                .into_iter()
-                .map(|v| {
-                    let alpha = u16::from(v.0[3]);
-                    [
-                        (u16::from(v.0[0]) * alpha / total) as u8,
-                        (u16::from(v.0[1]) * alpha / total) as u8,
-                        (u16::from(v.0[2]) * alpha / total) as u8,
-                        0,
-                    ]
-                })
-                .reduce(|acc, v| [acc[0] + v[0], acc[1] + v[1], acc[2] + v[2], 0])
-                .unwrap();
-            d[3] = (total / 4) as u8;
-            d
-        })
-    }
-}
-
-fn downsample(texture: ImageBuffer<Rgba<u8>, Vec<u8>>) -> impl Fn(u32, u32) -> Rgba<u8> {
-    move |x, y| {
-        average([
-            texture.get_pixel(x * 2, y * 2),
-            texture.get_pixel(x * 2 + 1, y * 2),
-            texture.get_pixel(x * 2, y * 2 + 1),
-            texture.get_pixel(x * 2 + 1, y * 2 + 1),
-        ])
-    }
 }
 
 impl Texture {
@@ -171,17 +138,23 @@ impl Texture {
         let size1 = half_size(size);
         let size2 = half_size(size1);
         let size3 = half_size(size2);
-        let rgba1 =
-            ImageBuffer::from_fn(dimensions.0 / 2, dimensions.1 / 2, downsample(rgba.clone()));
-        let rgba2 = ImageBuffer::from_fn(
+        let rgba1 = resize(
+            &rgba,
+            dimensions.0 / 2,
+            dimensions.1 / 2,
+            FilterType::Nearest,
+        );
+        let rgba2 = resize(
+            &rgba1,
             dimensions.0 / 4,
             dimensions.1 / 4,
-            downsample(rgba1.clone()),
+            FilterType::Nearest,
         );
-        let rgba3 = ImageBuffer::from_fn(
+        let rgba3 = resize(
+            &rgba2,
             dimensions.0 / 8,
             dimensions.1 / 8,
-            downsample(rgba2.clone()),
+            FilterType::Nearest,
         );
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label,

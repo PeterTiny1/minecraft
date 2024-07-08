@@ -1,6 +1,6 @@
 use std::{collections::HashMap, f32::consts::FRAC_PI_2, time::Duration};
 
-use vek::{Mat4, Quaternion, Vec3};
+use vek::{Mat4, Quaternion, Vec2, Vec3};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::{
@@ -146,6 +146,8 @@ fn handle_collision(
     }
 }
 
+const FRICTION: f32 = 1.0;
+
 impl Controller {
     pub fn new(speed: f32, sensitivity: f32) -> Self {
         Self {
@@ -222,8 +224,15 @@ impl Controller {
         self.velocity += right * (self.amount_right - self.amount_left) * self.speed * dt;
         self.velocity.y -= GRAVITY * dt;
         self.velocity.y *= 0.99_f32.powf(-dt);
-        self.velocity.x -= (self.velocity.x) * dt;
-        self.velocity.z -= (self.velocity.z) * dt;
+        let velocity_xz = Vec2::new(self.velocity.x, self.velocity.z);
+        if velocity_xz.magnitude() > FRICTION * dt {
+            let friction = velocity_xz.normalized() * FRICTION * dt;
+            self.velocity.x -= friction.x;
+            self.velocity.z -= friction.y;
+        } else {
+            self.velocity.x = 0.0;
+            self.velocity.z = 0.0;
+        }
         handle_collision(&mut self.velocity, &mut camera.position, CORNER0, dt, world);
         handle_collision(&mut self.velocity, &mut camera.position, CORNER1, dt, world);
         handle_collision(&mut self.velocity, &mut camera.position, CORNER2, dt, world);

@@ -34,8 +34,10 @@ var s_diffuse: sampler;
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let texture_sample = textureSample(t_diffuse, s_diffuse, in.tex_coords);
-    if (texture_sample.a <= 0.001) { discard; }
-    let shadow_color = vec4<f32>(0.06, 0.0, 0.1, 1.0);
-    let final_color = mix(shadow_color, texture_sample, in.brightness);
-    return mix(vec4<f32>(0.2, 0.3, 0.4, 1.0), final_color, vec4<f32>(clamp((-in.clip_position.z + 1.) * 2000.0, 0.0, 1.0)));
+    // if (texture_sample.a <= 0.1) { discard; }
+    let shadow_color = vec3<f32>(0.06, 0.0, 0.1);
+    let final_color = mix(shadow_color, texture_sample.rgb, in.brightness);
+    let faded = vec4<f32>(mix(vec3<f32>(0.2, 0.3, 0.4), final_color, vec3<f32>(clamp((-in.clip_position.z + 1.) * 2000.0, 0.0, 1.0))), texture_sample.a);
+    if (faded.a <= 0.001) { discard; };
+    return faded;
 }
