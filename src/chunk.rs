@@ -5,6 +5,7 @@ use std::{
     thread,
 };
 
+use half::f16;
 use noise::{NoiseFn, OpenSimplex};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -28,6 +29,7 @@ const HALF_TEXTURE_WIDTH: f32 = TEXTURE_WIDTH / 2.0;
 
 /// Stores the data of a chunk, 32x256x32 on Linux, 16x256x16 on Windows, accessed in order x, y, z
 type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+pub type Index = u16;
 
 #[derive(Clone, Copy)]
 enum Biome {
@@ -464,7 +466,7 @@ fn generate_trees(noise: &OpenSimplex, location: [i32; 2]) -> Vec<(usize, usize)
 pub fn start_chunkgen(
     recv_generate: mpsc::Receiver<[i32; 2]>,
     chunkdata_arc: Arc<Mutex<HashMap<[i32; 2], ChunkData>>>,
-    send_chunk: mpsc::SyncSender<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
+    send_chunk: mpsc::SyncSender<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || loop {
         if let Ok(chunk_location) = recv_generate.recv() {
@@ -536,29 +538,29 @@ fn create_grass_face(
     [
         Vertex(
             [x + CLOSE_CORNER, y + 1.0, z + add0],
-            add_arrs(TOP_LEFT, tex_offset),
+            add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
             1.0,
         ),
         Vertex(
             [x + CLOSE_CORNER, y, z + add0],
-            add_arrs(BOTTOM_LEFT, tex_offset),
+            add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
             1.0,
         ),
         Vertex(
             [x + FAR_CORNER, y, z + add1],
-            add_arrs(BOTTOM_RIGHT, tex_offset),
+            add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
             1.0,
         ),
         Vertex(
             [x + FAR_CORNER, y + 1.0, z + add1],
-            add_arrs(TOP_RIGHT, tex_offset),
+            add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
             1.0,
         ),
     ]
     .into_iter()
 }
 
-const FLOWER_INDICES: [u32; 12] = [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0];
+const FLOWER_INDICES: [Index; 12] = [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0];
 const STEM_CORNERS: [[f32; 2]; 4] = [
     [TEXTURE_WIDTH * (3.0 + (6.0 / 16.0)), TEXTURE_WIDTH],
     [
@@ -575,33 +577,33 @@ fn generate_flower(position: (f32, f32, f32)) -> std::array::IntoIter<Vertex, 4>
     [
         Vertex(
             [x + CLOSE_FLOWER_CORNER, y + 1.0, z + FAR_CORNER],
-            STEM_CORNERS[0],
+            STEM_CORNERS[0].map(f16::from_f32),
             1.0,
         ),
         Vertex(
             [x + CLOSE_FLOWER_CORNER, y, z + FAR_CORNER],
-            STEM_CORNERS[1],
+            STEM_CORNERS[1].map(f16::from_f32),
             1.0,
         ),
         Vertex(
             [x + FAR_CORNER, y, z + CLOSE_FLOWER_CORNER],
-            STEM_CORNERS[2],
+            STEM_CORNERS[2].map(f16::from_f32),
             1.0,
         ),
         Vertex(
             [x + FAR_CORNER, y + 1.0, z + CLOSE_FLOWER_CORNER],
-            STEM_CORNERS[3],
+            STEM_CORNERS[3].map(f16::from_f32),
             1.0,
         ),
     ]
     .into_iter()
 }
 
-const GRASS_INDICES: [u32; 24] = [
+const GRASS_INDICES: [Index; 24] = [
     0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0, 4, 5, 6, 4, 6, 7, 7, 6, 4, 6, 5, 4,
 ];
-const BIDIR_INDICES: [u32; 12] = [0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0];
-const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
+const BIDIR_INDICES: [Index; 12] = [0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0];
+const QUAD_INDICES: [Index; 6] = [0, 1, 2, 0, 2, 3];
 const TOP_LEFT_WATER: [f32; 2] = [TOP_LEFT[0], TOP_LEFT[1] + HALF_TEXTURE_WIDTH];
 const TOP_RIGHT_WATER: [f32; 2] = [TOP_RIGHT[0], TOP_RIGHT[1] + HALF_TEXTURE_WIDTH];
 const AO_BRIGHTNESS: f32 = 0.5;
@@ -610,7 +612,7 @@ pub fn generate_chunk_mesh(
     location: [i32; 2],
     chunk: &Chunk,
     surrounding_chunks: [Option<&ChunkData>; 4], // north, south, east, west for... reasons...
-) -> (Vec<Vertex>, Vec<u32>) {
+) -> (Vec<Vertex>, Vec<Index>) {
     let (mut vertices, mut indices) = (vec![], vec![]);
     for x in 0..CHUNK_WIDTH {
         for y in 0..CHUNK_HEIGHT {
@@ -634,7 +636,7 @@ fn generate_block_mesh(
     chunk: &Chunk,
     position: Vec3<usize>,
     chunk_location: [i32; 2],
-    indices: &mut Vec<u32>,
+    indices: &mut Vec<Index>,
     vertices: &mut Vec<Vertex>,
     surrounding_chunks: [Option<&ChunkData>; 4],
 ) {
@@ -644,7 +646,7 @@ fn generate_block_mesh(
     match block_type {
         BlockType::Air => {}
         BlockType::Flower0 => {
-            indices.extend(FLOWER_INDICES.map(|i| i + vertices.len() as u32));
+            indices.extend(FLOWER_INDICES.map(|i| i + vertices.len() as Index));
             vertices.extend(generate_flower((
                 (x as i32 + (chunk_location[0] * CHUNK_WIDTH_I32)) as f32,
                 y as f32,
@@ -667,7 +669,7 @@ fn generate_block_mesh(
             let x = (x as i32 + (chunk_location[0] * CHUNK_WIDTH_I32)) as f32;
             let z = (z as i32 + (chunk_location[1] * CHUNK_DEPTH_I32)) as f32;
             let y = y as f32;
-            indices.extend(GRASS_INDICES.map(|i| i + vertices.len() as u32));
+            indices.extend(GRASS_INDICES.map(|i| i + vertices.len() as Index));
             vertices.extend(create_grass_face(tex_offset, (x, y, z), false));
             vertices.extend(create_grass_face(tex_offset, (x, y, z), true));
         }
@@ -694,7 +696,7 @@ fn generate_solid(
     location: [i32; 2],
     tex_offsets: [[f32; 2]; 6],
     surrounding_chunks: [Option<&ChunkData>; 4],
-    indices: &mut Vec<u32>,
+    indices: &mut Vec<Index>,
     vertices: &mut Vec<Vertex>,
 ) {
     let [x, y, z] = position.into_array();
@@ -707,7 +709,7 @@ fn generate_solid(
         || (z != LAST_CHUNK_DEPTH && chunk[x][y][z + 1].is_transparent())
     {
         let tex_offset = tex_offsets[1];
-        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as Index));
         vertices.append(&mut gen_face_1(
             rel_x,
             y_f32,
@@ -724,7 +726,7 @@ fn generate_solid(
         || (x != CHUNK_WIDTH - 1 && chunk[x + 1][y][z].is_transparent())
     {
         let tex_offset = tex_offsets[2];
-        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as Index));
         vertices.append(&mut gen_face_2(
             1.0 + rel_x,
             y_f32,
@@ -743,7 +745,7 @@ fn generate_solid(
         || (z != 0 && chunk[x][y][z - 1].is_transparent())
     {
         let tex_offset = tex_offsets[3];
-        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as Index));
         vertices.append(&mut gen_face_3(
             rel_x,
             y_f32,
@@ -761,7 +763,7 @@ fn generate_solid(
         || (x != 0 && chunk[x - 1][y][z].is_transparent())
     {
         let tex_offset = tex_offsets[4];
-        indices.extend(&mut QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(&mut QUAD_INDICES.iter().map(|i| *i + vertices.len() as Index));
         vertices.append(&mut gen_face_4(
             rel_x,
             y_f32,
@@ -775,7 +777,7 @@ fn generate_solid(
     // top face
     if y == CHUNK_HEIGHT - 1 || chunk[x][y + 1][z].is_transparent() {
         let tex_offset = tex_offsets[0];
-        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as Index));
         let yplusone = y_f32 + 1.0;
         if y == CHUNK_HEIGHT - 1 {
             vertices.append(&mut gen_top_face_a(rel_x, yplusone, rel_z, tex_offset));
@@ -794,7 +796,7 @@ fn generate_solid(
     // bottom face
     if y == 0 || chunk[x][y - 1][z].is_transparent() {
         let tex_offset = tex_offsets[5];
-        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as Index));
         vertices.append(&mut gen_bottom_face(rel_x, y_f32, rel_z, tex_offset));
     }
 }
@@ -803,22 +805,22 @@ fn gen_bottom_face(rel_x: f32, y_f32: f32, rel_z: f32, tex_offset: [f32; 2]) -> 
     vec![
         Vertex(
             [1.0 + rel_x, y_f32, rel_z],
-            add_arrs(TOP_LEFT, tex_offset),
+            add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
             BOTTOM_BRIGHTNESS,
         ),
         Vertex(
             [1.0 + rel_x, y_f32, 1.0 + rel_z],
-            add_arrs(BOTTOM_LEFT, tex_offset),
+            add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
             BOTTOM_BRIGHTNESS,
         ),
         Vertex(
             [rel_x, y_f32, 1.0 + rel_z],
-            add_arrs(BOTTOM_RIGHT, tex_offset),
+            add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
             BOTTOM_BRIGHTNESS,
         ),
         Vertex(
             [rel_x, y_f32, rel_z],
-            add_arrs(TOP_RIGHT, tex_offset),
+            add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
             BOTTOM_BRIGHTNESS,
         ),
     ]
@@ -837,7 +839,7 @@ fn gen_face_4(
     vec![
         Vertex(
             [rel_x, 1.0 + y_f32, rel_z],
-            add_arrs(TOP_LEFT, tex_offset),
+            add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
             if x != 0
                 && ((y != CHUNK_HEIGHT && !chunk[x - 1][y + 1][z].is_transparent())
                     || (z != 0
@@ -851,7 +853,7 @@ fn gen_face_4(
         ),
         Vertex(
             [rel_x, y_f32, rel_z],
-            add_arrs(BOTTOM_LEFT, tex_offset),
+            add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
             if x != 0 && (!chunk[x - 1][y - 1][z].is_transparent()) {
                 AO_BRIGHTNESS
             } else {
@@ -860,7 +862,7 @@ fn gen_face_4(
         ),
         Vertex(
             [rel_x, y_f32, 1.0 + rel_z],
-            add_arrs(BOTTOM_RIGHT, tex_offset),
+            add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
             if x != 0 {
                 AO_BRIGHTNESS
             } else {
@@ -869,7 +871,7 @@ fn gen_face_4(
         ),
         Vertex(
             [rel_x, 1.0 + y_f32, 1.0 + rel_z],
-            add_arrs(TOP_RIGHT, tex_offset),
+            add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
             if x != 0 {
                 AO_BRIGHTNESS
             } else {
@@ -892,7 +894,7 @@ fn gen_top_face_b(
     vec![
         Vertex(
             [rel_x, yplusone, rel_z],
-            add_arrs(TOP_LEFT, tex_offset),
+            add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
             if (x == 0
                 && surrounding_chunks[1].map_or(false, |chunk| {
                     !chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_transparent()
@@ -919,7 +921,7 @@ fn gen_top_face_b(
         ),
         Vertex(
             [rel_x, yplusone, 1.0 + rel_z],
-            add_arrs(BOTTOM_LEFT, tex_offset),
+            add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
             if (x == 0
                 && surrounding_chunks[1].map_or(false, |chunk| {
                     !chunk.contents[CHUNK_WIDTH - 1][y + 1][z].is_transparent()
@@ -949,7 +951,7 @@ fn gen_top_face_b(
         ),
         Vertex(
             [1.0 + rel_x, yplusone, 1.0 + rel_z],
-            add_arrs(BOTTOM_RIGHT, tex_offset),
+            add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
             if (x == CHUNK_WIDTH - 1
                 && surrounding_chunks[0].map_or(false, |chunk| {
                     !chunk.contents[0][y + 1][z].is_transparent()
@@ -978,7 +980,7 @@ fn gen_top_face_b(
         ),
         Vertex(
             [1.0 + rel_x, yplusone, rel_z],
-            add_arrs(TOP_RIGHT, tex_offset),
+            add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
             if (x == CHUNK_WIDTH - 1
                 && surrounding_chunks[0].map_or(false, |chunk| {
                     !chunk.contents[0][y + 1][z].is_transparent()
@@ -1010,22 +1012,22 @@ fn gen_top_face_a(rel_x: f32, yplusone: f32, rel_z: f32, tex_offset: [f32; 2]) -
     vec![
         Vertex(
             [rel_x, yplusone, rel_z],
-            add_arrs(TOP_LEFT, tex_offset),
+            add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
             TOP_BRIGHTNESS,
         ),
         Vertex(
             [rel_x, yplusone, 1.0 + rel_z],
-            add_arrs(BOTTOM_LEFT, tex_offset),
+            add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
             TOP_BRIGHTNESS,
         ),
         Vertex(
             [1.0 + rel_x, yplusone, 1.0 + rel_z],
-            add_arrs(BOTTOM_RIGHT, tex_offset),
+            add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
             TOP_BRIGHTNESS,
         ),
         Vertex(
             [1.0 + rel_x, yplusone, rel_z],
-            add_arrs(TOP_RIGHT, tex_offset),
+            add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
             TOP_BRIGHTNESS,
         ),
     ]
@@ -1043,12 +1045,12 @@ fn gen_face_3(
     vec![
         Vertex(
             [1.0 + rel_x, 1.0 + y_f32, rel_z],
-            add_arrs(TOP_LEFT, tex_offset),
+            add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
             BACK_BRIGHTNESS,
         ),
         Vertex(
             [1.0 + rel_x, y_f32, rel_z],
-            add_arrs(BOTTOM_LEFT, tex_offset),
+            add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
             if y != 0 && z != 0 && !chunk[x][y - 1][z - 1].is_transparent() {
                 AO_BRIGHTNESS
             } else {
@@ -1057,7 +1059,7 @@ fn gen_face_3(
         ),
         Vertex(
             [rel_x, y_f32, rel_z],
-            add_arrs(BOTTOM_RIGHT, tex_offset),
+            add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
             if y != 0 && z != 0 && !chunk[x][y - 1][z - 1].is_transparent() {
                 AO_BRIGHTNESS
             } else {
@@ -1066,7 +1068,7 @@ fn gen_face_3(
         ),
         Vertex(
             [rel_x, 1.0 + y_f32, rel_z],
-            add_arrs(TOP_RIGHT, tex_offset),
+            add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
             BACK_BRIGHTNESS,
         ),
     ]
@@ -1086,7 +1088,7 @@ fn gen_face_2(
     vec![
         Vertex(
             [xplusone, 1.0 + y_f32, 1.0 + rel_z],
-            add_arrs(TOP_LEFT, tex_offset),
+            add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
             if (x == CHUNK_WIDTH - 1
                 && surrounding_chunks[0].map_or(false, |chunk| {
                     z != LAST_CHUNK_DEPTH && !chunk.contents[0][y][z + 1].is_transparent()
@@ -1102,7 +1104,7 @@ fn gen_face_2(
         ),
         Vertex(
             [xplusone, y_f32, 1.0 + rel_z],
-            add_arrs(BOTTOM_LEFT, tex_offset),
+            add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
             if y != 0 && x != CHUNK_WIDTH - 1 && !chunk[x + 1][y - 1][z].is_transparent() {
                 AO_BRIGHTNESS
             } else {
@@ -1111,7 +1113,7 @@ fn gen_face_2(
         ),
         Vertex(
             [xplusone, y_f32, rel_z],
-            add_arrs(BOTTOM_RIGHT, tex_offset),
+            add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
             if y != 0 && x != CHUNK_WIDTH - 1 && !chunk[x + 1][y - 1][z].is_transparent() {
                 AO_BRIGHTNESS
             } else {
@@ -1120,7 +1122,7 @@ fn gen_face_2(
         ),
         Vertex(
             [xplusone, 1.0 + y_f32, rel_z],
-            add_arrs(TOP_RIGHT, tex_offset),
+            add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
             if (x == CHUNK_WIDTH - 1
                 && surrounding_chunks[1].map_or(false, |chunk| {
                     z != 0 && !chunk.contents[0][y][z - 1].is_transparent()
@@ -1149,7 +1151,7 @@ fn gen_face_1(
     vec![
         Vertex(
             [rel_x, 1.0 + y_f32, zplusone],
-            add_arrs(TOP_LEFT, tex_offset),
+            add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
             if (x == 0
                 && surrounding_chunks[1].map_or(false, |chunk| {
                     z != LAST_CHUNK_DEPTH
@@ -1164,7 +1166,7 @@ fn gen_face_1(
         ),
         Vertex(
             [rel_x, y_f32, zplusone],
-            add_arrs(BOTTOM_LEFT, tex_offset),
+            add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
             if y != 0
                 && ((z != LAST_CHUNK_DEPTH && !chunk[x][y - 1][z + 1].is_transparent())
                     || (z == LAST_CHUNK_DEPTH
@@ -1178,7 +1180,7 @@ fn gen_face_1(
         ),
         Vertex(
             [1.0 + rel_x, y_f32, zplusone],
-            add_arrs(BOTTOM_RIGHT, tex_offset),
+            add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
             if y != 0
                 && ((z != LAST_CHUNK_DEPTH && !chunk[x][y - 1][z + 1].is_transparent())
                     || (z == LAST_CHUNK_DEPTH
@@ -1192,7 +1194,7 @@ fn gen_face_1(
         ),
         Vertex(
             [1.0 + rel_x, 1.0 + y_f32, zplusone],
-            add_arrs(TOP_RIGHT, tex_offset),
+            add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
             if (x == CHUNK_WIDTH - 1
                 && surrounding_chunks[0].map_or(false, |chunk| {
                     z != LAST_CHUNK_DEPTH && !chunk.contents[0][y][z + 1].is_transparent()
@@ -1215,7 +1217,7 @@ fn generate_liquid(
     position: Vec3<usize>,
     location: [i32; 2],
     tex_offsets: [[f32; 2]; 6],
-    indices: &mut Vec<u32>,
+    indices: &mut Vec<u16>,
     vertices: &mut Vec<Vertex>,
     surrounding_chunks: [Option<&ChunkData>; 4],
 ) {
@@ -1226,52 +1228,52 @@ fn generate_liquid(
     let yplusoff = y_f32 + 0.5;
     if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
         let tex_offset = tex_offsets[0];
-        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as Index));
         vertices.append(&mut vec![
             Vertex(
                 [rel_x, yplusoff, rel_z],
-                add_arrs(TOP_LEFT, tex_offset),
+                add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
                 TOP_BRIGHTNESS,
             ),
             Vertex(
                 [rel_x, yplusoff, 1.0 + rel_z],
-                add_arrs(BOTTOM_LEFT, tex_offset),
+                add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
                 TOP_BRIGHTNESS,
             ),
             Vertex(
                 [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                add_arrs(BOTTOM_RIGHT, tex_offset),
+                add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
                 TOP_BRIGHTNESS,
             ),
             Vertex(
                 [1.0 + rel_x, yplusoff, rel_z],
-                add_arrs(TOP_RIGHT, tex_offset),
+                add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
                 TOP_BRIGHTNESS,
             ),
         ]);
     }
     if y != 0 && !(chunk[x][y - 1][z].is_liquid() || chunk[x][y - 1][z].is_solid()) {
         let tex_offset = tex_offsets[5];
-        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as Index));
         vertices.append(&mut vec![
             Vertex(
                 [rel_x, y_f32, rel_z],
-                add_arrs(TOP_LEFT, tex_offset),
+                add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
                 TOP_BRIGHTNESS,
             ),
             Vertex(
                 [rel_x, y_f32, 1.0 + rel_z],
-                add_arrs(BOTTOM_LEFT, tex_offset),
+                add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
                 TOP_BRIGHTNESS,
             ),
             Vertex(
                 [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                add_arrs(BOTTOM_RIGHT, tex_offset),
+                add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
                 TOP_BRIGHTNESS,
             ),
             Vertex(
                 [1.0 + rel_x, y_f32, rel_z],
-                add_arrs(TOP_RIGHT, tex_offset),
+                add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
                 TOP_BRIGHTNESS,
             ),
         ]);
@@ -1284,27 +1286,27 @@ fn generate_liquid(
             && (chunk[x][y][z + 1].is_transparent() && !chunk[x][y][z + 1].is_liquid()))
     {
         let tex_offset = tex_offsets[1];
-        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as Index));
         if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
             vertices.append(&mut vec![
                 Vertex(
                     [rel_x, yplusoff, 1.0 + rel_z],
-                    add_arrs(TOP_LEFT_WATER, tex_offset),
+                    add_arrs(TOP_LEFT_WATER, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [rel_x, y_f32, 1.0 + rel_z],
-                    add_arrs(BOTTOM_LEFT, tex_offset),
+                    add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                    add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                    add_arrs(TOP_RIGHT_WATER, tex_offset),
+                    add_arrs(TOP_RIGHT_WATER, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
             ]);
@@ -1312,22 +1314,22 @@ fn generate_liquid(
             vertices.append(&mut vec![
                 Vertex(
                     [rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    add_arrs(TOP_LEFT, tex_offset),
+                    add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [rel_x, y_f32, 1.0 + rel_z],
-                    add_arrs(BOTTOM_LEFT, tex_offset),
+                    add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                    add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    add_arrs(TOP_RIGHT, tex_offset),
+                    add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
             ]);
@@ -1341,27 +1343,27 @@ fn generate_liquid(
             && (chunk[x + 1][y][z].is_transparent() && !chunk[x + 1][y][z].is_liquid()))
     {
         let tex_offset = tex_offsets[2];
-        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as Index));
         if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
             vertices.append(&mut vec![
                 Vertex(
                     [1.0 + rel_x, yplusoff, rel_z],
-                    add_arrs(TOP_LEFT_WATER, tex_offset),
+                    add_arrs(TOP_LEFT_WATER, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, y_f32, rel_z],
-                    add_arrs(BOTTOM_LEFT, tex_offset),
+                    add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                    add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                    add_arrs(TOP_RIGHT_WATER, tex_offset),
+                    add_arrs(TOP_RIGHT_WATER, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
             ]);
@@ -1370,22 +1372,22 @@ fn generate_liquid(
             vertices.append(&mut vec![
                 Vertex(
                     [1.0 + rel_x, yplusoff, rel_z],
-                    add_arrs(TOP_LEFT, tex_offset),
+                    add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, y_f32, rel_z],
-                    add_arrs(BOTTOM_LEFT, tex_offset),
+                    add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                    add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                    add_arrs(TOP_RIGHT, tex_offset),
+                    add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
             ]);
@@ -1399,27 +1401,27 @@ fn generate_liquid(
         || (z != 0 && chunk[x][y][z - 1].is_transparent() && !chunk[x][y][z - 1].is_liquid())
     {
         let tex_offset = tex_offsets[1];
-        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as Index));
         if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
             vertices.append(&mut vec![
                 Vertex(
                     [rel_x, yplusoff, rel_z],
-                    add_arrs(TOP_LEFT_WATER, tex_offset),
+                    add_arrs(TOP_LEFT_WATER, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [rel_x, y_f32, rel_z],
-                    add_arrs(BOTTOM_LEFT, tex_offset),
+                    add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, y_f32, rel_z],
-                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                    add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, yplusoff, rel_z],
-                    add_arrs(TOP_RIGHT_WATER, tex_offset),
+                    add_arrs(TOP_RIGHT_WATER, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
             ]);
@@ -1427,22 +1429,22 @@ fn generate_liquid(
             vertices.append(&mut vec![
                 Vertex(
                     [rel_x, y_f32 + 1.0, rel_z],
-                    add_arrs(TOP_LEFT, tex_offset),
+                    add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [rel_x, y_f32, rel_z],
-                    add_arrs(BOTTOM_LEFT, tex_offset),
+                    add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, y_f32, rel_z],
-                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                    add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [1.0 + rel_x, y_f32 + 1.0, rel_z],
-                    add_arrs(TOP_RIGHT, tex_offset),
+                    add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
             ]);
@@ -1456,27 +1458,27 @@ fn generate_liquid(
         || (x != 0 && chunk[x - 1][y][z].is_transparent() && !chunk[x - 1][y][z].is_liquid())
     {
         let tex_offset = tex_offsets[2];
-        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as u32));
+        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as Index));
         if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
             vertices.append(&mut vec![
                 Vertex(
                     [rel_x, yplusoff, rel_z],
-                    add_arrs(TOP_LEFT_WATER, tex_offset),
+                    add_arrs(TOP_LEFT_WATER, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [rel_x, y_f32, rel_z],
-                    add_arrs(BOTTOM_LEFT, tex_offset),
+                    add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [rel_x, y_f32, 1.0 + rel_z],
-                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                    add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [rel_x, yplusoff, 1.0 + rel_z],
-                    add_arrs(TOP_RIGHT_WATER, tex_offset),
+                    add_arrs(TOP_RIGHT_WATER, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
             ]);
@@ -1485,22 +1487,22 @@ fn generate_liquid(
             vertices.append(&mut vec![
                 Vertex(
                     [rel_x, yplusoff, rel_z],
-                    add_arrs(TOP_LEFT, tex_offset),
+                    add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [rel_x, y_f32, rel_z],
-                    add_arrs(BOTTOM_LEFT, tex_offset),
+                    add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [rel_x, y_f32, 1.0 + rel_z],
-                    add_arrs(BOTTOM_RIGHT, tex_offset),
+                    add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
                 Vertex(
                     [rel_x, yplusoff, 1.0 + rel_z],
-                    add_arrs(TOP_RIGHT, tex_offset),
+                    add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
                     TOP_BRIGHTNESS,
                 ),
             ]);

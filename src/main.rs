@@ -4,6 +4,7 @@ pub mod ray;
 mod texture;
 mod ui;
 
+use half::f16;
 use itertools::Itertools;
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -24,8 +25,8 @@ use winit::{
 };
 
 use chunk::{
-    generate, start_chunkgen, BlockType, ChunkData, CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT,
-    CHUNK_WIDTH, CHUNK_WIDTH_I32,
+    generate, start_chunkgen, BlockType, ChunkData, Index, CHUNK_DEPTH, CHUNK_DEPTH_I32,
+    CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32,
 };
 use futures::executor::block_on;
 
@@ -34,7 +35,7 @@ use wgpu::{util::DeviceExt, PipelineCompilationOptions};
 
 use noise::OpenSimplex;
 
-const MAX_DEPTH: f32 = 256.0;
+const MAX_DEPTH: f32 = 512.0;
 
 fn cuboid_intersects_frustum(
     cuboid: &Aabb<f32>,
@@ -124,10 +125,10 @@ struct ChunkBuffers {
     vertex: wgpu::Buffer,
     num_indices: u32,
 }
-// location, uv, brightness
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Vertex([f32; 3], [f32; 2], f32);
+/// location, uv, lightlevel
+pub struct Vertex([f32; 3], [f16; 2], f32);
 
 impl Vertex {
     const fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
@@ -143,10 +144,11 @@ impl Vertex {
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x2,
+                    format: wgpu::VertexFormat::Float16x2,
                 },
                 wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
+                    offset: (std::mem::size_of::<[f32; 3]>() + std::mem::size_of::<[u16; 2]>())
+                        as wgpu::BufferAddress,
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32,
                 },
@@ -175,7 +177,7 @@ impl Uniforms {
 
 struct ChunkGenComms {
     sender: mpsc::SyncSender<[i32; 2]>,
-    receiver: mpsc::Receiver<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
+    receiver: mpsc::Receiver<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
 }
 
 #[derive(Default)]
@@ -509,6 +511,15 @@ impl WindowDependent<'_> {
                     num_indices: indices.len() as u32,
                 },
             );
+            let (vertsize, indexsize) = self
+                .generated_chunk_buffers
+                .iter()
+                .fold((0, 0), |acc, (_, item)| {
+                    (acc.0 + item.vertex.size(), acc.1 + item.index.size())
+                });
+
+            println!("Index space: {indexsize}");
+            println!("Vertex space: {vertsize}");
         }
     }
 
@@ -587,7 +598,7 @@ impl WindowDependent<'_> {
             {
                 let chunk = &self.generated_chunk_buffers[chunk_loc];
                 render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
-                render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
             }
             render_pass.set_pipeline(&self.ui.pipeline);
