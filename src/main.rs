@@ -511,15 +511,15 @@ impl WindowDependent<'_> {
                     num_indices: indices.len() as u32,
                 },
             );
-            let (vertsize, indexsize) = self
-                .generated_chunk_buffers
-                .iter()
-                .fold((0, 0), |acc, (_, item)| {
-                    (acc.0 + item.vertex.size(), acc.1 + item.index.size())
-                });
+            // let (vertsize, indexsize) = self
+            //     .generated_chunk_buffers
+            //     .iter()
+            //     .fold((0, 0), |acc, (_, item)| {
+            //         (acc.0 + item.vertex.size(), acc.1 + item.index.size())
+            //     });
 
-            println!("Index space: {indexsize}");
-            println!("Vertex space: {vertsize}");
+            // println!("Index space: {indexsize}");
+            // println!("Vertex space: {vertsize}");
         }
     }
 
