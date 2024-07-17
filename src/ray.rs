@@ -39,22 +39,34 @@ fn calculate_delta(
     direction: Vec3<f32>,
     amount_in_direction: f32,
 ) -> (bool, Vec3<f32>) {
-    let positive_direction = amount_in_direction.is_sign_positive();
-    let delta = {
-        let possible = (if positive_direction {
-            pos_on_axis.ceil()
-        } else {
-            pos_on_axis.floor()
-        } - pos_on_axis)
-            / amount_in_direction
-            * direction;
-        if possible.is_zero() {
-            1.0 / amount_in_direction.abs() * direction
-        } else {
-            possible
-        }
-    };
-    (positive_direction, delta)
+    let direction_positive = amount_in_direction.is_sign_positive();
+    let delta = calculate_delta_(
+        direction_positive,
+        pos_on_axis,
+        amount_in_direction,
+        direction,
+    );
+    (direction_positive, delta)
+}
+
+fn calculate_delta_(
+    direction_positive: bool,
+    pos_on_axis: f32,
+    amount_in_direction: f32,
+    direction: Vec3<f32>,
+) -> Vec3<f32> {
+    let possible_delta = (if direction_positive {
+        pos_on_axis.ceil()
+    } else {
+        pos_on_axis.floor()
+    } - pos_on_axis)
+        / amount_in_direction
+        * direction;
+    if possible_delta.is_zero() {
+        1.0 / amount_in_direction.abs() * direction
+    } else {
+        possible_delta
+    }
 }
 
 impl Iterator for Ray {
@@ -68,7 +80,7 @@ impl Iterator for Ray {
             .iter()
             .enumerate()
             .reduce(|acc, item| {
-                if item.1.magnitude() < acc.1.magnitude() {
+                if item.1.magnitude_squared() < acc.1.magnitude_squared() {
                     item
                 } else {
                     acc

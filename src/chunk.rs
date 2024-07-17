@@ -9,9 +9,9 @@ use half::f16;
 use noise::{NoiseFn, OpenSimplex};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use vek::Vec3;
+use vek::{Aabb, Vec3};
 
-use crate::{Vertex, MAX_DEPTH};
+use crate::{camera::Camera, cuboid_intersects_frustum, Vertex, MAX_DEPTH};
 #[cfg(target_os = "windows")]
 pub const CHUNK_WIDTH: usize = 16;
 #[cfg(not(target_os = "windows"))]
@@ -29,6 +29,7 @@ const HALF_TEXTURE_WIDTH: f32 = TEXTURE_WIDTH / 2.0;
 
 /// Stores the data of a chunk, 32x256x32 on Linux, 16x256x16 on Windows, accessed in order x, y, z
 type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+const EMPTY_CHUNK: Chunk = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 pub type Index = u16;
 
 #[derive(Clone, Copy)]
@@ -237,13 +238,28 @@ pub fn get_block(
     }
 }
 
-pub fn get_nearest_chunk_location(
+pub fn chunkcoord_to_aabb(coord: [i32; 2]) -> Aabb<f32> {
+    let min = Vec3::new(
+        (coord[0] * CHUNK_WIDTH_I32) as f32,
+        0.0,
+        (coord[1] * CHUNK_DEPTH_I32) as f32,
+    );
+    Aabb {
+        min,
+        max: min + Vec3::new(CHUNK_WIDTH as f32, CHUNK_HEIGHT as f32, CHUNK_DEPTH as f32),
+    }
+}
+
+pub fn nearest_visible_unloaded(
     x: f32,
     z: f32,
     generated_chunks: &HashMap<[i32; 2], ChunkData>,
+    camera: &Camera,
 ) -> Option<[i32; 2]> {
     let chunk_x = (x as i32).div_euclid(CHUNK_WIDTH_I32);
     let chunk_z = (z as i32).div_euclid(CHUNK_WIDTH_I32);
+    let camera_matrix = camera.calc_matrix();
+    let projection_matrix = camera.calc_projection_matrix();
     let length = |a, b| (a * a + b * b);
     (-MAX_DISTANCE_X..=MAX_DISTANCE_X)
         .flat_map(|i| {
@@ -252,6 +268,11 @@ pub fn get_nearest_chunk_location(
                 let location = [i + chunk_x, j + chunk_z];
                 if distance <= (MAX_DEPTH * MAX_DEPTH) as i32
                     && !generated_chunks.contains_key(&location)
+                    && cuboid_intersects_frustum(
+                        &chunkcoord_to_aabb([i, j]),
+                        camera_matrix,
+                        projection_matrix,
+                    )
                 {
                     Some((location, distance))
                 } else {
@@ -280,7 +301,7 @@ const BIOME_SCALE: f64 = 250.0;
 pub fn generate(noise: &OpenSimplex, location: [i32; 2]) -> Chunk {
     let heightmap = generate_worldscale_heightmap(noise, location);
     let biomemap = generate_biomemap(noise, location);
-    let mut contents = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+    let mut contents = EMPTY_CHUNK;
 
     for x in 0..CHUNK_WIDTH {
         for y in (0..CHUNK_HEIGHT).rev() {
@@ -293,27 +314,32 @@ pub fn generate(noise: &OpenSimplex, location: [i32; 2]) -> Chunk {
     }
     let trees = generate_trees(noise, location);
     for (x, z) in trees {
-        if heightmap[x][z] <= WATER_HEIGHT {
+        let height = heightmap[x][z];
+        if height <= WATER_HEIGHT {
             continue;
         }
-        let wood_type = match biomemap[x][z] {
-            Biome::BirchFalls => BlockType::BirchWood,
-            Biome::GreenGrove => BlockType::Wood,
-            Biome::DarklogForest => BlockType::DarkWood,
-        };
-        let leaf_type = match biomemap[x][z] {
-            Biome::BirchFalls => BlockType::BirchLeaf,
-            Biome::GreenGrove => BlockType::Leaf,
-            Biome::DarklogForest => BlockType::DarkLeaf,
-        };
-        let height = heightmap[x][z];
-        contents[x][height + 1][z] = wood_type;
-        contents[x][height + 2][z] = wood_type;
-        contents[x][height + 3][z] = wood_type;
-        contents[x][height + 4][z] = wood_type;
-        contents[x][height + 5][z] = leaf_type;
+        let biome = biomemap[x][z];
+        place_tree(biome, &mut contents, x, height, z);
     }
     contents
+}
+
+fn place_tree(biome: Biome, contents: &mut Chunk, x: usize, height: usize, z: usize) {
+    let wood_type = match biome {
+        Biome::BirchFalls => BlockType::BirchWood,
+        Biome::GreenGrove => BlockType::Wood,
+        Biome::DarklogForest => BlockType::DarkWood,
+    };
+    let leaf_type = match biome {
+        Biome::BirchFalls => BlockType::BirchLeaf,
+        Biome::GreenGrove => BlockType::Leaf,
+        Biome::DarklogForest => BlockType::DarkLeaf,
+    };
+    contents[x][height + 1][z] = wood_type;
+    contents[x][height + 2][z] = wood_type;
+    contents[x][height + 3][z] = wood_type;
+    contents[x][height + 4][z] = wood_type;
+    contents[x][height + 5][z] = leaf_type;
 }
 
 fn generate_biomemap(
@@ -325,18 +351,22 @@ fn generate_biomemap(
     for (x, row) in biomemap.iter_mut().enumerate() {
         for (z, item) in row.iter_mut().enumerate() {
             let v = noise_at(noise, x as i32, z as i32, chunk_location, BIOME_SCALE, 18.9);
-            let biome = if v > 0.2 {
-                Biome::DarklogForest
-            } else if v > -0.1 {
-                Biome::GreenGrove
-            } else {
-                Biome::BirchFalls
-            };
+            let biome = determine_biome(v);
             *item = biome;
         }
     }
 
     biomemap
+}
+
+fn determine_biome(v: f64) -> Biome {
+    if v > 0.2 {
+        Biome::DarklogForest
+    } else if v > -0.1 {
+        Biome::GreenGrove
+    } else {
+        Biome::BirchFalls
+    }
 }
 
 fn generate_worldscale_heightmap(
