@@ -298,11 +298,7 @@ impl Camera {
         self.controller.looking_at_block
     }
 
-    pub fn calc_matrix(&self) -> Mat4<f32> {
-        self.data.calc_matrix()
-    }
-
-    pub fn calc_projection_matrix(&self) -> Mat4<f32> {
-        self.projection.calc_matrix()
+    pub fn get_transformation(&self) -> Mat4<f32> {
+        self.projection.calc_matrix() * self.data.calc_matrix()
     }
 }

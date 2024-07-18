@@ -30,7 +30,7 @@ const HALF_TEXTURE_WIDTH: f32 = TEXTURE_WIDTH / 2.0;
 /// Stores the data of a chunk, 32x256x32 on Linux, 16x256x16 on Windows, accessed in order x, y, z
 type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 const EMPTY_CHUNK: Chunk = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
-pub type Index = u16;
+pub type Index = u32;
 
 #[derive(Clone, Copy)]
 enum Biome {
@@ -231,6 +231,7 @@ pub fn get_block(
     let chunk = chunk_at_block(generated_chunks, x, z)?;
     let x = (x - (x.div_euclid(CHUNK_WIDTH_I32) * CHUNK_WIDTH_I32)) as usize;
     let z = (z - (z.div_euclid(CHUNK_DEPTH_I32) * CHUNK_DEPTH_I32)) as usize;
+    #[allow(clippy::cast_sign_loss)]
     if y >= 0 && (y as usize) < CHUNK_HEIGHT {
         Some(chunk.contents[x][y as usize][z])
     } else {
@@ -258,8 +259,6 @@ pub fn nearest_visible_unloaded(
 ) -> Option<[i32; 2]> {
     let chunk_x = (x as i32).div_euclid(CHUNK_WIDTH_I32);
     let chunk_z = (z as i32).div_euclid(CHUNK_WIDTH_I32);
-    let camera_matrix = camera.calc_matrix();
-    let projection_matrix = camera.calc_projection_matrix();
     let length = |a, b| (a * a + b * b);
     (-MAX_DISTANCE_X..=MAX_DISTANCE_X)
         .flat_map(|i| {
@@ -268,11 +267,7 @@ pub fn nearest_visible_unloaded(
                 let location = [i + chunk_x, j + chunk_z];
                 if distance <= (MAX_DEPTH * MAX_DEPTH) as i32
                     && !generated_chunks.contains_key(&location)
-                    && cuboid_intersects_frustum(
-                        &chunkcoord_to_aabb([i, j]),
-                        camera_matrix,
-                        projection_matrix,
-                    )
+                    && cuboid_intersects_frustum(&chunkcoord_to_aabb([i, j]), camera)
                 {
                     Some((location, distance))
                 } else {
@@ -369,6 +364,7 @@ fn determine_biome(v: f64) -> Biome {
     }
 }
 
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn generate_worldscale_heightmap(
     noise: &OpenSimplex,
     location: [i32; 2],
@@ -376,7 +372,8 @@ fn generate_worldscale_heightmap(
     generate_heightmap(noise, location).map(|a| a.map(|b| b as usize))
 }
 
-const HEIGHT_SCALE: f64 = 64.0;
+const HEIGHT_SCALE: f64 = 96.0;
+#[allow(clippy::cast_precision_loss)]
 fn generate_heightmap(
     noise: &OpenSimplex,
     location: [i32; 2],
@@ -392,7 +389,7 @@ fn generate_heightmap(
         for (z, tile) in column.iter_mut().enumerate() {
             let mut amplitude = 1.0;
             let mut frequency = 0.007;
-            let mut noise_height = 1.2;
+            let mut noise_height = 0.8;
             let mut gradient_x = 0.0;
             let mut gradient_z = 0.0;
 
@@ -428,6 +425,7 @@ fn generate_heightmap(
     heightmap
 }
 
+#[allow(clippy::cast_precision_loss)]
 #[inline]
 fn determine_type(
     terrain_height: usize,
@@ -440,39 +438,42 @@ fn determine_type(
     if y < terrain_height - 3 {
         BlockType::Stone
     } else if y < terrain_height {
-        return BlockType::Dirt;
+        BlockType::Dirt
     } else if y == terrain_height {
         if terrain_height > WATER_HEIGHT {
-            return match biome {
+            match biome {
                 Biome::BirchFalls => BlockType::GrassBlock0,
                 Biome::GreenGrove => BlockType::GrassBlock1,
                 Biome::DarklogForest => BlockType::GrassBlock2,
-            };
+            }
+        } else {
+            BlockType::Sand
         }
-        return BlockType::Sand;
     } else if y < WATER_HEIGHT {
-        return BlockType::Water;
+        BlockType::Water
     } else if terrain_height > WATER_HEIGHT
         && y == terrain_height + 1
         && noise.get([x as f64 / 4.0, z as f64 / 4.0, y as f64 / 4.0]) > 0.3
     {
         if noise.get([x as f64, y as f64, z as f64]) > 0.3 {
-            return match biome {
+            match biome {
                 Biome::BirchFalls => BlockType::Flower0,
                 Biome::GreenGrove => BlockType::Flower1,
                 Biome::DarklogForest => BlockType::Flower2,
-            };
+            }
+        } else {
+            match biome {
+                Biome::BirchFalls => BlockType::Grass0,
+                Biome::GreenGrove => BlockType::Grass1,
+                Biome::DarklogForest => BlockType::Grass2,
+            }
         }
-        return match biome {
-            Biome::BirchFalls => BlockType::Grass0,
-            Biome::GreenGrove => BlockType::Grass1,
-            Biome::DarklogForest => BlockType::Grass2,
-        };
     } else {
-        return BlockType::Air;
+        BlockType::Air
     }
 }
 
+#[allow(clippy::cast_sign_loss)]
 fn generate_trees(noise: &OpenSimplex, location: [i32; 2]) -> Vec<(usize, usize)> {
     let [chunk_x, chunk_z] = location;
     let mut trees = vec![];
@@ -661,6 +662,7 @@ pub fn generate_chunk_mesh(
     (vertices, indices)
 }
 
+#[allow(clippy::cast_precision_loss)]
 #[inline]
 fn generate_block_mesh(
     chunk: &Chunk,
@@ -676,11 +678,11 @@ fn generate_block_mesh(
     match block_type {
         BlockType::Air => {}
         BlockType::Flower0 => {
-            indices.extend(FLOWER_INDICES.map(|i| i + vertices.len() as Index));
+            indices.extend(correct_index(&FLOWER_INDICES, vertices.len()));
             vertices.extend(generate_flower((
-                (x as i32 + (chunk_location[0] * CHUNK_WIDTH_I32)) as f32,
+                (i32::try_from(x).unwrap() + (chunk_location[0] * CHUNK_WIDTH_I32)) as f32,
                 y as f32,
-                (z as i32 + (chunk_location[1] * CHUNK_DEPTH_I32)) as f32,
+                (i32::try_from(z).unwrap() + (chunk_location[1] * CHUNK_DEPTH_I32)) as f32,
             )));
         }
         _ if block_type.is_liquid() => {
@@ -696,10 +698,10 @@ fn generate_block_mesh(
         }
         _ if block_type.is_grasslike() => {
             let tex_offset = tex_offsets[0];
-            let x = (x as i32 + (chunk_location[0] * CHUNK_WIDTH_I32)) as f32;
-            let z = (z as i32 + (chunk_location[1] * CHUNK_DEPTH_I32)) as f32;
+            let x = (i32::try_from(x).unwrap() + (chunk_location[0] * CHUNK_WIDTH_I32)) as f32;
+            let z = (i32::try_from(z).unwrap() + (chunk_location[1] * CHUNK_DEPTH_I32)) as f32;
             let y = y as f32;
-            indices.extend(GRASS_INDICES.map(|i| i + vertices.len() as Index));
+            indices.extend(correct_index(&GRASS_INDICES, vertices.len()));
             vertices.extend(create_grass_face(tex_offset, (x, y, z), false));
             vertices.extend(create_grass_face(tex_offset, (x, y, z), true));
         }
@@ -719,6 +721,7 @@ fn generate_block_mesh(
 
 const LAST_CHUNK_DEPTH: usize = CHUNK_DEPTH - 1;
 
+#[allow(clippy::cast_precision_loss)]
 #[inline]
 fn generate_solid(
     chunk: &Chunk,
@@ -730,8 +733,8 @@ fn generate_solid(
     vertices: &mut Vec<Vertex>,
 ) {
     let [x, y, z] = position.into_array();
-    let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH_I32)) as f32;
-    let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH_I32)) as f32;
+    let rel_x = (i32::try_from(x).unwrap() + (location[0] * CHUNK_WIDTH_I32)) as f32;
+    let rel_z = (i32::try_from(z).unwrap() + (location[1] * CHUNK_DEPTH_I32)) as f32;
     let y_f32 = y as f32;
     // first face
     if (z == LAST_CHUNK_DEPTH
@@ -739,7 +742,7 @@ fn generate_solid(
         || (z != LAST_CHUNK_DEPTH && chunk[x][y][z + 1].is_transparent())
     {
         let tex_offset = tex_offsets[1];
-        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as Index));
+        indices.extend(correct_index(&QUAD_INDICES, vertices.len()));
         vertices.append(&mut gen_face_1(
             rel_x,
             y_f32,
@@ -756,7 +759,7 @@ fn generate_solid(
         || (x != CHUNK_WIDTH - 1 && chunk[x + 1][y][z].is_transparent())
     {
         let tex_offset = tex_offsets[2];
-        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as Index));
+        indices.extend(correct_index(&QUAD_INDICES, vertices.len()));
         vertices.append(&mut gen_face_2(
             1.0 + rel_x,
             y_f32,
@@ -775,7 +778,7 @@ fn generate_solid(
         || (z != 0 && chunk[x][y][z - 1].is_transparent())
     {
         let tex_offset = tex_offsets[3];
-        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as Index));
+        indices.extend(correct_index(&QUAD_INDICES, vertices.len()));
         vertices.append(&mut gen_face_3(
             rel_x,
             y_f32,
@@ -793,7 +796,7 @@ fn generate_solid(
         || (x != 0 && chunk[x - 1][y][z].is_transparent())
     {
         let tex_offset = tex_offsets[4];
-        indices.extend(&mut QUAD_INDICES.iter().map(|i| *i + vertices.len() as Index));
+        indices.extend(correct_index(&QUAD_INDICES, vertices.len()));
         vertices.append(&mut gen_face_4(
             rel_x,
             y_f32,
@@ -807,7 +810,7 @@ fn generate_solid(
     // top face
     if y == CHUNK_HEIGHT - 1 || chunk[x][y + 1][z].is_transparent() {
         let tex_offset = tex_offsets[0];
-        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as Index));
+        indices.extend(correct_index(&QUAD_INDICES, vertices.len()));
         let yplusone = y_f32 + 1.0;
         if y == CHUNK_HEIGHT - 1 {
             vertices.append(&mut gen_top_face_a(rel_x, yplusone, rel_z, tex_offset));
@@ -826,7 +829,7 @@ fn generate_solid(
     // bottom face
     if y == 0 || chunk[x][y - 1][z].is_transparent() {
         let tex_offset = tex_offsets[5];
-        indices.extend(QUAD_INDICES.iter().map(|i| *i + vertices.len() as Index));
+        indices.extend(correct_index(&QUAD_INDICES, vertices.len()));
         vertices.append(&mut gen_bottom_face(rel_x, y_f32, rel_z, tex_offset));
     }
 }
@@ -866,14 +869,15 @@ fn gen_face_4(
     chunk: &Chunk,
 ) -> Vec<Vertex> {
     let (x, y, z) = xyz;
+    let up_valid = y != CHUNK_HEIGHT - 1;
     vec![
         Vertex(
             [rel_x, 1.0 + y_f32, rel_z],
             add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
             if x != 0
-                && ((y != CHUNK_HEIGHT && !chunk[x - 1][y + 1][z].is_transparent())
+                && ((up_valid && !chunk[x - 1][y + 1][z].is_transparent())
                     || (z != 0
-                        && (!chunk[x - 1][y + 1][z - 1].is_transparent()
+                        && (up_valid && !chunk[x - 1][y + 1][z - 1].is_transparent()
                             || !chunk[x - 1][y][z - 1].is_transparent())))
             {
                 AO_BRIGHTNESS
@@ -1241,24 +1245,31 @@ fn gen_face_1(
     ]
 }
 
+fn correct_index(indices: &[Index], zero_index: usize) -> impl IntoIterator<Item = Index> + '_ {
+    indices
+        .iter()
+        .map(move |i| *i + Index::try_from(zero_index).unwrap())
+}
+
+#[allow(clippy::cast_precision_loss)]
 #[inline]
 fn generate_liquid(
     chunk: &Chunk,
     position: Vec3<usize>,
     location: [i32; 2],
     tex_offsets: [[f32; 2]; 6],
-    indices: &mut Vec<u16>,
+    indices: &mut Vec<Index>,
     vertices: &mut Vec<Vertex>,
     surrounding_chunks: [Option<&ChunkData>; 4],
 ) {
     let [x, y, z] = position.into_array();
-    let rel_x = (x as i32 + (location[0] * CHUNK_WIDTH_I32)) as f32;
-    let rel_z = (z as i32 + (location[1] * CHUNK_DEPTH_I32)) as f32;
+    let rel_x = (i32::try_from(x).unwrap() + (location[0] * CHUNK_WIDTH_I32)) as f32;
+    let rel_z = (i32::try_from(z).unwrap() + (location[1] * CHUNK_DEPTH_I32)) as f32;
     let y_f32 = y as f32;
     let yplusoff = y_f32 + 0.5;
     if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
         let tex_offset = tex_offsets[0];
-        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as Index));
+        indices.extend(correct_index(&BIDIR_INDICES, vertices.len()));
         vertices.append(&mut vec![
             Vertex(
                 [rel_x, yplusoff, rel_z],
@@ -1284,7 +1295,7 @@ fn generate_liquid(
     }
     if y != 0 && !(chunk[x][y - 1][z].is_liquid() || chunk[x][y - 1][z].is_solid()) {
         let tex_offset = tex_offsets[5];
-        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as Index));
+        indices.extend(correct_index(&BIDIR_INDICES, vertices.len()));
         vertices.append(&mut vec![
             Vertex(
                 [rel_x, y_f32, rel_z],
@@ -1316,7 +1327,7 @@ fn generate_liquid(
             && (chunk[x][y][z + 1].is_transparent() && !chunk[x][y][z + 1].is_liquid()))
     {
         let tex_offset = tex_offsets[1];
-        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as Index));
+        indices.extend(correct_index(&BIDIR_INDICES, vertices.len()));
         if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
             vertices.append(&mut vec![
                 Vertex(
@@ -1373,7 +1384,7 @@ fn generate_liquid(
             && (chunk[x + 1][y][z].is_transparent() && !chunk[x + 1][y][z].is_liquid()))
     {
         let tex_offset = tex_offsets[2];
-        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as Index));
+        indices.extend(correct_index(&BIDIR_INDICES, vertices.len()));
         if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
             vertices.append(&mut vec![
                 Vertex(
@@ -1431,7 +1442,7 @@ fn generate_liquid(
         || (z != 0 && chunk[x][y][z - 1].is_transparent() && !chunk[x][y][z - 1].is_liquid())
     {
         let tex_offset = tex_offsets[1];
-        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as Index));
+        indices.extend(correct_index(&BIDIR_INDICES, vertices.len()));
         if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
             vertices.append(&mut vec![
                 Vertex(
@@ -1488,7 +1499,7 @@ fn generate_liquid(
         || (x != 0 && chunk[x - 1][y][z].is_transparent() && !chunk[x - 1][y][z].is_liquid())
     {
         let tex_offset = tex_offsets[2];
-        indices.extend(BIDIR_INDICES.iter().map(|i| *i + vertices.len() as Index));
+        indices.extend(correct_index(&BIDIR_INDICES, vertices.len()));
         if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
             vertices.append(&mut vec![
                 Vertex(

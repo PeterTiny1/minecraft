@@ -40,10 +40,10 @@ fn halve_image(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgba<u8>, Ve
 
             if count != 0 {
                 // Average values
-                let avg_r = (sum_r / count) as u8;
-                let avg_g = (sum_g / count) as u8;
-                let avg_b = (sum_b / count) as u8;
-                let avg_a = (sum_a / count) as u8;
+                let avg_r = u8::try_from(sum_r / count).unwrap();
+                let avg_g = u8::try_from(sum_g / count).unwrap();
+                let avg_b = u8::try_from(sum_b / count).unwrap();
+                let avg_a = u8::try_from(sum_a / count).unwrap();
 
                 // Set the pixel in the new ImageBuffer
                 new_img.put_pixel(x, y, Rgba([avg_r, avg_g, avg_b, avg_a]));

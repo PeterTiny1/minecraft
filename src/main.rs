@@ -4,6 +4,7 @@ pub mod ray;
 mod texture;
 mod ui;
 
+use camera::Camera;
 use half::f16;
 use itertools::Itertools;
 use std::{
@@ -35,14 +36,11 @@ use wgpu::{util::DeviceExt, PipelineCompilationOptions};
 
 use noise::OpenSimplex;
 
-const MAX_DEPTH: f32 = 512.0;
+const MAX_DEPTH: f32 = 768.0;
 
-pub fn cuboid_intersects_frustum(
-    cuboid: &Aabb<f32>,
-    camera_matrix: Mat4<f32>,
-    projection_matrix: Mat4<f32>,
-) -> bool {
-    let transform_matrix = projection_matrix * camera_matrix;
+#[must_use]
+pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &Camera) -> bool {
+    let transform_matrix = camera.get_transformation();
 
     let vertices = [
         Vec4::new(cuboid.min.x, cuboid.min.y, cuboid.min.z, 1.0),
@@ -127,8 +125,8 @@ impl Uniforms {
         }
     }
 
-    fn update_view_proj(&mut self, camera: &camera::CameraData, projection: &camera::Projection) {
-        self.view_proj = (projection.calc_matrix() * camera.calc_matrix()).into_col_arrays();
+    fn update_view_proj(&mut self, camera: &camera::Camera) {
+        self.view_proj = (camera.get_transformation()).into_col_arrays();
     }
 }
 
@@ -245,12 +243,12 @@ impl WindowDependent<'_> {
         );
         let camera_controller = camera::Controller::new(4.0, 0.05);
         let mut uniforms = Uniforms::new();
-        uniforms.update_view_proj(&camera, &projection);
         let camera = camera::Camera {
             data: camera,
             projection,
             controller: camera_controller,
         };
+        uniforms.update_view_proj(&camera);
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
             contents: bytemuck::cast_slice(&[uniforms]),
@@ -331,6 +329,7 @@ impl WindowDependent<'_> {
     }
 
     fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        #[allow(clippy::cast_precision_loss)]
         if new_size.height > 0 {
             self.camera.resize(new_size.width, new_size.height);
             self.ui.uniform.aspect = new_size.width as f32 / new_size.height as f32;
@@ -383,8 +382,7 @@ impl WindowDependent<'_> {
         );
         let mut generated_chunkdata = self.generated_chunkdata.lock().unwrap();
         self.camera.update(dt, &generated_chunkdata);
-        self.uniforms
-            .update_view_proj(&self.camera.data, &self.camera.projection);
+        self.uniforms.update_view_proj(&self.camera);
         let chunk_location = chunk::nearest_visible_unloaded(
             self.camera.get_position().x,
             self.camera.get_position().z,
@@ -409,6 +407,7 @@ impl WindowDependent<'_> {
         }
         if let Some((location, previous_step)) = self.camera.get_looking_at() {
             let now = Instant::now();
+            #[allow(clippy::cast_sign_loss)]
             if self.input.right_pressed {
                 let location = location
                     + match previous_step {
@@ -466,7 +465,7 @@ impl WindowDependent<'_> {
                             contents: bytemuck::cast_slice(&indices),
                             usage: wgpu::BufferUsages::INDEX,
                         }),
-                    num_indices: indices.len() as u32,
+                    num_indices: u32::try_from(indices.len()).unwrap(),
                 },
             );
             // let (vertsize, indexsize) = self
@@ -521,29 +520,24 @@ impl WindowDependent<'_> {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
+            #[allow(clippy::cast_possible_truncation)]
             for chunk_loc in self
                 .generated_chunk_buffers
                 .keys()
-                .sorted_by(|&x, &y| {
-                    ((y[0] * CHUNK_WIDTH_I32 - self.camera.get_position().x as i32).pow(2)
-                        + (y[1] * CHUNK_DEPTH_I32 - self.camera.get_position().z as i32).pow(2))
+                .sorted_by(|&a, &b| {
+                    ((b[0] * CHUNK_WIDTH_I32 - self.camera.get_position().x as i32).pow(2)
+                        + (b[1] * CHUNK_DEPTH_I32 - self.camera.get_position().z as i32).pow(2))
                     .cmp(
-                        &((x[0] * CHUNK_WIDTH_I32 - self.camera.get_position().x as i32).pow(2)
-                            + (x[1] * CHUNK_DEPTH_I32 + -self.camera.get_position().z as i32)
+                        &((a[0] * CHUNK_WIDTH_I32 - self.camera.get_position().x as i32).pow(2)
+                            + (a[1] * CHUNK_DEPTH_I32 - self.camera.get_position().z as i32)
                                 .pow(2)),
                     )
                 })
-                .filter(|c| {
-                    cuboid_intersects_frustum(
-                        &chunkcoord_to_aabb(**c),
-                        self.camera.calc_matrix(),
-                        self.camera.calc_projection_matrix(),
-                    )
-                })
+                .filter(|c| cuboid_intersects_frustum(&chunkcoord_to_aabb(**c), &self.camera))
             {
                 let chunk = &self.generated_chunk_buffers[chunk_loc];
                 render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
-                render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint16);
+                render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
             }
             render_pass.set_pipeline(&self.ui.pipeline);

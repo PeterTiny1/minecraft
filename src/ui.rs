@@ -50,6 +50,7 @@ const CROSSHAIR: [Vertex; 4] = [
     Vertex([-0.03125, 0.03125], [0.0, 1.0]),
 ];
 
+#[allow(clippy::cast_precision_loss)]
 #[inline]
 pub fn init_state(
     device: &wgpu::Device,
