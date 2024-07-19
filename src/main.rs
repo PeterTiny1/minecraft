@@ -53,7 +53,7 @@ pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &Camera) -> bool {
         Vec4::new(cuboid.max.x, cuboid.max.y, cuboid.max.z, 1.0),
     ];
 
-    let vertices_clip: Vec<Vec4<f32>> = vertices.iter().map(|&v| transform_matrix * v).collect();
+    let vertices_clip = vertices.map(|v| transform_matrix * v);
 
     let planes = [
         Vec4::new(1.0, 0.0, 0.0, 1.0),
@@ -65,8 +65,11 @@ pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &Camera) -> bool {
     ];
 
     for plane in &planes {
-        let outside = vertices_clip.iter().all(|v| plane.dot(*v) < 0.0);
-        if outside {
+        let mut all = true;
+        for vert in vertices_clip {
+            all &= plane.dot(vert) < 0.0;
+        }
+        if all {
             return false;
         }
     }
