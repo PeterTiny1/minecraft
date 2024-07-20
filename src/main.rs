@@ -4,7 +4,6 @@ pub mod ray;
 mod texture;
 mod ui;
 
-use camera::Camera;
 use half::f16;
 use itertools::Itertools;
 use std::{
@@ -26,7 +25,7 @@ use winit::{
 };
 
 use chunk::{
-    chunkcoord_to_aabb, generate, start_chunkgen, BlockType, ChunkData, Index, CHUNK_DEPTH_I32,
+    chunkcoord_to_aabb, generate, start_meshgen, BlockType, ChunkData, Index, CHUNK_DEPTH_I32,
     CHUNK_WIDTH_I32,
 };
 use futures::executor::block_on;
@@ -39,7 +38,7 @@ use noise::OpenSimplex;
 const MAX_DEPTH: f32 = 768.0;
 
 #[must_use]
-pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &Camera) -> bool {
+pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) -> bool {
     let transform_matrix = camera.get_transformation();
 
     let vertices = [
@@ -144,6 +143,8 @@ struct InputState {
     right_pressed: bool,
 }
 
+pub type ChunkDataStorage = HashMap<[i32; 2], chunk::ChunkData>;
+
 struct WindowDependent<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
@@ -159,7 +160,7 @@ struct WindowDependent<'a> {
     ui: ui::State,
     generated_chunk_buffers: HashMap<[i32; 2], ChunkBuffers>,
     depth_texture: texture::Texture,
-    generated_chunkdata: Arc<Mutex<HashMap<[i32; 2], chunk::ChunkData>>>,
+    generated_chunkdata: Arc<Mutex<ChunkDataStorage>>,
     chunkgen_comms: ChunkGenComms,
     input: InputState,
     last_break: Instant,
@@ -305,7 +306,7 @@ impl WindowDependent<'_> {
             receiver: recv_chunk,
         };
         let generated_chunkdata = Arc::new(Mutex::new(HashMap::new()));
-        start_chunkgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
+        start_meshgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
         let noise = OpenSimplex::new(SEED);
         WindowDependent {
             surface,
@@ -377,6 +378,7 @@ impl WindowDependent<'_> {
         }
     }
 
+    // TODO: implement a way to retry sending the chunk for mesh generation automatically
     fn update(&mut self, dt: std::time::Duration) {
         self.queue.write_buffer(
             &self.uniform_buffer,
@@ -405,7 +407,11 @@ impl WindowDependent<'_> {
                 e.insert(ChunkData {
                     contents: chunk_contents,
                 });
-                self.chunkgen_comms.sender.send(chunk_location).unwrap();
+                match self.chunkgen_comms.sender.try_send(chunk_location) {
+                    Ok(()) => {}
+                    Err(mpsc::TrySendError::Disconnected(_)) => panic!("Got disconnected!"),
+                    Err(mpsc::TrySendError::Full(_)) => todo!(),
+                }
             }
         }
         if let Some((location, previous_step)) = self.camera.get_looking_at() {
@@ -432,7 +438,13 @@ impl WindowDependent<'_> {
                         if chunk.contents[local_x][location.y as usize][local_z] == BlockType::Air {
                             chunk.contents[local_x][location.y as usize][local_z] =
                                 BlockType::Stone;
-                            self.chunkgen_comms.sender.send([chunk_x, chunk_z]).unwrap();
+                            match self.chunkgen_comms.sender.try_send([chunk_x, chunk_z]) {
+                                Ok(()) => {}
+                                Err(mpsc::TrySendError::Disconnected(_)) => {
+                                    panic!("Got disconnected!")
+                                }
+                                Err(mpsc::TrySendError::Full(_)) => todo!(),
+                            }
                         }
                     }
                 }
@@ -446,7 +458,11 @@ impl WindowDependent<'_> {
                     .get_mut(&[chunk_x, chunk_z])
                     .unwrap()
                     .contents[local_x][location.y as usize][local_z] = BlockType::Air;
-                self.chunkgen_comms.sender.send([chunk_x, chunk_z]).unwrap();
+                match self.chunkgen_comms.sender.try_send([chunk_x, chunk_z]) {
+                    Ok(()) => {}
+                    Err(mpsc::TrySendError::Disconnected(_)) => panic!("Got disconnected!"),
+                    Err(mpsc::TrySendError::Full(_)) => todo!(),
+                }
             }
         }
         drop(generated_chunkdata);

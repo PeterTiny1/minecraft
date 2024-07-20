@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use vek::{Aabb, Vec3};
 
-use crate::{camera::Camera, cuboid_intersects_frustum, Vertex, MAX_DEPTH};
+use crate::{camera, cuboid_intersects_frustum, ChunkDataStorage, Vertex, MAX_DEPTH};
 #[cfg(target_os = "windows")]
 pub const CHUNK_WIDTH: usize = 16;
 #[cfg(not(target_os = "windows"))]
@@ -222,6 +222,7 @@ fn chunk_at_block(
     generated_chunks.get(&[chunk_x, chunk_z])
 }
 
+#[allow(clippy::cast_sign_loss)]
 pub fn get_block(
     generated_chunks: &HashMap<[i32; 2], ChunkData>,
     x: i32,
@@ -252,11 +253,12 @@ pub fn chunkcoord_to_aabb(coord: [i32; 2]) -> Aabb<f32> {
     }
 }
 
+#[allow(clippy::cast_possible_truncation)]
 pub fn nearest_visible_unloaded(
     x: f32,
     z: f32,
     generated_chunks: &HashMap<[i32; 2], ChunkData>,
-    camera: &Camera,
+    camera: &camera::Camera,
 ) -> Option<[i32; 2]> {
     let chunk_x = (x as i32).div_euclid(CHUNK_WIDTH_I32);
     let chunk_z = (z as i32).div_euclid(CHUNK_WIDTH_I32);
@@ -494,13 +496,31 @@ fn generate_trees(noise: &OpenSimplex, location: [i32; 2]) -> Vec<(usize, usize)
     trees
 }
 
-#[inline]
-pub fn start_chunkgen(
+pub fn start_meshgen(
     recv_generate: mpsc::Receiver<[i32; 2]>,
-    chunkdata_arc: Arc<Mutex<HashMap<[i32; 2], ChunkData>>>,
+    chunkdata_arc: Arc<Mutex<ChunkDataStorage>>,
     send_chunk: mpsc::SyncSender<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
 ) -> thread::JoinHandle<()> {
-    thread::spawn(move || loop {
+    thread::spawn(move || manage_meshgen(&recv_generate, &chunkdata_arc, &send_chunk))
+}
+
+fn manage_meshgen(
+    recv_generate: &mpsc::Receiver<[i32; 2]>,
+    chunkdata_arc: &Arc<Mutex<HashMap<[i32; 2], ChunkData>>>,
+    send_chunk: &mpsc::SyncSender<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
+) {
+    let mut waiting = vec![];
+    loop {
+        let mut new_waiting = vec![];
+        // TODO: work out why this doesn't work in practice
+        for item in waiting {
+            match send_chunk.try_send(item) {
+                Ok(()) => {}
+                Err(mpsc::TrySendError::Full(v)) => new_waiting.push(v),
+                Err(mpsc::TrySendError::Disconnected(_)) => break,
+            }
+        }
+        waiting = new_waiting;
         if let Ok(chunk_location) = recv_generate.recv() {
             let generated_chunkdata = chunkdata_arc.lock().unwrap();
             let chunk_data = generated_chunkdata[&chunk_location];
@@ -539,14 +559,25 @@ pub fn start_chunkgen(
                         ]
                         .map(|c| c.map(|chunk| &chunk.contents)),
                     );
-                    send_chunk.send((mesh, indices, *chunk_index)).unwrap();
+
+                    match send_chunk.try_send((mesh, indices, *chunk_index)) {
+                        Ok(()) => {}
+                        Err(mpsc::TrySendError::Disconnected(_)) => {
+                            break;
+                        }
+                        Err(mpsc::TrySendError::Full(v)) => waiting.push(v),
+                    }
                 }
             }
-            send_chunk
-                .send((mesh, index_buffer, chunk_location))
-                .unwrap();
+            match send_chunk.try_send((mesh, index_buffer, chunk_location)) {
+                Ok(()) => {}
+                Err(mpsc::TrySendError::Disconnected(_)) => {
+                    break;
+                }
+                Err(mpsc::TrySendError::Full(v)) => waiting.push(v),
+            }
         }
-    })
+    }
 }
 
 const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
