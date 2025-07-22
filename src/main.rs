@@ -10,7 +10,6 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     env,
     fs::File,
-    io::Write,
     path::Path,
     sync::{mpsc, Arc, Mutex},
     time::Instant,
@@ -33,7 +32,7 @@ use futures::executor::block_on;
 use vek::{Aabb, Mat4, Vec3, Vec4};
 use wgpu::{util::DeviceExt, PipelineCompilationOptions};
 
-use noise::OpenSimplex;
+use ::noise::OpenSimplex;
 
 const MAX_DEPTH: f32 = 768.0;
 
@@ -164,14 +163,14 @@ struct WindowDependent<'a> {
     chunkgen_comms: ChunkGenComms,
     input: InputState,
     last_break: Instant,
-    noise: noise::OpenSimplex,
+    noise: ::noise::OpenSimplex,
     window: &'static Window,
 }
 
 impl WindowDependent<'_> {
     fn new(window: &'static Window) -> Self {
         let size = window.inner_size();
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let surface: wgpu::Surface<'_> = instance.create_surface(window).unwrap();
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::default(),
@@ -179,14 +178,17 @@ impl WindowDependent<'_> {
             force_fallback_adapter: false,
         }))
         .unwrap();
-        let (device, queue) = block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: None,
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
+        let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: None,
+            required_features: wgpu::Features::default(),
+            required_limits: if cfg!(target_arch = "wasm32") {
+                wgpu::Limits::downlevel_webgl2_defaults()
+            } else {
+                wgpu::Limits::default()
             },
-            None,
-        ))
+            memory_hints: wgpu::MemoryHints::Performance,
+            trace: wgpu::Trace::Off,
+        }))
         .unwrap();
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -400,7 +402,9 @@ impl WindowDependent<'_> {
                 let path = Path::new(location);
                 let chunk_contents = if path.exists() {
                     let buffer = std::fs::read(path).unwrap();
-                    bincode::deserialize::<ChunkData>(&buffer).unwrap().contents
+                    bincode::decode_from_slice(&buffer, bincode::config::standard())
+                        .unwrap()
+                        .0
                 } else {
                     generate(&self.noise, chunk_location)
                 };
@@ -499,7 +503,7 @@ impl WindowDependent<'_> {
         }
     }
 
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    fn render(&self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -524,6 +528,7 @@ impl WindowDependent<'_> {
                         }),
                         store: wgpu::StoreOp::Store,
                     },
+                    depth_slice: None,
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_texture.view,
@@ -592,13 +597,13 @@ fn create_render_pipeline(
         layout: Some(layout),
         vertex: wgpu::VertexState {
             module: &shader,
-            entry_point: "vs_main",
+            entry_point: Some("vs_main"),
             buffers: vertex_layouts,
             compilation_options: PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: "fs_main",
+            entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: color_format,
                 blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -628,6 +633,7 @@ fn create_render_pipeline(
             alpha_to_coverage_enabled: false,
         },
         multiview: None,
+        cache: None,
     })
 }
 
@@ -797,11 +803,11 @@ fn save_file(state: &State) {
         .unwrap()
         .clone();
     let iterator = generated_chunkdata.iter();
-    for (location, data) in iterator {
-        let location = format!("{}.bin", location.iter().join(","));
+    for (chunk_location, data) in iterator {
+        let location = format!("{}.bin", chunk_location.iter().join(","));
         let path = Path::new(&location);
         if let Ok(mut file) = File::create(path) {
-            file.write_all(&bincode::serialize(data).unwrap()).unwrap();
+            bincode::encode_into_std_write(data, &mut file, bincode::config::standard()).unwrap();
         }
     }
 }

@@ -5,10 +5,9 @@ use std::{
     thread,
 };
 
+use bincode::{Decode, Encode};
 use half::f16;
 use noise::{NoiseFn, OpenSimplex};
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use vek::{Aabb, Vec3};
 
 use crate::{camera, cuboid_intersects_frustum, ChunkDataStorage, Vertex, MAX_DEPTH};
@@ -41,8 +40,9 @@ enum Biome {
     // SnowDesert,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Encode, Decode)]
 pub enum BlockType {
+    #[default]
     Air,
     Stone,
     GrassBlock0,
@@ -182,11 +182,8 @@ impl BlockType {
     }
 }
 
-#[serde_as]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Encode, Decode)]
 pub struct ChunkData {
-    // pub location: [i32; 2],
-    #[serde_as(as = "[[[_; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH]")]
     pub contents: Chunk,
 }
 
