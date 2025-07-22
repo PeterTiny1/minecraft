@@ -28,7 +28,7 @@ const HALF_TEXTURE_WIDTH: f32 = TEXTURE_WIDTH / 2.0;
 
 /// Stores the data of a chunk, 32x256x32 on Linux, 16x256x16 on Windows, accessed in order x, y, z
 type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
-const EMPTY_CHUNK: Chunk = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+static EMPTY_CHUNK: Chunk = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 pub type Index = u32;
 
 #[derive(Clone, Copy)]
@@ -319,7 +319,7 @@ pub fn generate(noise: &OpenSimplex, location: [i32; 2]) -> Chunk {
     contents
 }
 
-fn place_tree(biome: Biome, contents: &mut Chunk, x: usize, height: usize, z: usize) {
+const fn place_tree(biome: Biome, contents: &mut Chunk, x: usize, height: usize, z: usize) {
     let wood_type = match biome {
         Biome::BirchFalls => BlockType::BirchWood,
         Biome::GreenGrove => BlockType::Wood,
@@ -771,7 +771,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6
     let surrounding_chunks = context.surrounding_chunks;
     let position = context.position;
     // first face
-    if (z_on_end && surrounding_chunks[2].map_or(true, |other| other[x][y][0].is_transparent()))
+    if (z_on_end && surrounding_chunks[2].is_none_or(|other| other[x][y][0].is_transparent()))
         || (!z_on_end && chunk[x][y][z + 1].is_transparent())
     {
         let tex_offset = tex_offsets[1];
@@ -788,7 +788,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6
         ));
     }
     // second face
-    if (x_on_end && surrounding_chunks[0].map_or(true, |other| other[0][y][z].is_transparent()))
+    if (x_on_end && surrounding_chunks[0].is_none_or(|other| other[0][y][z].is_transparent()))
         || (!x_on_end && chunk[x + 1][y][z].is_transparent())
     {
         let tex_offset = tex_offsets[2];
@@ -805,8 +805,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6
     }
     // third face
     if (z == 0
-        && surrounding_chunks[3]
-            .map_or(true, |other| other[x][y][LAST_CHUNK_DEPTH].is_transparent()))
+        && surrounding_chunks[3].is_none_or(|other| other[x][y][LAST_CHUNK_DEPTH].is_transparent()))
         || (z != 0 && chunk[x][y][z - 1].is_transparent())
     {
         let tex_offset = tex_offsets[3];
@@ -817,8 +816,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6
     }
     // fourth face
     if (x == 0
-        && surrounding_chunks[1]
-            .map_or(true, |other| other[CHUNK_WIDTH - 1][y][z].is_transparent()))
+        && surrounding_chunks[1].is_none_or(|other| other[CHUNK_WIDTH - 1][y][z].is_transparent()))
         || (x != 0 && chunk[x - 1][y][z].is_transparent())
     {
         let tex_offset = tex_offsets[4];
@@ -960,21 +958,20 @@ fn top_face_ao(
             [rel_x, yplusone, rel_z],
             add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
             if (x == 0
-                && surrounding_chunks[1].map_or(false, |other| {
+                && surrounding_chunks[1].is_some_and(|other| {
                     !other[CHUNK_WIDTH - 1][y + 1][z].is_transparent()
                         || (z != 0 && !other[CHUNK_WIDTH - 1][y + 1][z - 1].is_transparent())
                 }))
                 || (x != 0
                     && (!chunk[x - 1][y + 1][z].is_transparent()
                         || (z == 0
-                            && surrounding_chunks[3].map_or(false, |other| {
+                            && surrounding_chunks[3].is_some_and(|other| {
                                 !other[x - 1][y + 1][LAST_CHUNK_DEPTH].is_transparent()
                             }))
                         || (z != 0 && !chunk[x - 1][y + 1][z - 1].is_transparent())))
                 || (z == 0
-                    && surrounding_chunks[3].map_or(false, |other| {
-                        !other[x][y + 1][LAST_CHUNK_DEPTH].is_transparent()
-                    }))
+                    && surrounding_chunks[3]
+                        .is_some_and(|other| !other[x][y + 1][LAST_CHUNK_DEPTH].is_transparent()))
                 || (z != 0 && !chunk[x][y + 1][z - 1].is_transparent())
             {
                 AO_BRIGHTNESS
@@ -986,7 +983,7 @@ fn top_face_ao(
             [rel_x, yplusone, 1.0 + rel_z],
             add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
             if (x == 0
-                && surrounding_chunks[1].map_or(false, |other| {
+                && surrounding_chunks[1].is_some_and(|other| {
                     !other[CHUNK_WIDTH - 1][y + 1][z].is_transparent()
                         || (z != LAST_CHUNK_DEPTH
                             && !other[CHUNK_WIDTH - 1][y + 1][z + 1].is_transparent())
@@ -996,12 +993,12 @@ fn top_face_ao(
                     && (!chunk[x - 1][y + 1][z].is_transparent()
                         || ((z == LAST_CHUNK_DEPTH
                             && surrounding_chunks[2]
-                                .map_or(false, |other| !other[x - 1][y + 1][0].is_transparent()))
+                                .is_some_and(|other| !other[x - 1][y + 1][0].is_transparent()))
                             || (z != LAST_CHUNK_DEPTH
                                 && !chunk[x - 1][y + 1][z + 1].is_transparent()))))
                 || (z == LAST_CHUNK_DEPTH
                     && surrounding_chunks[2]
-                        .map_or(false, |other| !other[x][y + 1][0].is_transparent()))
+                        .is_some_and(|other| !other[x][y + 1][0].is_transparent()))
                 || (z != LAST_CHUNK_DEPTH
                     && y != CHUNK_HEIGHT - 1
                     && !chunk[x][y + 1][z + 1].is_transparent())
@@ -1015,7 +1012,7 @@ fn top_face_ao(
             [1.0 + rel_x, yplusone, 1.0 + rel_z],
             add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
             if (x == CHUNK_WIDTH - 1
-                && surrounding_chunks[0].map_or(false, |other| {
+                && surrounding_chunks[0].is_some_and(|other| {
                     !other[0][y + 1][z].is_transparent()
                         || (z != LAST_CHUNK_DEPTH && !other[0][y + 1][z + 1].is_transparent())
                 }))
@@ -1024,11 +1021,11 @@ fn top_face_ao(
                     && (!chunk[x + 1][y + 1][z].is_transparent()
                         || (z == LAST_CHUNK_DEPTH
                             && surrounding_chunks[2]
-                                .map_or(false, |other| !other[x + 1][y + 1][0].is_transparent()))
+                                .is_some_and(|other| !other[x + 1][y + 1][0].is_transparent()))
                         || (z != LAST_CHUNK_DEPTH && !chunk[x + 1][y + 1][z + 1].is_transparent())))
                 || (z == LAST_CHUNK_DEPTH
                     && surrounding_chunks[2]
-                        .map_or(false, |other| !other[x][y + 1][0].is_transparent()))
+                        .is_some_and(|other| !other[x][y + 1][0].is_transparent()))
                 || (z != LAST_CHUNK_DEPTH
                     && y != CHUNK_HEIGHT - 1
                     && !chunk[x][y + 1][z + 1].is_transparent())
@@ -1042,22 +1039,21 @@ fn top_face_ao(
             [1.0 + rel_x, yplusone, rel_z],
             add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
             if (x == CHUNK_WIDTH - 1
-                && surrounding_chunks[0].map_or(false, |other| {
+                && surrounding_chunks[0].is_some_and(|other| {
                     !other[0][y + 1][z].is_transparent()
                         || (z != 0 && !other[0][y + 1][z - 1].is_transparent())
                 }))
                 || (x != CHUNK_WIDTH - 1
                     && y != CHUNK_HEIGHT - 1
                     && ((z == 0
-                        && surrounding_chunks[3].map_or(false, |other| {
+                        && surrounding_chunks[3].is_some_and(|other| {
                             !other[x + 1][y + 1][LAST_CHUNK_DEPTH].is_transparent()
                         }))
                         || (z != 0 && !chunk[x + 1][y + 1][z - 1].is_transparent())
                         || !chunk[x + 1][y + 1][z].is_transparent()))
                 || (z == 0
-                    && surrounding_chunks[3].map_or(false, |chunk| {
-                        !chunk[x][y + 1][LAST_CHUNK_DEPTH].is_transparent()
-                    }))
+                    && surrounding_chunks[3]
+                        .is_some_and(|chunk| !chunk[x][y + 1][LAST_CHUNK_DEPTH].is_transparent()))
                 || (z != 0 && y != CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z - 1].is_transparent())
             {
                 AO_BRIGHTNESS
@@ -1150,7 +1146,7 @@ fn gen_face_2(
             [xplusone, 1.0 + y_f32, 1.0 + rel_z],
             add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
             if (x == CHUNK_WIDTH - 1
-                && surrounding_chunks[0].map_or(false, |other| {
+                && surrounding_chunks[0].is_some_and(|other| {
                     z != LAST_CHUNK_DEPTH && !other[0][y][z + 1].is_transparent()
                 }))
                 || (x != CHUNK_WIDTH - 1
@@ -1184,9 +1180,8 @@ fn gen_face_2(
             [xplusone, 1.0 + y_f32, rel_z],
             add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
             if (x == CHUNK_WIDTH - 1
-                && surrounding_chunks[1].map_or(false, |other| {
-                    z != 0 && !other[0][y][z - 1].is_transparent()
-                }))
+                && surrounding_chunks[1]
+                    .is_some_and(|other| z != 0 && !other[0][y][z - 1].is_transparent()))
                 || (x != CHUNK_WIDTH - 1 && z != 0 && !chunk[x + 1][y][z - 1].is_transparent())
             {
                 AO_BRIGHTNESS
@@ -1213,7 +1208,7 @@ fn gen_face_1(
             [rel_x, 1.0 + y_f32, zplusone],
             add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
             if (x == 0
-                && surrounding_chunks[1].map_or(false, |other| {
+                && surrounding_chunks[1].is_some_and(|other| {
                     z != LAST_CHUNK_DEPTH && !other[CHUNK_WIDTH - 1][y][z + 1].is_transparent()
                 }))
                 || (x != 0 && z != LAST_CHUNK_DEPTH && !chunk[x - 1][y][z + 1].is_transparent())
@@ -1230,7 +1225,7 @@ fn gen_face_1(
                 && ((z != LAST_CHUNK_DEPTH && !chunk[x][y - 1][z + 1].is_transparent())
                     || (z == LAST_CHUNK_DEPTH
                         && surrounding_chunks[2]
-                            .map_or(false, |other| !other[x][y - 1][0].is_transparent())))
+                            .is_some_and(|other| !other[x][y - 1][0].is_transparent())))
             {
                 AO_BRIGHTNESS
             } else {
@@ -1244,7 +1239,7 @@ fn gen_face_1(
                 && ((z != LAST_CHUNK_DEPTH && !chunk[x][y - 1][z + 1].is_transparent())
                     || (z == LAST_CHUNK_DEPTH
                         && surrounding_chunks[2]
-                            .map_or(false, |other| !other[x][y - 1][0].is_transparent())))
+                            .is_some_and(|other| !other[x][y - 1][0].is_transparent())))
             {
                 AO_BRIGHTNESS
             } else {
@@ -1255,7 +1250,7 @@ fn gen_face_1(
             [1.0 + rel_x, 1.0 + y_f32, zplusone],
             add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
             if (x == CHUNK_WIDTH - 1
-                && surrounding_chunks[0].map_or(false, |other| {
+                && surrounding_chunks[0].is_some_and(|other| {
                     z != LAST_CHUNK_DEPTH && !other[0][y][z + 1].is_transparent()
                 }))
                 || (x != CHUNK_WIDTH - 1
@@ -1329,9 +1324,8 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 
         ]);
     }
     if (z == LAST_CHUNK_DEPTH
-        && context.surrounding_chunks[2].map_or(true, |other| {
-            other[x][y][0].is_transparent() && !other[x][y][0].is_liquid()
-        }))
+        && context.surrounding_chunks[2]
+            .is_none_or(|other| other[x][y][0].is_transparent() && !other[x][y][0].is_liquid()))
         || (z != LAST_CHUNK_DEPTH
             && (chunk[x][y][z + 1].is_transparent() && !chunk[x][y][z + 1].is_liquid()))
     {
@@ -1386,9 +1380,8 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 
         }
     }
     if (x == CHUNK_WIDTH - 1
-        && context.surrounding_chunks[0].map_or(true, |other| {
-            other[0][y][z].is_transparent() && !other[0][y][z].is_liquid()
-        }))
+        && context.surrounding_chunks[0]
+            .is_none_or(|other| other[0][y][z].is_transparent() && !other[0][y][z].is_liquid()))
         || (x != CHUNK_WIDTH - 1
             && (chunk[x + 1][y][z].is_transparent() && !chunk[x + 1][y][z].is_liquid()))
     {
@@ -1445,7 +1438,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 
     }
     let z_zero = z == 0;
     if (z_zero
-        && context.surrounding_chunks[3].map_or(true, |other| {
+        && context.surrounding_chunks[3].is_none_or(|other| {
             other[x][y][LAST_CHUNK_DEPTH].is_transparent()
                 && !other[x][y][LAST_CHUNK_DEPTH].is_liquid()
         }))
@@ -1502,7 +1495,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 
         }
     }
     if (x == 0
-        && context.surrounding_chunks[1].map_or(true, |other| {
+        && context.surrounding_chunks[1].is_none_or(|other| {
             other[CHUNK_WIDTH - 1][y][z].is_transparent()
                 && !other[CHUNK_WIDTH - 1][y][z].is_liquid()
         }))

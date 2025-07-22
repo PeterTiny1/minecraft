@@ -1,18 +1,13 @@
-use std::{collections::HashMap, f32::consts::FRAC_PI_2, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
-use vek::{Mat4, Quaternion, Vec2, Vec3};
+use vek::{Mat4, Quaternion, Vec3};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use crate::{
-    chunk::{self, get_block, BlockType, ChunkData},
-    ray::Ray,
-};
-
-const GRAVITY: f32 = 9.807;
+use crate::{chunk, player::Player};
 
 #[derive(Debug)]
 pub struct CameraData {
-    position: Vec3<f32>,
+    pub position: Vec3<f32>,
     pitch: f32,
     yaw: f32,
     quaternion: Quaternion<f32>,
@@ -47,6 +42,13 @@ impl CameraData {
             self.quaternion * Vec3::unit_y(),
         )
     }
+
+    pub fn update_from_player(&mut self, player: &Player) {
+        self.position = player.get_camera_position();
+        self.pitch = player.pitch;
+        self.yaw = player.yaw;
+        self.quaternion = to_quaternion(-self.yaw, self.pitch).normalized();
+    }
 }
 
 pub struct Projection {
@@ -65,6 +67,7 @@ impl Projection {
             zfar,
         }
     }
+
     pub fn resize(&mut self, width: u32, height: u32) {
         self.aspect = width as f32 / height as f32;
     }
@@ -74,7 +77,7 @@ impl Projection {
     }
 }
 
-pub struct Controller {
+pub struct PlayerController {
     amount_left: f32,
     amount_right: f32,
     amount_forward: f32,
@@ -86,70 +89,10 @@ pub struct Controller {
     scroll: f32,
     speed: f32,
     sensitivity: f32,
-    looking_at_block: Option<(Vec3<i32>, usize)>,
-    velocity: Vec3<f32>,
 }
 
-const CORNER0: Vec3<f32> = Vec3 {
-    x: 0.3,
-    y: 1.5,
-    z: 0.3,
-};
-const CORNER1: Vec3<f32> = Vec3 {
-    x: 0.3,
-    y: 1.5,
-    z: -0.3,
-};
-const CORNER2: Vec3<f32> = Vec3 {
-    x: -0.3,
-    y: 1.5,
-    z: -0.3,
-};
-const CORNER3: Vec3<f32> = Vec3 {
-    x: -0.3,
-    y: 1.5,
-    z: 0.3,
-};
-
-fn next_float(x: f32) -> f32 {
-    let bits = x.to_bits();
-    let next_bits = if x.is_sign_positive() {
-        bits + 1
-    } else {
-        bits - 1
-    };
-    f32::from_bits(next_bits)
-}
-
-fn handle_collision(
-    velocity: &mut Vec3<f32>,
-    position: &mut Vec3<f32>,
-    corner_offset: Vec3<f32>,
-    dt: f32,
-    world: &HashMap<[i32; 2], ChunkData>,
-) {
-    while let Some(collision) = find_collision(*velocity, *position - corner_offset, dt, world) {
-        match collision.1 {
-            0 | 1 => velocity.x = 0.0,
-            2 => {
-                velocity.y = 0.0;
-                position.y = next_float((position.y - 1.5).floor() + 1.5);
-            }
-            3 => {
-                velocity.y = 0.0;
-            }
-            4 | 5 => {
-                velocity.z = 0.0;
-            }
-            _ => {}
-        }
-    }
-}
-
-const FRICTION: f32 = 2.0;
-
-impl Controller {
-    pub fn new(speed: f32, sensitivity: f32) -> Self {
+impl PlayerController {
+    pub const fn new(speed: f32, sensitivity: f32) -> Self {
         Self {
             amount_left: 0.0,
             amount_right: 0.0,
@@ -162,12 +105,10 @@ impl Controller {
             scroll: 0.0,
             speed,
             sensitivity,
-            looking_at_block: None,
-            velocity: Vec3::default(),
         }
     }
 
-    pub fn process_keyboard(&mut self, key: PhysicalKey, pressed: bool) -> bool {
+    pub const fn process_keyboard(&mut self, key: PhysicalKey, pressed: bool) -> bool {
         let amount = if pressed { 1.0 } else { 0.0 };
         match key {
             PhysicalKey::Code(keycode) => match keycode {
@@ -210,75 +151,34 @@ impl Controller {
         self.scroll = delta * 200.0;
     }
 
-    fn update_camera(
-        &mut self,
-        camera: &mut CameraData,
-        dt: Duration,
-        world: &HashMap<[i32; 2], ChunkData>,
-    ) {
-        let dt = dt.as_secs_f32();
-        let (yaw_sin, yaw_cos) = camera.yaw.sin_cos();
-        let forward = Vec3::new(yaw_cos, 0.0, yaw_sin).normalized();
-        let right = Vec3::new(-yaw_sin, 0.0, yaw_cos).normalized();
-        self.velocity += forward * (self.amount_forward - self.amount_backward) * self.speed * dt;
-        self.velocity += right * (self.amount_right - self.amount_left) * self.speed * dt;
-        self.velocity.y -= GRAVITY * dt;
-        self.velocity *= 0.95_f32.powf(dt);
-        let velocity_xz = Vec2::new(self.velocity.x, self.velocity.z);
-        if velocity_xz.magnitude() > FRICTION * dt {
-            let friction = velocity_xz.normalized() * FRICTION * dt;
-            self.velocity.x -= friction.x;
-            self.velocity.z -= friction.y;
-        } else {
-            self.velocity.x = 0.0;
-            self.velocity.z = 0.0;
-        }
-        self.velocity.y += (self.amount_up - self.amount_down) * self.speed * dt * 5.0;
-        handle_collision(&mut self.velocity, &mut camera.position, CORNER0, dt, world);
-        handle_collision(&mut self.velocity, &mut camera.position, CORNER1, dt, world);
-        handle_collision(&mut self.velocity, &mut camera.position, CORNER2, dt, world);
-        handle_collision(&mut self.velocity, &mut camera.position, CORNER3, dt, world);
-        camera.position += self.velocity * dt;
-        let (pitch_sin, pitch_cos) = camera.pitch.sin_cos();
-        let looking_direction =
-            Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalized();
-        let looking_at_block = Ray::new(camera.position, looking_direction, 5.0).find(
-            |(e, _)| matches!(get_block(world, e.x, e.y, e.z), Some(b) if b != BlockType::Air),
+    pub fn update_player(&mut self, player: &mut Player, dt: std::time::Duration) {
+        let dt_secs = dt.as_secs_f32();
+
+        player.apply_movement_input(
+            self.amount_forward - self.amount_backward,
+            self.amount_right - self.amount_left,
+            self.amount_up - self.amount_down,
+            self.speed,
+            dt_secs,
         );
-        self.looking_at_block = looking_at_block;
-        if camera.position.y < -64.0 {
-            camera.position.y = 128.0;
-        }
-        self.scroll = 0.0;
 
-        // camera.position.y += (self.amount_up - self.amount_down) * self.speed * dt;
-
-        camera.yaw += (self.rotate_horizontal) * self.sensitivity / 10.0;
-        camera.pitch += (self.rotate_vertical) * self.sensitivity / 10.0;
+        player.apply_rotation_input(
+            self.rotate_horizontal,
+            self.rotate_vertical,
+            self.sensitivity,
+        );
 
         self.rotate_horizontal = 0.0;
         self.rotate_vertical = 0.0;
-
-        camera.pitch = camera.pitch.clamp(-FRAC_PI_2, FRAC_PI_2);
-
-        camera.quaternion = to_quaternion(-camera.yaw, camera.pitch).normalized();
+        self.scroll = 0.0;
     }
-}
-
-fn find_collision(
-    velocity: Vec3<f32>,
-    origin: Vec3<f32>,
-    dt: f32,
-    world: &HashMap<[i32; 2], ChunkData>,
-) -> Option<(Vec3<i32>, usize)> {
-    Ray::new(origin, velocity.normalized(), (velocity * dt).magnitude())
-        .find(|(b, _)| get_block(world, b.x, b.y, b.z).map_or(false, BlockType::is_solid))
 }
 
 pub struct Camera {
     pub data: CameraData,
     pub projection: Projection,
-    pub controller: Controller,
+    pub controller: PlayerController,
+    pub player: Player,
 }
 
 impl Camera {
@@ -287,7 +187,11 @@ impl Camera {
     }
 
     pub fn update(&mut self, dt: Duration, world: &HashMap<[i32; 2], chunk::ChunkData>) {
-        self.controller.update_camera(&mut self.data, dt, world);
+        self.controller.update_player(&mut self.player, dt);
+
+        self.player.update_physics(dt.as_secs_f32(), world);
+
+        self.data.update_from_player(&self.player);
     }
 
     pub const fn get_position(&self) -> Vec3<f32> {
@@ -295,7 +199,7 @@ impl Camera {
     }
 
     pub const fn get_looking_at(&self) -> Option<(Vec3<i32>, usize)> {
-        self.controller.looking_at_block
+        self.player.looking_at_block
     }
 
     pub fn get_transformation(&self) -> Mat4<f32> {

@@ -1,11 +1,13 @@
 mod camera;
 mod chunk;
+mod player;
 pub mod ray;
 mod texture;
 mod ui;
 
 use half::f16;
 use itertools::Itertools;
+use player::Player;
 use std::{
     collections::{hash_map::Entry, HashMap},
     env,
@@ -247,12 +249,13 @@ impl WindowDependent<'_> {
             0.05,
             MAX_DEPTH,
         );
-        let camera_controller = camera::Controller::new(4.0, 0.05);
+        let camera_controller = camera::PlayerController::new(10.0, 0.05);
         let mut uniforms = Uniforms::new();
         let camera = camera::Camera {
             data: camera,
             projection,
             controller: camera_controller,
+            player: Player::new(Vec3::new(0.0, 100.0, 0.0)),
         };
         uniforms.update_view_proj(&camera);
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -357,11 +360,11 @@ impl WindowDependent<'_> {
         self.resize(self.size);
     }
 
-    fn keydown(&mut self, key: PhysicalKey) {
+    const fn keydown(&mut self, key: PhysicalKey) {
         self.camera.controller.process_keyboard(key, true);
     }
 
-    fn keyup(&mut self, key: PhysicalKey) {
+    const fn keyup(&mut self, key: PhysicalKey) {
         self.camera.controller.process_keyboard(key, false);
     }
 
@@ -373,7 +376,7 @@ impl WindowDependent<'_> {
         self.camera.controller.process_scroll(delta);
     }
 
-    fn process_keyevent(&mut self, event: &KeyEvent) {
+    const fn process_keyevent(&mut self, event: &KeyEvent) {
         match event.state {
             ElementState::Pressed => self.keydown(event.physical_key),
             ElementState::Released => self.keyup(event.physical_key),
@@ -639,7 +642,7 @@ fn create_render_pipeline(
 
 const SEED: u32 = 0;
 
-impl<'a> State<'a> {
+impl State<'_> {
     fn new(save: bool) -> Self {
         Self {
             last_render_time: Instant::now(),
@@ -649,7 +652,7 @@ impl<'a> State<'a> {
     }
 }
 
-impl<'a> ApplicationHandler for State<'a> {
+impl ApplicationHandler for State<'_> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window = Box::leak(Box::new(
             event_loop

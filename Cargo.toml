@@ -25,5 +25,5 @@ default-features = false
 features = ["png"]
 
 [profile.release]
-lto = true
+# lto = true
 # debug = true
