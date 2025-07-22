@@ -10,7 +10,7 @@ use half::f16;
 use noise::{NoiseFn, OpenSimplex};
 use vek::{Aabb, Vec3};
 
-use crate::{camera, cuboid_intersects_frustum, ChunkDataStorage, Vertex, MAX_DEPTH};
+use crate::{camera, cuboid_intersects_frustum, ChunkDataStorage, Vertex, RENDER_DISTANCE};
 #[cfg(target_os = "windows")]
 pub const CHUNK_WIDTH: usize = 16;
 #[cfg(not(target_os = "windows"))]
@@ -187,8 +187,8 @@ pub struct ChunkData {
     pub contents: Chunk,
 }
 
-const MAX_DISTANCE_X: i32 = MAX_DEPTH as i32 / CHUNK_WIDTH_I32 + 1;
-const MAX_DISTANCE_Y: i32 = MAX_DEPTH as i32 / CHUNK_DEPTH_I32 + 1;
+const MAX_DISTANCE_X: i32 = RENDER_DISTANCE as i32 / CHUNK_WIDTH_I32 + 1;
+const MAX_DISTANCE_Y: i32 = RENDER_DISTANCE as i32 / CHUNK_DEPTH_I32 + 1;
 const TOP_BRIGHTNESS: f32 = 1.0;
 const BOTTOM_BRIGHTNESS: f32 = 0.6;
 const SIDE_BRIGHTNESS: f32 = 0.8;
@@ -265,7 +265,7 @@ pub fn nearest_visible_unloaded(
             (-MAX_DISTANCE_Y..=MAX_DISTANCE_Y).filter_map(move |j| {
                 let distance = length(i, j);
                 let location = [i + chunk_x, j + chunk_z];
-                if distance <= (MAX_DEPTH * MAX_DEPTH) as i32
+                if distance <= (RENDER_DISTANCE * RENDER_DISTANCE) as i32
                     && !generated_chunks.contains_key(&location)
                     && cuboid_intersects_frustum(&chunkcoord_to_aabb([i, j]), camera)
                 {

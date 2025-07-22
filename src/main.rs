@@ -1,7 +1,7 @@
 mod camera;
 mod chunk;
 mod player;
-pub mod ray;
+mod ray;
 mod texture;
 mod ui;
 
@@ -34,9 +34,9 @@ use futures::executor::block_on;
 use vek::{Aabb, Mat4, Vec3, Vec4};
 use wgpu::{util::DeviceExt, PipelineCompilationOptions};
 
-use ::noise::OpenSimplex;
+use noise::OpenSimplex;
 
-const MAX_DEPTH: f32 = 768.0;
+const RENDER_DISTANCE: f32 = 768.0;
 
 #[must_use]
 pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) -> bool {
@@ -55,7 +55,7 @@ pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) ->
 
     let vertices_clip = vertices.map(|v| transform_matrix * v);
 
-    let planes = [
+    const PLANES: [Vec4<f32>; 6] = [
         Vec4::new(1.0, 0.0, 0.0, 1.0),
         Vec4::new(-1.0, 0.0, 0.0, 1.0),
         Vec4::new(0.0, 1.0, 0.0, 1.0),
@@ -64,7 +64,7 @@ pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) ->
         Vec4::new(0.0, 0.0, -1.0, 1.0),
     ];
 
-    for plane in &planes {
+    for plane in PLANES {
         let mut all = true;
         for vert in vertices_clip {
             all &= plane.dot(vert) < 0.0;
@@ -159,13 +159,16 @@ struct WindowDependent<'a> {
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     ui: ui::State,
-    generated_chunk_buffers: HashMap<[i32; 2], ChunkBuffers>,
     depth_texture: texture::Texture,
+    
+    // TODO: Move this mf to somewhere else
+    generated_chunk_buffers: HashMap<[i32; 2], ChunkBuffers>,
     generated_chunkdata: Arc<Mutex<ChunkDataStorage>>,
+    noise: OpenSimplex,
+    
     chunkgen_comms: ChunkGenComms,
     input: InputState,
     last_break: Instant,
-    noise: ::noise::OpenSimplex,
     window: &'static Window,
 }
 
@@ -247,7 +250,7 @@ impl WindowDependent<'_> {
             config.height,
             90.0_f32.to_radians(),
             0.05,
-            MAX_DEPTH,
+            RENDER_DISTANCE,
         );
         let camera_controller = camera::PlayerController::new(10.0, 0.05);
         let mut uniforms = Uniforms::new();
@@ -580,11 +583,6 @@ impl WindowDependent<'_> {
     }
 }
 
-struct State<'a> {
-    last_render_time: Instant,
-    save: bool,
-    window_dependent: Option<WindowDependent<'a>>,
-}
 
 fn create_render_pipeline(
     device: &wgpu::Device,
@@ -642,7 +640,12 @@ fn create_render_pipeline(
 
 const SEED: u32 = 0;
 
-impl State<'_> {
+struct RenderState<'a> {
+    last_render_time: Instant,
+    save: bool,
+    window_dependent: Option<WindowDependent<'a>>,
+}
+impl RenderState<'_> {
     fn new(save: bool) -> Self {
         Self {
             last_render_time: Instant::now(),
@@ -652,7 +655,7 @@ impl State<'_> {
     }
 }
 
-impl ApplicationHandler for State<'_> {
+impl ApplicationHandler for RenderState<'_> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window = Box::leak(Box::new(
             event_loop
@@ -791,20 +794,19 @@ fn main() -> Result<(), impl std::error::Error> {
     }
     let event_loop = EventLoop::new().unwrap();
 
-    let mut state = State::new(save);
+    let mut state = RenderState::new(save);
 
     event_loop.run_app(&mut state)
 }
 
-fn save_file(state: &State) {
+fn save_file(state: &RenderState) {
     let generated_chunkdata = state
         .window_dependent
         .as_ref()
         .unwrap()
         .generated_chunkdata
         .lock()
-        .unwrap()
-        .clone();
+        .unwrap();
     let iterator = generated_chunkdata.iter();
     for (chunk_location, data) in iterator {
         let location = format!("{}.bin", chunk_location.iter().join(","));

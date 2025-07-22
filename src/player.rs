@@ -4,7 +4,7 @@ use std::f32::consts::FRAC_PI_2; // Moved to top of file for better style
 use vek::{Aabb, Vec2, Vec3};
 
 use crate::{
-    chunk::{get_block, ChunkData},
+    chunk::{get_block, BlockType, ChunkData},
     ray::Ray,
 };
 
@@ -141,8 +141,9 @@ impl Player {
             Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalized();
         let eye_level_position = self.get_camera_position();
 
-        self.looking_at_block = Ray::new(eye_level_position, looking_direction, 5.0)
-            .find(|(e, _)| matches!(get_block(world, e.x, e.y, e.z), Some(b) if b.is_solid()));
+        self.looking_at_block = Ray::new(eye_level_position, looking_direction, 5.0).find(
+            |(e, _)| matches!(get_block(world, e.x, e.y, e.z), Some(b) if b != BlockType::Air),
+        );
     }
 
     fn resolve_collisions_on_axis(&mut self, world: &HashMap<[i32; 2], ChunkData>, axis: Axis) {
