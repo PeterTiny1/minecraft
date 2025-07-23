@@ -5,7 +5,7 @@ pub struct Texture {
     pub sampler: wgpu::Sampler,
 }
 
-fn halve_image(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+fn halve_image_weighted(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let (width, height) = img.dimensions();
 
     // New dimensions after halving
@@ -18,35 +18,51 @@ fn halve_image(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgba<u8>, Ve
     // Process each 2x2 block
     for x in 0..new_width {
         for y in 0..new_height {
-            // Compute the average color of the 2x2 block
-            let mut sum_r = 0;
-            let mut sum_g = 0;
-            let mut sum_b = 0;
+            // Use u32 for sums to prevent overflow
+            let mut weighted_sum_r = 0;
+            let mut weighted_sum_g = 0;
+            let mut weighted_sum_b = 0;
             let mut sum_a = 0;
-            let mut count = 0;
+            let mut total_weight = 0;
 
             for dx in 0..2 {
                 for dy in 0..2 {
                     let pixel = img.get_pixel(2 * x + dx, 2 * y + dy);
-                    sum_r += u32::from(pixel[0]);
-                    sum_g += u32::from(pixel[1]);
-                    sum_b += u32::from(pixel[2]);
-                    sum_a += u32::from(pixel[3]);
-                    if pixel[3] != 0 {
-                        count += 1;
-                    }
+                    let r = pixel[0];
+                    let g = pixel[1];
+                    let b = pixel[2];
+                    let a = pixel[3];
+
+                    // The weight for each pixel's color is its own alpha value
+                    let weight = u32::from(a);
+
+                    // Add the weighted color values to the sums
+                    weighted_sum_r += u32::from(r) * weight;
+                    weighted_sum_g += u32::from(g) * weight;
+                    weighted_sum_b += u32::from(b) * weight;
+
+                    // The total weight is the sum of all alpha values
+                    total_weight += weight;
+
+                    // The new alpha will be a simple average of the source alphas
+                    sum_a += u32::from(a);
                 }
             }
 
-            if count != 0 {
-                // Average values
-                let avg_r = u8::try_from(sum_r / count).unwrap();
-                let avg_g = u8::try_from(sum_g / count).unwrap();
-                let avg_b = u8::try_from(sum_b / count).unwrap();
-                let avg_a = u8::try_from(sum_a / count).unwrap();
+            if total_weight > 0 {
+                // Calculate the weighted average for the color channels
+                let avg_r = u8::try_from(weighted_sum_r / total_weight).unwrap();
+                let avg_g = u8::try_from(weighted_sum_g / total_weight).unwrap();
+                let avg_b = u8::try_from(weighted_sum_b / total_weight).unwrap();
+
+                // The new alpha is the simple average of the four pixels' alphas
+                let avg_a = u8::try_from(sum_a / 4).unwrap();
 
                 // Set the pixel in the new ImageBuffer
                 new_img.put_pixel(x, y, Rgba([avg_r, avg_g, avg_b, avg_a]));
+            } else {
+                // If all pixels in the block were fully transparent, the new pixel is also transparent black
+                new_img.put_pixel(x, y, Rgba([0, 0, 0, 0]));
             }
         }
     }
@@ -184,9 +200,9 @@ impl Texture {
         let size1 = half_size(size);
         let size2 = half_size(size1);
         let size3 = half_size(size2);
-        let rgba1 = halve_image(&rgba);
-        let rgba2 = halve_image(&rgba1);
-        let rgba3 = halve_image(&rgba2);
+        let rgba1 = halve_image_weighted(&rgba);
+        let rgba2 = halve_image_weighted(&rgba1);
+        let rgba3 = halve_image_weighted(&rgba2);
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label,
             size,
