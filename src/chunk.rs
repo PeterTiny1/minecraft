@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     f32::consts::FRAC_1_SQRT_2,
+    path::Path,
     sync::{mpsc, Arc, Mutex},
     thread,
 };
@@ -10,7 +11,10 @@ use half::f16;
 use noise::{NoiseFn, OpenSimplex};
 use vek::{Aabb, Vec3};
 
-use crate::{camera, cuboid_intersects_frustum, ChunkDataStorage, Vertex, RENDER_DISTANCE};
+use crate::{
+    camera, cuboid_intersects_frustum, ChunkBuffers, ChunkDataStorage, Vertex, RENDER_DISTANCE,
+    SEED,
+};
 #[cfg(target_os = "windows")]
 pub const CHUNK_WIDTH: usize = 16;
 #[cfg(not(target_os = "windows"))]
@@ -179,6 +183,56 @@ impl BlockType {
                 | Self::Grass1
                 | Self::Grass2
         )
+    }
+}
+
+pub struct ChunkManager {
+    pub generated_buffers: HashMap<[i32; 2], ChunkBuffers>,
+    pub generated_data: Arc<Mutex<ChunkDataStorage>>,
+    noise: OpenSimplex,
+
+    pub sender: mpsc::SyncSender<[i32; 2]>,
+    pub receiver: mpsc::Receiver<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
+}
+
+impl ChunkManager {
+    pub fn new() -> Self {
+        let generated_chunk_buffers = HashMap::new();
+        let (send_generate, recv_generate) = mpsc::sync_channel(10);
+        let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
+        let generated_chunkdata = Arc::new(Mutex::new(HashMap::new()));
+        start_meshgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
+        let noise = OpenSimplex::new(SEED);
+        Self {
+            generated_buffers: generated_chunk_buffers,
+            generated_data: generated_chunkdata,
+            noise,
+            sender: send_generate,
+            receiver: recv_chunk,
+        }
+    }
+    pub fn load_chunk(
+        &self,
+        path: &Path,
+        e: std::collections::hash_map::VacantEntry<'_, [i32; 2], ChunkData>,
+        chunk_location: [i32; 2],
+    ) {
+        let chunk_contents = if path.exists() {
+            let buffer = std::fs::read(path).unwrap();
+            bincode::decode_from_slice(&buffer, bincode::config::standard())
+                .unwrap()
+                .0
+        } else {
+            generate(&self.noise, chunk_location)
+        };
+        e.insert(ChunkData {
+            contents: chunk_contents,
+        });
+        match self.sender.try_send(chunk_location) {
+            Ok(()) => {}
+            Err(mpsc::TrySendError::Disconnected(_)) => panic!("Got disconnected!"),
+            Err(mpsc::TrySendError::Full(_)) => todo!(),
+        }
     }
 }
 
