@@ -38,7 +38,6 @@ use noise::OpenSimplex;
 
 const RENDER_DISTANCE: f32 = 768.0;
 
-#[must_use]
 pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) -> bool {
     let transform_matrix = camera.get_transformation();
 
@@ -133,9 +132,39 @@ impl Uniforms {
     }
 }
 
-struct ChunkGenComms {
+struct ChunkManager {
+    generated_buffers: HashMap<[i32; 2], ChunkBuffers>,
+    generated_data: Arc<Mutex<ChunkDataStorage>>,
+    noise: OpenSimplex,
+
     sender: mpsc::SyncSender<[i32; 2]>,
     receiver: mpsc::Receiver<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
+}
+
+impl ChunkManager {
+    fn load_chunk(
+        &self,
+        path: &Path,
+        e: std::collections::hash_map::VacantEntry<'_, [i32; 2], ChunkData>,
+        chunk_location: [i32; 2],
+    ) {
+        let chunk_contents = if path.exists() {
+            let buffer = std::fs::read(path).unwrap();
+            bincode::decode_from_slice(&buffer, bincode::config::standard())
+                .unwrap()
+                .0
+        } else {
+            generate(&self.noise, chunk_location)
+        };
+        e.insert(ChunkData {
+            contents: chunk_contents,
+        });
+        match self.sender.try_send(chunk_location) {
+            Ok(()) => {}
+            Err(mpsc::TrySendError::Disconnected(_)) => panic!("Got disconnected!"),
+            Err(mpsc::TrySendError::Full(_)) => todo!(),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -160,13 +189,7 @@ struct WindowDependent<'a> {
     uniform_bind_group: wgpu::BindGroup,
     ui: ui::State,
     depth_texture: texture::Texture,
-    
-    // TODO: Move this mf to somewhere else
-    generated_chunk_buffers: HashMap<[i32; 2], ChunkBuffers>,
-    generated_chunkdata: Arc<Mutex<ChunkDataStorage>>,
-    noise: OpenSimplex,
-    
-    chunkgen_comms: ChunkGenComms,
+    chunk_manager: ChunkManager,
     input: InputState,
     last_break: Instant,
     window: &'static Window,
@@ -309,13 +332,17 @@ impl WindowDependent<'_> {
         let generated_chunk_buffers = HashMap::new();
         let (send_generate, recv_generate) = mpsc::sync_channel(10);
         let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
-        let chunkgen_comms = ChunkGenComms {
-            sender: send_generate,
-            receiver: recv_chunk,
-        };
         let generated_chunkdata = Arc::new(Mutex::new(HashMap::new()));
         start_meshgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
         let noise = OpenSimplex::new(SEED);
+        let chunk_manager = ChunkManager {
+            generated_buffers: generated_chunk_buffers,
+            generated_data: generated_chunkdata,
+            noise: noise,
+            sender: send_generate,
+            receiver: recv_chunk,
+        };
+
         WindowDependent {
             surface,
             device,
@@ -329,14 +356,11 @@ impl WindowDependent<'_> {
             uniform_buffer,
             uniform_bind_group,
             ui,
-            generated_chunk_buffers,
             depth_texture,
-            generated_chunkdata,
-            chunkgen_comms,
             input: InputState::default(),
             last_break: Instant::now(),
-            noise,
             window,
+            chunk_manager,
         }
     }
 
@@ -393,7 +417,7 @@ impl WindowDependent<'_> {
             0,
             bytemuck::cast_slice(&[self.uniforms]),
         );
-        let mut generated_chunkdata = self.generated_chunkdata.lock().unwrap();
+        let mut generated_chunkdata = self.chunk_manager.generated_data.lock().unwrap();
         self.camera.update(dt, &generated_chunkdata);
         self.uniforms.update_view_proj(&self.camera);
         let chunk_location = chunk::nearest_visible_unloaded(
@@ -403,25 +427,10 @@ impl WindowDependent<'_> {
             &self.camera,
         );
         if let Some(chunk_location) = chunk_location {
-            if let Entry::Vacant(e) = generated_chunkdata.entry(chunk_location) {
+            if let Entry::Vacant(entry) = generated_chunkdata.entry(chunk_location) {
                 let location = &format!("{}.bin", chunk_location.iter().join(","));
                 let path = Path::new(location);
-                let chunk_contents = if path.exists() {
-                    let buffer = std::fs::read(path).unwrap();
-                    bincode::decode_from_slice(&buffer, bincode::config::standard())
-                        .unwrap()
-                        .0
-                } else {
-                    generate(&self.noise, chunk_location)
-                };
-                e.insert(ChunkData {
-                    contents: chunk_contents,
-                });
-                match self.chunkgen_comms.sender.try_send(chunk_location) {
-                    Ok(()) => {}
-                    Err(mpsc::TrySendError::Disconnected(_)) => panic!("Got disconnected!"),
-                    Err(mpsc::TrySendError::Full(_)) => todo!(),
-                }
+                self.chunk_manager.load_chunk(path, entry, chunk_location);
             }
         }
         if let Some((location, previous_step)) = self.camera.get_looking_at() {
@@ -448,7 +457,7 @@ impl WindowDependent<'_> {
                         if chunk.contents[local_x][location.y as usize][local_z] == BlockType::Air {
                             chunk.contents[local_x][location.y as usize][local_z] =
                                 BlockType::Stone;
-                            match self.chunkgen_comms.sender.try_send([chunk_x, chunk_z]) {
+                            match self.chunk_manager.sender.try_send([chunk_x, chunk_z]) {
                                 Ok(()) => {}
                                 Err(mpsc::TrySendError::Disconnected(_)) => {
                                     panic!("Got disconnected!")
@@ -468,16 +477,15 @@ impl WindowDependent<'_> {
                     .get_mut(&[chunk_x, chunk_z])
                     .unwrap()
                     .contents[local_x][location.y as usize][local_z] = BlockType::Air;
-                match self.chunkgen_comms.sender.try_send([chunk_x, chunk_z]) {
+                match self.chunk_manager.sender.try_send([chunk_x, chunk_z]) {
                     Ok(()) => {}
                     Err(mpsc::TrySendError::Disconnected(_)) => panic!("Got disconnected!"),
                     Err(mpsc::TrySendError::Full(_)) => todo!(),
                 }
             }
         }
-        drop(generated_chunkdata);
-        while let Ok((mesh, indices, index)) = self.chunkgen_comms.receiver.try_recv() {
-            self.generated_chunk_buffers.insert(
+        while let Ok((mesh, indices, index)) = self.chunk_manager.receiver.try_recv() {
+            self.chunk_manager.generated_buffers.insert(
                 index,
                 ChunkBuffers {
                     vertex: self
@@ -552,7 +560,8 @@ impl WindowDependent<'_> {
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
             #[allow(clippy::cast_possible_truncation)]
             for chunk_loc in self
-                .generated_chunk_buffers
+                .chunk_manager
+                .generated_buffers
                 .keys()
                 .sorted_by(|&a, &b| {
                     ((b[0] * CHUNK_WIDTH_I32 - self.camera.get_position().x as i32).pow(2)
@@ -565,7 +574,7 @@ impl WindowDependent<'_> {
                 })
                 .filter(|c| cuboid_intersects_frustum(&chunkcoord_to_aabb(**c), &self.camera))
             {
-                let chunk = &self.generated_chunk_buffers[chunk_loc];
+                let chunk = &self.chunk_manager.generated_buffers[chunk_loc];
                 render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
                 render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
@@ -582,7 +591,6 @@ impl WindowDependent<'_> {
         Ok(())
     }
 }
-
 
 fn create_render_pipeline(
     device: &wgpu::Device,
@@ -804,7 +812,8 @@ fn save_file(state: &RenderState) {
         .window_dependent
         .as_ref()
         .unwrap()
-        .generated_chunkdata
+        .chunk_manager
+        .generated_data
         .lock()
         .unwrap();
     let iterator = generated_chunkdata.iter();
