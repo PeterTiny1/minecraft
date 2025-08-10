@@ -142,6 +142,21 @@ struct ChunkManager {
 }
 
 impl ChunkManager {
+    fn new() -> Self {
+        let generated_chunk_buffers = HashMap::new();
+        let (send_generate, recv_generate) = mpsc::sync_channel(10);
+        let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
+        let generated_chunkdata = Arc::new(Mutex::new(HashMap::new()));
+        start_meshgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
+        let noise = OpenSimplex::new(SEED);
+        Self {
+            generated_buffers: generated_chunk_buffers,
+            generated_data: generated_chunkdata,
+            noise,
+            sender: send_generate,
+            receiver: recv_chunk,
+        }
+    }
     fn load_chunk(
         &self,
         path: &Path,
@@ -329,19 +344,6 @@ impl WindowDependent<'_> {
             },
         );
         let ui = ui::init_state(&device, &queue, &texture_bind_group_layout, &config, size);
-        let generated_chunk_buffers = HashMap::new();
-        let (send_generate, recv_generate) = mpsc::sync_channel(10);
-        let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
-        let generated_chunkdata = Arc::new(Mutex::new(HashMap::new()));
-        start_meshgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
-        let noise = OpenSimplex::new(SEED);
-        let chunk_manager = ChunkManager {
-            generated_buffers: generated_chunk_buffers,
-            generated_data: generated_chunkdata,
-            noise: noise,
-            sender: send_generate,
-            receiver: recv_chunk,
-        };
 
         WindowDependent {
             surface,
@@ -360,7 +362,7 @@ impl WindowDependent<'_> {
             input: InputState::default(),
             last_break: Instant::now(),
             window,
-            chunk_manager,
+            chunk_manager: ChunkManager::new(),
         }
     }
 
