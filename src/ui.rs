@@ -1,7 +1,7 @@
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 
-use crate::{create_index_buffer, create_render_pipeline, load_texture, texture};
+use crate::{create_index_buffer, create_render_pipeline, load_texture, texture, RenderContext};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -52,19 +52,13 @@ const CROSSHAIR: [Vertex; 4] = [
 
 #[allow(clippy::cast_precision_loss)]
 #[inline]
-pub fn init_state(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    texture_bind_group_layout: &wgpu::BindGroupLayout,
-    config: &wgpu::SurfaceConfiguration,
-    size: PhysicalSize<u32>,
-) -> State {
+pub fn init_state(render_context: &RenderContext, size: PhysicalSize<u32>) -> State {
     let crosshair_bind_group = load_texture(
-        device,
-        texture_bind_group_layout,
+        &render_context.device,
+        &render_context.texture_bind_group_layout,
         &texture::Texture::from_bytes(
-            device,
-            queue,
+            &render_context.device,
+            &render_context.queue,
             include_bytes!("crosshair.png"),
             "crosshair.png",
         )
@@ -72,22 +66,60 @@ pub fn init_state(
         Some("crosshair_bind_group"),
     );
     let crosshair = (
-        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&CROSSHAIR),
-            usage: wgpu::BufferUsages::VERTEX,
-        }),
-        create_index_buffer(device, &[0, 1, 2, 0, 2, 3]),
+        render_context
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(&CROSSHAIR),
+                usage: wgpu::BufferUsages::VERTEX,
+            }),
+        create_index_buffer(&render_context.device, &[0, 1, 2, 0, 2, 3]),
     );
     let aspect = size.width as f32 / size.height as f32;
     State {
         pipeline: create_render_pipeline(
-            device,
-            &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[
-                    texture_bind_group_layout,
-                    &device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            &render_context.device,
+            &render_context
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Render Pipeline Layout"),
+                    bind_group_layouts: &[
+                        &render_context.texture_bind_group_layout,
+                        &render_context.device.create_bind_group_layout(
+                            &wgpu::BindGroupLayoutDescriptor {
+                                entries: &[wgpu::BindGroupLayoutEntry {
+                                    binding: 0,
+                                    visibility: wgpu::ShaderStages::VERTEX
+                                        | wgpu::ShaderStages::FRAGMENT,
+                                    ty: wgpu::BindingType::Buffer {
+                                        ty: wgpu::BufferBindingType::Uniform,
+                                        has_dynamic_offset: false,
+                                        min_binding_size: None,
+                                    },
+                                    count: None,
+                                }],
+                                label: Some("ui_uniform_bind_group_layout"),
+                            },
+                        ),
+                    ],
+                    push_constant_ranges: &[],
+                }),
+            render_context.config.format,
+            Some(texture::Texture::DEPTH_FORMAT),
+            &[Vertex::desc()],
+            wgpu::ShaderModuleDescriptor {
+                label: Some("Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
+            },
+        ),
+        uniform: Uniform { aspect },
+        crosshair,
+        crosshair_bind_group,
+        uniform_bind_group: render_context
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                layout: &render_context.device.create_bind_group_layout(
+                    &wgpu::BindGroupLayoutDescriptor {
                         entries: &[wgpu::BindGroupLayoutEntry {
                             binding: 0,
                             visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
@@ -99,51 +131,27 @@ pub fn init_state(
                             count: None,
                         }],
                         label: Some("ui_uniform_bind_group_layout"),
-                    }),
-                ],
-                push_constant_ranges: &[],
+                    },
+                ),
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: render_context
+                        .device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Uniform Buffer"),
+                            contents: bytemuck::cast_slice(&[Uniform { aspect }]),
+                            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        })
+                        .as_entire_binding(),
+                }],
+                label: Some("ui_uniform_bind_group"),
             }),
-            config.format,
-            Some(texture::Texture::DEPTH_FORMAT),
-            &[Vertex::desc()],
-            wgpu::ShaderModuleDescriptor {
-                label: Some("Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
+        uniform_buffer: render_context.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Uniform Buffer"),
+                contents: bytemuck::cast_slice(&[Uniform { aspect }]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             },
         ),
-        uniform: Uniform { aspect },
-        crosshair,
-        crosshair_bind_group,
-        uniform_bind_group: device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("ui_uniform_bind_group_layout"),
-            }),
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: device
-                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: Some("Uniform Buffer"),
-                        contents: bytemuck::cast_slice(&[Uniform { aspect }]),
-                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    })
-                    .as_entire_binding(),
-            }],
-            label: Some("ui_uniform_bind_group"),
-        }),
-        uniform_buffer: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Uniform Buffer"),
-            contents: bytemuck::cast_slice(&[Uniform { aspect }]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        }),
     }
 }

@@ -25,13 +25,11 @@ use winit::{
     window::Window,
 };
 
-use chunk::{chunkcoord_to_aabb, BlockType, CHUNK_DEPTH_I32, CHUNK_WIDTH_I32};
+use chunk::{BlockType, ChunkManager, CHUNK_DEPTH_I32, CHUNK_WIDTH_I32};
 use futures::executor::block_on;
 
 use vek::{Aabb, Mat4, Vec3, Vec4};
 use wgpu::{util::DeviceExt, PipelineCompilationOptions};
-
-use crate::chunk::ChunkManager;
 
 const RENDER_DISTANCE: f32 = 768.0;
 
@@ -73,12 +71,6 @@ pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) ->
     true
 }
 
-#[derive(Debug)]
-struct ChunkBuffers {
-    index: wgpu::Buffer,
-    vertex: wgpu::Buffer,
-    num_indices: u32,
-}
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 /// location, uv, lightlevel
@@ -129,7 +121,7 @@ impl Uniforms {
     }
 }
 
-struct RenderContext<'a> {
+pub struct RenderContext<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -137,120 +129,15 @@ struct RenderContext<'a> {
     size: PhysicalSize<u32>,
     render_pipeline: wgpu::RenderPipeline,
     diffuse_bind_group: wgpu::BindGroup,
+    uniforms: Uniforms,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
+    texture_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl RenderContext<'_> {
-    fn resize(&mut self, new_size: PhysicalSize<u32>) {
-        self.size = new_size;
-        self.config.width = new_size.width;
-        self.config.height = new_size.height;
-        self.surface.configure(&self.device, &self.config);
-        self.depth_texture =
-            texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
-    }
-    fn render(
-        &self,
-        chunk_manager: &ChunkManager,
-        camera: &camera::Camera,
-        ui: &ui::State,
-    ) -> Result<(), wgpu::SurfaceError> {
-        let output = self.surface.get_current_texture()?;
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.2,
-                            g: 0.3,
-                            b: 0.4,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                    depth_slice: None,
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_texture.view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
-            #[allow(clippy::cast_possible_truncation)]
-            for chunk_loc in chunk_manager
-                .generated_buffers
-                .keys()
-                .sorted_by(|&a, &b| {
-                    ((b[0] * CHUNK_WIDTH_I32 - camera.get_position().x as i32).pow(2)
-                        + (b[1] * CHUNK_DEPTH_I32 - camera.get_position().z as i32).pow(2))
-                    .cmp(
-                        &((a[0] * CHUNK_WIDTH_I32 - camera.get_position().x as i32).pow(2)
-                            + (a[1] * CHUNK_DEPTH_I32 - camera.get_position().z as i32).pow(2)),
-                    )
-                })
-                .filter(|c| cuboid_intersects_frustum(&chunkcoord_to_aabb(**c), camera))
-            {
-                let chunk = &chunk_manager.generated_buffers[chunk_loc];
-                render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
-                render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
-            }
-            render_pass.set_pipeline(&ui.pipeline);
-            render_pass.set_bind_group(0, &ui.crosshair_bind_group, &[]);
-            render_pass.set_bind_group(1, &ui.uniform_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, ui.crosshair.0.slice(..));
-            render_pass.set_index_buffer(ui.crosshair.1.slice(..), wgpu::IndexFormat::Uint32);
-            render_pass.draw_indexed(0..6, 0, 0..1);
-        }
-        self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
-        Ok(())
-    }
-}
-
-#[derive(Default)]
-struct InputState {
-    left_pressed: bool,
-    right_pressed: bool,
-}
-
-pub type ChunkDataStorage = HashMap<[i32; 2], chunk::ChunkData>;
-
-struct WindowDependent<'a> {
-    camera: camera::Camera,
-    uniforms: Uniforms,
-    ui: ui::State,
-    chunk_manager: ChunkManager,
-    input: InputState,
-    last_break: Instant,
-    window: &'static Window,
-    render_context: RenderContext<'a>,
-}
-
-impl WindowDependent<'_> {
-    fn new(window: &'static Window) -> Self {
-        let size = window.inner_size();
+    fn new(window: &'static Window, size: PhysicalSize<u32>) -> Self {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let surface: wgpu::Surface<'_> = instance.create_surface(window).unwrap();
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -316,27 +203,7 @@ impl WindowDependent<'_> {
             .unwrap(),
             Some("diffuse_bind_group"),
         );
-        let camera = camera::CameraData::new(
-            (0.0, 100.0, 0.0),
-            -45.0_f32.to_radians(),
-            -20.0_f32.to_radians(),
-        );
-        let projection = camera::Projection::new(
-            config.width,
-            config.height,
-            90.0_f32.to_radians(),
-            0.05,
-            RENDER_DISTANCE,
-        );
-        let camera_controller = camera::PlayerController::new(10.0, 0.05);
-        let mut uniforms = Uniforms::new();
-        let camera = camera::Camera {
-            data: camera,
-            projection,
-            controller: camera_controller,
-            player: Player::new(Vec3::new(0.0, 100.0, 0.0)),
-        };
-        uniforms.update_view_proj(&camera);
+        let uniforms = Uniforms::new();
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Uniform Buffer"),
             contents: bytemuck::cast_slice(&[uniforms]),
@@ -381,8 +248,7 @@ impl WindowDependent<'_> {
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
             },
         );
-        let ui = ui::init_state(&device, &queue, &texture_bind_group_layout, &config, size);
-        let render_context = RenderContext {
+        Self {
             surface,
             device,
             queue,
@@ -390,15 +256,135 @@ impl WindowDependent<'_> {
             size,
             render_pipeline,
             diffuse_bind_group,
+            uniforms,
             uniform_buffer,
             uniform_bind_group,
             depth_texture,
+            texture_bind_group_layout,
+        }
+    }
+    fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        self.size = new_size;
+        self.config.width = new_size.width;
+        self.config.height = new_size.height;
+        self.surface.configure(&self.device, &self.config);
+        self.depth_texture =
+            texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
+    }
+    fn render(
+        &self,
+        chunk_manager: &ChunkManager,
+        camera: &camera::Camera,
+        ui: &ui::State,
+    ) -> Result<(), wgpu::SurfaceError> {
+        let output = self.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.2,
+                            g: 0.3,
+                            b: 0.4,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
+            chunk_manager.render_chunks(&mut render_pass, camera);
+            render_pass.set_pipeline(&ui.pipeline);
+            render_pass.set_bind_group(0, &ui.crosshair_bind_group, &[]);
+            render_pass.set_bind_group(1, &ui.uniform_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, ui.crosshair.0.slice(..));
+            render_pass.set_index_buffer(ui.crosshair.1.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.draw_indexed(0..6, 0, 0..1);
+        }
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+        Ok(())
+    }
+    fn write_uniforms(&self) {
+        self.queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[self.uniforms]),
+        );
+    }
+}
+
+#[derive(Default)]
+struct InputState {
+    left_pressed: bool,
+    right_pressed: bool,
+}
+
+pub type ChunkDataStorage = HashMap<[i32; 2], chunk::ChunkData>;
+
+struct WindowDependent<'a> {
+    camera: camera::Camera,
+    ui: ui::State,
+    chunk_manager: ChunkManager,
+    input: InputState,
+    last_break: Instant,
+    window: &'static Window,
+    render_context: RenderContext<'a>,
+}
+
+impl WindowDependent<'_> {
+    fn new(window: &'static Window) -> Self {
+        let size = window.inner_size();
+        let mut render_context = RenderContext::new(window, size);
+        let camera = camera::CameraData::new(
+            (0.0, 100.0, 0.0),
+            -45.0_f32.to_radians(),
+            -20.0_f32.to_radians(),
+        );
+        let projection = camera::Projection::new(
+            size.width,
+            size.height,
+            90.0_f32.to_radians(),
+            0.05,
+            RENDER_DISTANCE,
+        );
+        let camera_controller = camera::PlayerController::new(10.0, 0.05);
+        let camera = camera::Camera {
+            data: camera,
+            projection,
+            controller: camera_controller,
+            player: Player::new(Vec3::new(0.0, 100.0, 0.0)),
         };
+        render_context.uniforms.update_view_proj(&camera);
+        let ui = ui::init_state(&render_context, size);
 
         WindowDependent {
             render_context,
             camera,
-            uniforms,
             ui,
             input: InputState::default(),
             last_break: Instant::now(),
@@ -450,14 +436,10 @@ impl WindowDependent<'_> {
 
     // TODO: implement a way to retry sending the chunk for mesh generation automatically
     fn update(&mut self, dt: std::time::Duration) {
-        self.render_context.queue.write_buffer(
-            &self.render_context.uniform_buffer,
-            0,
-            bytemuck::cast_slice(&[self.uniforms]),
-        );
+        self.render_context.write_uniforms();
         let mut generated_chunkdata = self.chunk_manager.generated_data.lock().unwrap();
         self.camera.update(dt, &generated_chunkdata);
-        self.uniforms.update_view_proj(&self.camera);
+        self.render_context.uniforms.update_view_proj(&self.camera);
         let chunk_location = chunk::nearest_visible_unloaded(
             self.camera.get_position().x,
             self.camera.get_position().z,
@@ -522,37 +504,8 @@ impl WindowDependent<'_> {
                 }
             }
         }
-        while let Ok((mesh, indices, index)) = self.chunk_manager.receiver.try_recv() {
-            self.chunk_manager.generated_buffers.insert(
-                index,
-                ChunkBuffers {
-                    vertex: self.render_context.device.create_buffer_init(
-                        &wgpu::util::BufferInitDescriptor {
-                            label: Some("Vertex Buffer"),
-                            contents: bytemuck::cast_slice(&mesh),
-                            usage: wgpu::BufferUsages::VERTEX,
-                        },
-                    ),
-                    index: self.render_context.device.create_buffer_init(
-                        &wgpu::util::BufferInitDescriptor {
-                            label: Some("Index Buffer"),
-                            contents: bytemuck::cast_slice(&indices),
-                            usage: wgpu::BufferUsages::INDEX,
-                        },
-                    ),
-                    num_indices: u32::try_from(indices.len()).unwrap(),
-                },
-            );
-            // let (vertsize, indexsize) = self
-            //     .generated_chunk_buffers
-            //     .iter()
-            //     .fold((0, 0), |acc, (_, item)| {
-            //         (acc.0 + item.vertex.size(), acc.1 + item.index.size())
-            //     });
-
-            // println!("Index space: {indexsize}");
-            // println!("Vertex space: {vertsize}");
-        }
+        drop(generated_chunkdata);
+        self.chunk_manager.insert_chunk(&self.render_context);
     }
 
     fn render(&self) -> Result<(), wgpu::SurfaceError> {

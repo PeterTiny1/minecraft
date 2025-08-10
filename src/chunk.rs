@@ -8,11 +8,13 @@ use std::{
 
 use bincode::{Decode, Encode};
 use half::f16;
+use itertools::Itertools;
 use noise::{NoiseFn, OpenSimplex};
 use vek::{Aabb, Vec3};
+use wgpu::util::DeviceExt;
 
 use crate::{
-    camera, cuboid_intersects_frustum, ChunkBuffers, ChunkDataStorage, Vertex, RENDER_DISTANCE,
+    camera, cuboid_intersects_frustum, ChunkDataStorage, RenderContext, Vertex, RENDER_DISTANCE,
     SEED,
 };
 #[cfg(target_os = "windows")]
@@ -34,6 +36,12 @@ const HALF_TEXTURE_WIDTH: f32 = TEXTURE_WIDTH / 2.0;
 type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 static EMPTY_CHUNK: Chunk = [[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 pub type Index = u32;
+#[derive(Debug)]
+struct ChunkBuffers {
+    index: wgpu::Buffer,
+    vertex: wgpu::Buffer,
+    num_indices: u32,
+}
 
 #[derive(Clone, Copy)]
 enum Biome {
@@ -187,7 +195,7 @@ impl BlockType {
 }
 
 pub struct ChunkManager {
-    pub generated_buffers: HashMap<[i32; 2], ChunkBuffers>,
+    generated_buffers: HashMap<[i32; 2], ChunkBuffers>,
     pub generated_data: Arc<Mutex<ChunkDataStorage>>,
     noise: OpenSimplex,
 
@@ -232,6 +240,59 @@ impl ChunkManager {
             Ok(()) => {}
             Err(mpsc::TrySendError::Disconnected(_)) => panic!("Got disconnected!"),
             Err(mpsc::TrySendError::Full(_)) => todo!(),
+        }
+    }
+    pub fn insert_chunk(&mut self, render_context: &RenderContext) {
+        while let Ok((mesh, indices, index)) = self.receiver.try_recv() {
+            self.generated_buffers.insert(
+                index,
+                ChunkBuffers {
+                    vertex: render_context.device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("Vertex Buffer"),
+                            contents: bytemuck::cast_slice(&mesh),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        },
+                    ),
+                    index: render_context.device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("Index Buffer"),
+                            contents: bytemuck::cast_slice(&indices),
+                            usage: wgpu::BufferUsages::INDEX,
+                        },
+                    ),
+                    num_indices: u32::try_from(indices.len()).unwrap(),
+                },
+            );
+            // let (vertsize, indexsize) = self
+            //     .generated_chunk_buffers
+            //     .iter()
+            //     .fold((0, 0), |acc, (_, item)| {
+            //         (acc.0 + item.vertex.size(), acc.1 + item.index.size())
+            //     });
+
+            // println!("Index space: {indexsize}");
+            // println!("Vertex space: {vertsize}");
+        }
+    }
+    pub fn render_chunks(&self, render_pass: &mut wgpu::RenderPass, camera: &camera::Camera) {
+        for chunk_location in self
+            .generated_buffers
+            .keys()
+            .sorted_by(|&a, &b| {
+                ((b[0] * CHUNK_WIDTH_I32 - camera.get_position().x as i32).pow(2)
+                    + (b[1] * CHUNK_DEPTH_I32 - camera.get_position().z as i32).pow(2))
+                .cmp(
+                    &((a[0] * CHUNK_WIDTH_I32 - camera.get_position().x as i32).pow(2)
+                        + (a[1] * CHUNK_DEPTH_I32 - camera.get_position().z as i32).pow(2)),
+                )
+            })
+            .filter(|c| cuboid_intersects_frustum(&chunkcoord_to_aabb(**c), camera))
+        {
+            let chunk = &self.generated_buffers[chunk_location];
+            render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
+            render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
         }
     }
 }
