@@ -1,53 +1,58 @@
-use std::{collections::HashMap, time::Duration};
-
-use vek::{Mat4, Quaternion, Vec3};
+use vek::{Mat4, Vec3};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-use crate::{chunk, player::Player};
+pub struct Camera {
+    pub data: CameraData,
+    pub projection: Projection,
+}
+
+impl Camera {
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.projection.resize(width, height);
+    }
+
+    pub const fn get_position(&self) -> Vec3<f32> {
+        self.data.position
+    }
+
+    pub fn get_transformation(&self) -> Mat4<f32> {
+        self.projection.calc_matrix() * self.data.calc_matrix()
+    }
+
+    // This is the function we need to add for the block raycast
+    pub fn get_forward_vector(&self) -> Vec3<f32> {
+        (self.data.yaw.cos() * self.data.pitch.cos()) * Vec3::unit_x()
+            + self.data.pitch.sin() * Vec3::unit_y()
+            + (self.data.yaw.sin() * self.data.pitch.cos()) * Vec3::unit_z()
+    }
+}
 
 #[derive(Debug)]
 pub struct CameraData {
     pub position: Vec3<f32>,
-    pitch: f32,
-    yaw: f32,
-    quaternion: Quaternion<f32>,
-}
-
-fn to_quaternion(heading: f32, attitude: f32) -> Quaternion<f32> {
-    let (s1, c1) = (heading / 2.0).sin_cos();
-    let (s2, c2) = (attitude / 2.0).sin_cos();
-    let (s3, c3) = (0.0, 1.0);
-    Quaternion::from_xyzw(
-        (s1 * s2).mul_add(c3, c1 * c2 * s3),
-        (s1 * c2).mul_add(c3, c1 * s2 * s3),
-        (c1 * s2).mul_add(c3, -s1 * c2 * s3),
-        (c1 * c2).mul_add(c3, -s1 * s2 * s3),
-    )
+    pub yaw: f32,
+    pub pitch: f32,
 }
 
 impl CameraData {
-    pub fn new<V: Into<Vec3<f32>>>(position: V, yaw: f32, pitch: f32) -> Self {
+    pub fn new(position: (f32, f32, f32), yaw: f32, pitch: f32) -> Self {
         Self {
             position: position.into(),
-            pitch,
             yaw,
-            quaternion: to_quaternion(-yaw, pitch).normalized(),
+            pitch,
         }
     }
-
+    pub fn get_forward_vector(&self) -> Vec3<f32> {
+        (self.yaw.cos() * self.pitch.cos()) * Vec3::unit_x()
+            + self.pitch.sin() * Vec3::unit_y()
+            + (self.yaw.sin() * self.pitch.cos()) * Vec3::unit_z()
+    }
     pub fn calc_matrix(&self) -> Mat4<f32> {
         Mat4::look_at_rh(
             self.position,
-            self.quaternion * Vec3::unit_x() + self.position,
-            self.quaternion * Vec3::unit_y(),
+            self.position + self.get_forward_vector(),
+            Vec3::unit_y(),
         )
-    }
-
-    pub fn update_from_player(&mut self, player: &Player) {
-        self.position = player.get_camera_position();
-        self.pitch = player.pitch;
-        self.yaw = player.yaw;
-        self.quaternion = to_quaternion(-self.yaw, self.pitch).normalized();
     }
 }
 
@@ -59,10 +64,10 @@ pub struct Projection {
 }
 
 impl Projection {
-    pub fn new<F: Into<f32>>(width: u32, height: u32, fovy: F, znear: f32, zfar: f32) -> Self {
+    pub fn new(width: u32, height: u32, fovy: f32, znear: f32, zfar: f32) -> Self {
         Self {
             aspect: width as f32 / height as f32,
-            fovy: fovy.into(),
+            fovy,
             znear,
             zfar,
         }
@@ -73,17 +78,20 @@ impl Projection {
     }
 
     pub fn calc_matrix(&self) -> Mat4<f32> {
-        Mat4::perspective_rh_no(self.fovy, self.aspect, self.znear, self.zfar)
+        Mat4::perspective_rh_zo(self.fovy, self.aspect, self.znear, self.zfar)
     }
 }
 
+#[derive(Debug)]
 pub struct PlayerController {
-    amount_left: f32,
-    amount_right: f32,
-    amount_forward: f32,
-    amount_backward: f32,
-    amount_up: f32,
-    amount_down: f32,
+    pub amount_left: f32,
+    pub amount_right: f32,
+    pub amount_forward: f32,
+    pub amount_backward: f32,
+    pub amount_up: f32,
+    pub amount_down: f32,
+
+    // These are now private, only this controller manages them
     rotate_horizontal: f32,
     rotate_vertical: f32,
     scroll: f32,
@@ -108,7 +116,7 @@ impl PlayerController {
         }
     }
 
-    pub const fn process_keyboard(&mut self, key: PhysicalKey, pressed: bool) -> bool {
+    pub fn process_keyboard(&mut self, key: PhysicalKey, pressed: bool) -> bool {
         let amount = if pressed { 1.0 } else { 0.0 };
         match key {
             PhysicalKey::Code(keycode) => match keycode {
@@ -151,58 +159,25 @@ impl PlayerController {
         self.scroll = delta * 200.0;
     }
 
-    pub fn update_player(&mut self, player: &mut Player, dt: std::time::Duration) {
+    pub fn update_camera(&mut self, camera: &mut CameraData, dt: std::time::Duration) {
         let dt_secs = dt.as_secs_f32();
 
-        player.apply_movement_input(
-            self.amount_forward - self.amount_backward,
-            self.amount_right - self.amount_left,
-            self.amount_up - self.amount_down,
-            self.speed,
-            dt_secs,
+        // Apply rotation
+        camera.yaw += self.rotate_horizontal * self.sensitivity * dt_secs;
+        camera.pitch += self.rotate_vertical * self.sensitivity * dt_secs;
+
+        // Clamp pitch
+        camera.pitch = camera.pitch.clamp(
+            -std::f32::consts::FRAC_PI_2 + 0.001,
+            std::f32::consts::FRAC_PI_2 - 0.001,
         );
 
-        player.apply_rotation_input(
-            self.rotate_horizontal,
-            self.rotate_vertical,
-            self.sensitivity,
-        );
-
+        // Reset mouse deltas after applying
         self.rotate_horizontal = 0.0;
         self.rotate_vertical = 0.0;
         self.scroll = 0.0;
     }
-}
-
-pub struct Camera {
-    pub data: CameraData,
-    pub projection: Projection,
-    pub controller: PlayerController,
-    pub player: Player,
-}
-
-impl Camera {
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.projection.resize(width, height);
-    }
-
-    pub fn update(&mut self, dt: Duration, world: &HashMap<[i32; 2], chunk::ChunkData>) {
-        self.controller.update_player(&mut self.player, dt);
-
-        self.player.update_physics(dt.as_secs_f32(), world);
-
-        self.data.update_from_player(&self.player);
-    }
-
-    pub const fn get_position(&self) -> Vec3<f32> {
-        self.data.position
-    }
-
-    pub const fn get_looking_at(&self) -> Option<(Vec3<i32>, usize)> {
-        self.player.looking_at_block
-    }
-
-    pub fn get_transformation(&self) -> Mat4<f32> {
-        self.projection.calc_matrix() * self.data.calc_matrix()
+    pub const fn get_speed(&self) -> f32 {
+        self.speed
     }
 }

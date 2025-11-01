@@ -1,7 +1,10 @@
 use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 
-use crate::{create_index_buffer, create_render_pipeline, load_texture, texture, RenderContext};
+use crate::{
+    renderer::create_index_buffer, renderer::create_render_pipeline, renderer::load_texture,
+    renderer::RenderContext, texture,
+};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]

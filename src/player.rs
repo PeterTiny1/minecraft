@@ -1,26 +1,26 @@
-use std::collections::HashMap;
-use std::f32::consts::FRAC_PI_2; // Moved to top of file for better style
-
+use std::f32::consts::FRAC_PI_2;
 use vek::{Aabb, Vec2, Vec3};
 
 use crate::{
-    chunk::{get_block, BlockType, ChunkData},
-    ray::Ray,
+    block::BlockType,
+    camera::{self, CameraData},
+    chunk::{get_block, ChunkDataStorage},
+    ray,
 };
 
 const GRAVITY: f32 = 30.0;
 const FRICTION: f32 = 10.0;
 const MAX_FALL_SPEED: f32 = 54.0;
-const PLAYER_HEIGHT: f32 = 1.8; // Total height of player's collision box
-const PLAYER_WIDTH_HALF: f32 = 0.3; // Half width/depth of player's collision box
+const PLAYER_HEIGHT: f32 = 1.8;
+const PLAYER_WIDTH_HALF: f32 = 0.3;
+const EYE_HEIGHT: f32 = 1.6;
 
+#[derive(Debug)]
 pub struct Player {
-    pub position: Vec3<f32>, // Bottom-center of the player AABB
-    pub velocity: Vec3<f32>,
-    pub pitch: f32,
-    pub yaw: f32,
+    pub position: Vec3<f32>,
+    velocity: Vec3<f32>,
     pub is_grounded: bool,
-    pub half_extents: Vec3<f32>, // Half width, half height, half depth of the AABB
+    half_extents: Vec3<f32>,
     pub looking_at_block: Option<(Vec3<i32>, usize)>,
 }
 
@@ -36,10 +36,7 @@ impl Player {
         Self {
             position,
             velocity: Vec3::zero(),
-            pitch: 0.0,
-            yaw: 0.0,
             is_grounded: false,
-            // half_extents for an AABB: (width/2, height/2, depth/2)
             half_extents: Vec3::new(PLAYER_WIDTH_HALF, PLAYER_HEIGHT / 2.0, PLAYER_WIDTH_HALF),
             looking_at_block: None,
         }
@@ -56,50 +53,43 @@ impl Player {
         }
     }
 
-    pub fn apply_movement_input(
+    /// This is the new, merged update function
+    pub fn update_physics(
         &mut self,
-        forward_amount: f32,
-        right_amount: f32,
-        up_down_amount: f32, // For creative mode up/down or jump impulse
-        speed: f32,
         dt: f32,
+        world: &ChunkDataStorage,
+        controller: &camera::PlayerController,
+        camera_data: &CameraData,
     ) {
-        let (yaw_sin, yaw_cos) = self.yaw.sin_cos();
-        // FIX: Removed redundant .normalized() calls
-        let forward = Vec3::new(yaw_cos, 0.0, yaw_sin);
-        let right = Vec3::new(-yaw_sin, 0.0, yaw_cos);
+        // --- 1. Apply Movement Input ---
+        let forward = (camera_data.yaw.cos() * camera_data.pitch.cos()) * Vec3::unit_x()
+            + (camera_data.yaw.sin() * camera_data.pitch.cos()) * Vec3::unit_z();
+        let right = (camera_data.yaw - FRAC_PI_2).cos() * Vec3::unit_x()
+            + (camera_data.yaw - FRAC_PI_2).sin() * Vec3::unit_z();
 
-        // Apply horizontal input to velocity
-        self.velocity += forward * forward_amount * speed * dt;
-        self.velocity += right * right_amount * speed * dt;
+        let forward_force = controller.amount_forward - controller.amount_backward;
+        let right_force = controller.amount_left - controller.amount_right;
+        let up_force = controller.amount_up - controller.amount_down;
 
-        // Apply vertical "creative" input
-        self.velocity.y += up_down_amount * speed * dt * 5.0; // Multiplier 5.0 for faster vertical movement
-    }
+        let direction = (forward * forward_force + right * right_force).normalized();
 
-    pub fn apply_rotation_input(
-        &mut self,
-        rotate_horizontal: f32,
-        rotate_vertical: f32,
-        sensitivity: f32,
-    ) {
-        self.yaw += rotate_horizontal * sensitivity / 10.0;
-        self.pitch += rotate_vertical * sensitivity / 10.0;
-        self.pitch = self.pitch.clamp(-FRAC_PI_2, FRAC_PI_2);
-    }
+        if direction.x.is_finite() && direction.y.is_finite() && direction.z.is_finite() {
+            self.velocity.x += direction.x * controller.get_speed() * dt;
+            self.velocity.z += direction.z * controller.get_speed() * dt;
+        }
 
-    pub fn update_physics(&mut self, dt: f32, world: &HashMap<[i32; 2], ChunkData>) {
-        // 1. Apply Gravity
+        self.velocity.y += up_force * controller.get_speed() * dt * 5.0; // Multiplier 5.0 for faster vertical movement
+
+        // --- 2. Apply Gravity & Drag  ---
         self.velocity.y -= GRAVITY * dt;
-        self.velocity.y = self.velocity.y.max(-MAX_FALL_SPEED); // Apply terminal velocity
+        self.velocity.y = self.velocity.y.max(-MAX_FALL_SPEED);
 
-        // 2. Apply Friction
-        // FIX: Air friction (drag) should only apply to horizontal velocity.
+        // Air friction
         let air_friction_decay = 0.95_f32.powf(dt);
         self.velocity.x *= air_friction_decay;
         self.velocity.z *= air_friction_decay;
 
-        // Ground friction (only if grounded)
+        // Ground friction
         if self.is_grounded {
             let velocity_xz = Vec2::new(self.velocity.x, self.velocity.z);
             if velocity_xz.magnitude_squared() > (FRICTION * dt).powi(2) {
@@ -107,17 +97,15 @@ impl Player {
                 self.velocity.x -= friction.x;
                 self.velocity.z -= friction.y;
             } else {
-                // Stop horizontal movement if below friction threshold
                 self.velocity.x = 0.0;
                 self.velocity.z = 0.0;
             }
         }
 
-        // --- 3. Collision Detection and Resolution ---
+        // --- 3. Collision Detection ---
         let desired_displacement = self.velocity * dt;
         self.is_grounded = false; // Reset grounded state each frame
 
-        // Resolve collisions on each axis independently
         self.position.x += desired_displacement.x;
         self.resolve_collisions_on_axis(world, Axis::X);
 
@@ -127,33 +115,28 @@ impl Player {
         self.position.z += desired_displacement.z;
         self.resolve_collisions_on_axis(world, Axis::Z);
 
-        // Handle falling off world (teleport back up)
+        // Handle falling off world
         if self.position.y < -64.0 {
             self.position.y = 128.0;
             self.velocity = Vec3::zero();
         }
 
-        // 4. Raycasting for looking_at_block
-        let (pitch_sin, pitch_cos) = self.pitch.sin_cos();
-        let (yaw_sin, yaw_cos) = self.yaw.sin_cos();
-
-        let looking_direction =
-            Vec3::new(pitch_cos * yaw_cos, pitch_sin, pitch_cos * yaw_sin).normalized();
+        // --- 4. Update Raycast ---
+        // Get camera position and direction
         let eye_level_position = self.get_camera_position();
+        let looking_direction = camera_data.get_forward_vector();
 
-        self.looking_at_block = Ray::new(eye_level_position, looking_direction, 5.0).find(
+        self.looking_at_block = ray::Ray::new(eye_level_position, looking_direction, 5.0).find(
             |(e, _)| matches!(get_block(world, e.x, e.y, e.z), Some(b) if b != BlockType::Air),
         );
     }
 
-    fn resolve_collisions_on_axis(&mut self, world: &HashMap<[i32; 2], ChunkData>, axis: Axis) {
+    fn resolve_collisions_on_axis(&mut self, world: &ChunkDataStorage, axis: Axis) {
         let skin = 0.001;
 
         for _ in 0..5 {
-            // Use a for loop for a fixed number of iterations
             let player_aabb_current = self.aabb();
 
-            // FIX: Use floor() and an inclusive range (..=) to correctly check blocks at boundaries.
             let min_x = (player_aabb_current.min.x - skin).floor() as i32;
             let max_x = (player_aabb_current.max.x + skin).floor() as i32;
             let min_y = (player_aabb_current.min.y - skin).floor() as i32;
@@ -176,7 +159,6 @@ impl Player {
                                 if player_aabb_current.collides_with_aabb(block_aabb) {
                                     collision_found = true;
                                     self.handle_collision(axis, block_aabb, skin);
-                                    // After one collision, re-evaluate AABB and check all blocks again
                                     break;
                                 }
                             }
@@ -192,45 +174,34 @@ impl Player {
             }
 
             if !collision_found {
-                break; // No collisions found in this pass, resolution for this axis is done.
+                break;
             }
         }
     }
 
-    /// Helper function to contain the collision response logic.
     fn handle_collision(&mut self, axis: Axis, block_aabb: Aabb<f32>, skin: f32) {
         match axis {
             Axis::X => {
                 if self.aabb().center().x < block_aabb.center().x {
-                    // Player is on the -X side of the block, push them to -X
                     self.position.x = block_aabb.min.x - self.half_extents.x - skin;
                 } else {
-                    // Player is on the +X side of the block, push them to +X
                     self.position.x = block_aabb.max.x + self.half_extents.x + skin;
                 }
                 self.velocity.x = 0.0;
             }
             Axis::Y => {
                 if self.velocity.y <= 0.0 {
-                    // Moving down or still
-                    // Resolve collision by placing player on top of the block.
                     self.position.y = block_aabb.max.y + skin;
                     self.is_grounded = true;
                 } else {
-                    // Moving up
-                    // Resolve collision by placing player below the block (hitting a ceiling).
-                    // position.y is the bottom of the AABB.
                     self.position.y = block_aabb.min.y - PLAYER_HEIGHT - skin;
                 }
                 self.velocity.y = 0.0;
             }
             Axis::Z => {
-                // FIX: Removed copy-paste error. This logic is now correct.
                 if self.aabb().center().z < block_aabb.center().z {
-                    // Player is on the -Z side of the block, push them to -Z
                     self.position.z = block_aabb.min.z - self.half_extents.z - skin;
                 } else {
-                    // Player is on the +Z side of the block, push them to +Z
                     self.position.z = block_aabb.max.z + self.half_extents.z + skin;
                 }
                 self.velocity.z = 0.0;
@@ -239,6 +210,10 @@ impl Player {
     }
 
     pub fn get_camera_position(&self) -> Vec3<f32> {
-        self.position + Vec3::new(0.0, PLAYER_HEIGHT * 0.9, 0.0)
+        self.position + Vec3::new(0.0, EYE_HEIGHT, 0.0)
+    }
+
+    pub const fn get_looking_at(&self) -> Option<(Vec3<i32>, usize)> {
+        self.looking_at_block
     }
 }
