@@ -186,6 +186,7 @@ impl RenderContext<'_> {
                 wgpu::Limits::default()
             },
             memory_hints: wgpu::MemoryHints::Performance,
+            experimental_features: wgpu::ExperimentalFeatures::disabled(),
             trace: wgpu::Trace::Off,
         }))
         .unwrap();
