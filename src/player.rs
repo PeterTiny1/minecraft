@@ -4,7 +4,7 @@ use vek::{Aabb, Vec2, Vec3};
 use crate::{
     block::BlockType,
     camera::{self, CameraData},
-    chunk::{get_block, ChunkDataStorage},
+    chunk::{BlockProvider, ChunkDataStorage},
     ray,
 };
 
@@ -127,7 +127,7 @@ impl Player {
         let looking_direction = camera_data.get_forward_vector();
 
         self.looking_at_block = ray::Ray::new(eye_level_position, looking_direction, 5.0).find(
-            |(e, _)| matches!(get_block(world, e.x, e.y, e.z), Some(b) if b != BlockType::Air),
+            |(e, _)| matches!(world.get_block(e.x, e.y, e.z), Some(b) if b != BlockType::Air),
         );
     }
 
@@ -149,7 +149,7 @@ impl Player {
             for x in min_x..=max_x {
                 for y in min_y..=max_y {
                     for z in min_z..=max_z {
-                        if let Some(block_type) = get_block(world, x, y, z) {
+                        if let Some(block_type) = world.get_block(x, y, z) {
                             if block_type.is_solid() {
                                 let block_aabb = Aabb {
                                     min: Vec3::new(x as f32, y as f32, z as f32),

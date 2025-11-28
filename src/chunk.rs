@@ -35,6 +35,24 @@ pub const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
 /// Stores the data of a chunk, 32x256x32 on Linux, 16x256x16 on Windows, accessed in order x, y, z
 pub type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
 pub type ChunkDataStorage = HashMap<[i32; 2], ChunkData>;
+pub trait BlockProvider {
+    fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType>;
+}
+impl BlockProvider for ChunkDataStorage {
+    fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType> {
+        let chunk_x = x.div_euclid(CHUNK_WIDTH_I32);
+        let chunk_z = z.div_euclid(CHUNK_DEPTH_I32);
+        let chunk = self.get(&[chunk_x, chunk_z])?;
+        let x = (x - (x.div_euclid(CHUNK_WIDTH_I32) * CHUNK_WIDTH_I32)) as usize;
+        let z = (z - (z.div_euclid(CHUNK_DEPTH_I32) * CHUNK_DEPTH_I32)) as usize;
+        #[allow(clippy::cast_sign_loss)]
+        if y >= 0 && (y as usize) < CHUNK_HEIGHT {
+            Some(chunk.contents[x][y as usize][z])
+        } else {
+            None
+        }
+    }
+}
 #[derive(Debug)]
 struct ChunkBuffers {
     index: wgpu::Buffer,
@@ -153,34 +171,6 @@ pub struct ChunkData {
 const MAX_DISTANCE_X: i32 = RENDER_DISTANCE as i32 / CHUNK_WIDTH_I32 + 1;
 const MAX_DISTANCE_Y: i32 = RENDER_DISTANCE as i32 / CHUNK_DEPTH_I32 + 1;
 
-fn chunk_at_block(
-    generated_chunks: &HashMap<[i32; 2], ChunkData>,
-    x: i32,
-    z: i32,
-) -> Option<&ChunkData> {
-    let chunk_x = x.div_euclid(CHUNK_WIDTH_I32);
-    let chunk_z = z.div_euclid(CHUNK_DEPTH_I32);
-    generated_chunks.get(&[chunk_x, chunk_z])
-}
-
-#[allow(clippy::cast_sign_loss)]
-pub fn get_block(
-    generated_chunks: &HashMap<[i32; 2], ChunkData>,
-    x: i32,
-    y: i32,
-    z: i32,
-) -> Option<BlockType> {
-    let chunk = chunk_at_block(generated_chunks, x, z)?;
-    let x = (x - (x.div_euclid(CHUNK_WIDTH_I32) * CHUNK_WIDTH_I32)) as usize;
-    let z = (z - (z.div_euclid(CHUNK_DEPTH_I32) * CHUNK_DEPTH_I32)) as usize;
-    #[allow(clippy::cast_sign_loss)]
-    if y >= 0 && (y as usize) < CHUNK_HEIGHT {
-        Some(chunk.contents[x][y as usize][z])
-    } else {
-        None
-    }
-}
-
 #[allow(clippy::cast_precision_loss)]
 pub fn chunkcoord_to_aabb(coord: [i32; 2]) -> Aabb<f32> {
     let min = Vec3::new(
@@ -196,13 +186,11 @@ pub fn chunkcoord_to_aabb(coord: [i32; 2]) -> Aabb<f32> {
 
 #[allow(clippy::cast_possible_truncation)]
 pub fn nearest_visible_unloaded(
-    x: f32,
-    z: f32,
     generated_chunks: &HashMap<[i32; 2], ChunkData>,
     camera: &camera::Camera,
 ) -> Option<[i32; 2]> {
-    let chunk_x = (x as i32).div_euclid(CHUNK_WIDTH_I32);
-    let chunk_z = (z as i32).div_euclid(CHUNK_WIDTH_I32);
+    let chunk_x = (camera.get_position().x as i32).div_euclid(CHUNK_WIDTH_I32);
+    let chunk_z = (camera.get_position().z as i32).div_euclid(CHUNK_WIDTH_I32);
     let length = |a, b| a * a + b * b;
     (-MAX_DISTANCE_X..=MAX_DISTANCE_X)
         .flat_map(|i| {
@@ -250,58 +238,20 @@ fn manage_meshgen(
         waiting = new_waiting;
         if let Ok(chunk_location) = recv_generate.recv() {
             let generated_chunkdata = chunkdata_arc.lock().unwrap();
-            let chunk_data = generated_chunkdata[&chunk_location];
-            let [x, y]: [i32; 2] = chunk_location;
-            let chunk_locations = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
-            let (mesh, index_buffer) = generate_chunk_mesh(
-                chunk_location,
-                &chunk_data.contents,
-                chunk_locations.map(|chunk| generated_chunkdata.get(&chunk).map(|c| &c.contents)),
-            );
-            let further_chunks = [
-                [[x + 2, y], [x + 1, y + 1], [x + 1, y - 1]],
-                [[x - 2, y], [x - 1, y + 1], [x - 1, y - 1]],
-                [[x + 1, y + 1], [x - 1, y + 1], [x, y + 2]],
-                [[x + 1, y - 1], [x - 1, y - 1], [x, y - 2]],
-            ];
-            for (index, (chunk_index, surrounding_chunks)) in
-                chunk_locations.iter().zip(further_chunks).enumerate()
-            {
-                let get_chunk = |a, b| {
-                    if index == a {
-                        Some(&chunk_data)
-                    } else {
-                        generated_chunkdata.get(&surrounding_chunks[b])
-                    }
-                };
-                if let Some(chunk) = generated_chunkdata.get(chunk_index) {
-                    let (mesh, indices) = generate_chunk_mesh(
-                        chunk_locations[index],
-                        &chunk.contents,
-                        [
-                            get_chunk(1, 0),
-                            get_chunk(0, usize::from(index != 1)),
-                            get_chunk(3, if index < 2 { 1 } else { 2 }),
-                            get_chunk(2, 2),
-                        ]
-                        .map(|c| c.map(|chunk| &chunk.contents)),
-                    );
-
-                    match send_chunk.try_send((mesh, indices, *chunk_index)) {
-                        Ok(()) => {}
-                        Err(mpsc::TrySendError::Disconnected(_)) => {
-                            break;
-                        }
-                        Err(mpsc::TrySendError::Full(v)) => waiting.push(v),
-                    }
+            let [x, y] = chunk_location;
+            let chunks_to_remesh = [[x, y], [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+            for loc in chunks_to_remesh {
+                if !generated_chunkdata.contains_key(&loc) {
+                    continue;
                 }
-            }
-            match send_chunk.try_send((mesh, index_buffer, chunk_location)) {
-                Ok(()) => {}
-                Err(mpsc::TrySendError::Disconnected(_)) => {
-                    break;
+                let (mesh, indices) = generate_chunk_mesh(&*generated_chunkdata, loc[0], loc[1]);
+                match send_chunk.try_send((mesh, indices, loc)) {
+                    Ok(()) => {}
+                    Err(mpsc::TrySendError::Disconnected(_)) => {
+                        break;
+                    }
+                    Err(mpsc::TrySendError::Full(v)) => waiting.push(v),
                 }
-                Err(mpsc::TrySendError::Full(v)) => waiting.push(v),
             }
         }
     }

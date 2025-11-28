@@ -1,10 +1,9 @@
 use half::f16;
 use std::f32::consts::FRAC_1_SQRT_2;
-use vek::Vec3;
 
 use crate::{
     block::BlockType,
-    chunk::{Chunk, CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32},
+    chunk::{BlockProvider, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32},
     renderer::Vertex,
 };
 
@@ -198,128 +197,96 @@ const QUAD_INDICES: [Index; 6] = [0, 1, 2, 0, 2, 3];
 const TOP_LEFT_WATER: [f32; 2] = [TOP_LEFT[0], TOP_LEFT[1] + HALF_TEXTURE_WIDTH];
 const TOP_RIGHT_WATER: [f32; 2] = [TOP_RIGHT[0], TOP_RIGHT[1] + HALF_TEXTURE_WIDTH];
 
-struct MeshGenerationContext<'a> {
-    chunk: &'a Chunk,
-    position: Vec3<usize>,
-    chunk_location: [i32; 2],
+struct MeshGenerationContext<'a, T: BlockProvider> {
+    world: &'a T,
+    global_x: i32,
+    global_y: i32,
+    global_z: i32,
     indices: &'a mut Vec<Index>,
     vertices: &'a mut Vec<Vertex>,
-    surrounding_chunks: [Option<&'a Chunk>; 4],
 }
 
-impl MeshGenerationContext<'_> {
-    /// Get the position vector as an array
-    fn position_array(&self) -> [usize; 3] {
-        self.position.into_array()
-    }
+impl<T: BlockProvider> MeshGenerationContext<'_, T> {
     #[allow(clippy::cast_precision_loss)]
     fn worldpos_f32(&self) -> [f32; 3] {
-        [
-            (i32::try_from(self.position.x).unwrap() + (self.chunk_location[0] * CHUNK_WIDTH_I32))
-                as f32,
-            self.position.y as f32,
-            (i32::try_from(self.position.z).unwrap() + (self.chunk_location[1] * CHUNK_WIDTH_I32))
-                as f32,
-        ]
-    }
-    const fn type_at_position(&self) -> BlockType {
-        self.chunk[self.position.x][self.position.y][self.position.z]
+        [self.global_x, self.global_y, self.global_z].map(|c| c as f32)
     }
     fn extend_indicies(&mut self, base_indices: &[Index]) {
         let len_index = Index::try_from(self.vertices.len()).unwrap();
         self.indices
             .extend(base_indices.iter().map(|i| *i + len_index));
     }
-    #[inline]
-    fn is_neighbor_solid(&self, x_offset: i32, y_offset: i32, z_offset: i32) -> bool {
-        let [x, y, z] = self.position_array();
 
-        let new_y = y as i32 + y_offset;
-        // Check Y bounds first (easiest)
-        if new_y < 0 || new_y >= CHUNK_HEIGHT as i32 {
-            return false; // Out of bounds vertically = Air = not solid
-        }
-        let y_check = new_y as usize;
+    fn should_draw_face(&self, offset_x: i32, offset_y: i32, offset_z: i32) -> bool {
+        let neighbor_pos = [
+            self.global_x + offset_x,
+            self.global_y + offset_y,
+            self.global_z + offset_z,
+        ];
 
-        let new_x = x as i32 + x_offset;
-        let new_z = z as i32 + z_offset;
+        // Ask the world for the block
+        match self
+            .world
+            .get_block(neighbor_pos[0], neighbor_pos[1], neighbor_pos[2])
+        {
+            Some(block) => block.is_transparent(), // Draw if transparent (Air/Water/Glass)
+            None => true,                          // Draw if missing (World Edge / Unloaded Chunk)
+        }
+    }
+    fn is_neighbor_liquid(&self, offset_x: i32, offset_y: i32, offset_z: i32) -> bool {
+        let neighbor_pos = [
+            self.global_x + offset_x,
+            self.global_y + offset_y,
+            self.global_z + offset_z,
+        ];
 
-        // --- X-Axis Checks (South/North) ---
-        if new_x < 0 {
-            // South (x-1)
-            if let Some(other) = self.surrounding_chunks[1] {
-                // Check for corner
-                if new_z < 0 {
-                    // South-West
-                    return !other[CHUNK_WIDTH - 1][y_check][CHUNK_DEPTH - 1].is_transparent();
-                }
-                if new_z >= CHUNK_DEPTH_I32 {
-                    // South-East
-                    return !other[CHUNK_WIDTH - 1][y_check][0].is_transparent();
-                }
-                // Just South
-                return !other[CHUNK_WIDTH - 1][y_check][new_z as usize].is_transparent();
-            }
-            return false; // Unloaded chunk
+        // Ask the world for the block
+        match self
+            .world
+            .get_block(neighbor_pos[0], neighbor_pos[1], neighbor_pos[2])
+        {
+            Some(block) => block.is_liquid(), // Yes
+            None => true,                     // Of course not
         }
-        if new_x >= CHUNK_WIDTH_I32 {
-            // North (x+1)
-            if let Some(other) = self.surrounding_chunks[0] {
-                // Check for corner
-                if new_z < 0 {
-                    // North-West
-                    return !other[0][y_check][CHUNK_DEPTH - 1].is_transparent();
-                }
-                if new_z >= CHUNK_DEPTH_I32 {
-                    // North-East
-                    return !other[0][y_check][0].is_transparent();
-                }
-                // Just North
-                return !other[0][y_check][new_z as usize].is_transparent();
-            }
-            return false; // Unloaded chunk
-        }
+    }
 
-        // --- Z-Axis Checks (West/East, within same X-column) ---
-        if new_z < 0 {
-            // West (z-1)
-            if let Some(other) = self.surrounding_chunks[3] {
-                return !other[new_x as usize][y_check][CHUNK_DEPTH - 1].is_transparent();
-            }
-            return false; // Unloaded chunk
-        }
-        if new_z >= CHUNK_DEPTH_I32 {
-            // East (z+1)
-            if let Some(other) = self.surrounding_chunks[2] {
-                return !other[new_x as usize][y_check][0].is_transparent();
-            }
-            return false; // Unloaded chunk
-        }
+    pub fn is_neighbor_solid(&self, dx: i32, dy: i32, dz: i32) -> bool {
+        // 1. Calculate Global Position
+        let gx = self.global_x + dx;
+        let gy = self.global_y + dy;
+        let gz = self.global_z + dz;
 
-        // --- Current Chunk ---
-        // All offsets are within the current chunk's bounds
-        !self.chunk[new_x as usize][y_check][new_z as usize].is_transparent()
+        // 2. Check the World
+        match self.world.get_block(gx, gy, gz) {
+            Some(block) => !block.is_transparent(), // Solid blocks cast shadows
+            None => false,                          // Missing chunks (Sky) do NOT cast shadows
+        }
     }
 }
 
-pub fn generate_chunk_mesh(
-    location: [i32; 2],
-    chunk: &Chunk,
-    surrounding_chunks: [Option<&Chunk>; 4], // north, south, east, west for... reasons...
+pub fn generate_chunk_mesh<T: BlockProvider>(
+    world: &T,
+    chunk_x: i32,
+    chunk_z: i32,
 ) -> (Vec<Vertex>, Vec<Index>) {
     let (mut vertices, mut indices) = (vec![], vec![]);
-    for x in 0..CHUNK_WIDTH {
+    let base_x = chunk_x * CHUNK_WIDTH_I32;
+    let base_z = chunk_z * CHUNK_DEPTH_I32;
+    for x in 0..CHUNK_WIDTH_I32 {
         for y in 0..CHUNK_HEIGHT {
-            for z in 0..CHUNK_DEPTH {
+            for z in 0..CHUNK_DEPTH_I32 {
+                let global_x = base_x + x;
+                let global_y = y as i32;
+                let global_z = base_z + z;
                 let mut context = MeshGenerationContext {
-                    chunk,
-                    position: Vec3 { x, y, z },
-                    chunk_location: location,
+                    world,
+                    global_x,
+                    global_y,
+                    global_z,
                     indices: &mut indices,
                     vertices: &mut vertices,
-                    surrounding_chunks,
                 };
-                let block_type = context.type_at_position();
+                let block_type = world.get_block(global_x, global_y, global_z).unwrap();
                 let tex_offsets = get_texture_offsets(block_type);
                 match block_type {
                     BlockType::Air => {}
@@ -357,149 +324,68 @@ pub fn generate_chunk_mesh(
     (vertices, indices)
 }
 
-const LAST_CHUNK_DEPTH: usize = CHUNK_DEPTH - 1;
-
-#[inline]
-fn generate_solid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6]) {
-    // --- 1. Get Base Data ---
-    let [x, y, z] = context.position_array();
-    let [rel_x, y_f32, rel_z] = context.worldpos_f32();
-    let chunk = context.chunk;
-    let surrounding_chunks = context.surrounding_chunks;
-
-    // --- 2. Check All 6 Faces ---
-
+fn generate_solid<T: BlockProvider>(
+    context: &mut MeshGenerationContext<T>,
+    tex_offsets: [[f32; 2]; 6],
+) {
     // --- North Face (Positive X) ---
-    let x_north_edge = x == CHUNK_WIDTH - 1;
-    if (x_north_edge && surrounding_chunks[0].is_none_or(|other| other[0][y][z].is_transparent()))
-        || (!x_north_edge && chunk[x + 1][y][z].is_transparent())
-    {
+    // The "should_draw_face" handles the edge check AND the neighbor check automatically.
+    if context.should_draw_face(1, 0, 0) {
         let tex_offset = tex_offsets[2];
         context.extend_indicies(&QUAD_INDICES);
 
-        if x_north_edge && surrounding_chunks[0].is_none() {
-            // Fast Path (No AO check possible)
-            context.vertices.append(&mut gen_face_pos_x_no_ao(
-                rel_x + 1.0,
-                y_f32,
-                rel_z,
-                tex_offset,
-            ));
-        } else {
-            // Slow Path (Calculate AO)
-            context
-                .vertices
-                .append(&mut gen_face_pos_x_ao(context, tex_offset));
-        }
+        // Note: For now, we use the AO path or No-AO path based on preference.
+        // If you want to keep the "Fast Path vs Slow Path" logic,
+        // you can check if the neighbor is None explicitly, but usually
+        // passing 'None' to your AO calculator is fine (it treats missing blocks as bright air).
+        context
+            .vertices
+            .append(&mut gen_face_pos_x_ao(context, tex_offset));
     }
 
     // --- South Face (Negative X) ---
-    let x_south_edge = x == 0;
-    if (x_south_edge
-        && surrounding_chunks[1].is_none_or(|other| other[CHUNK_WIDTH - 1][y][z].is_transparent()))
-        || (!x_south_edge && chunk[x - 1][y][z].is_transparent())
-    {
+    if context.should_draw_face(-1, 0, 0) {
         let tex_offset = tex_offsets[4];
         context.extend_indicies(&QUAD_INDICES);
-
-        if x_south_edge && surrounding_chunks[1].is_none() {
-            // Fast Path (No AO check possible)
-            context
-                .vertices
-                .append(&mut gen_face_neg_x_no_ao(rel_x, y_f32, rel_z, tex_offset));
-        } else {
-            // Slow Path (Calculate AO)
-            context
-                .vertices
-                .append(&mut gen_face_neg_x_ao(context, tex_offset));
-        }
+        context
+            .vertices
+            .append(&mut gen_face_neg_x_ao(context, tex_offset));
     }
 
     // --- Top Face (Positive Y) ---
-    let y_top_edge = y == CHUNK_HEIGHT - 1;
-    if y_top_edge || chunk[x][y + 1][z].is_transparent() {
+    if context.should_draw_face(0, 1, 0) {
         let tex_offset = tex_offsets[0];
         context.extend_indicies(&QUAD_INDICES);
-
-        if y_top_edge {
-            // Fast Path (World Height Limit)
-            context.vertices.append(&mut gen_face_pos_y_no_ao(
-                rel_x,
-                y_f32 + 1.0,
-                rel_z,
-                tex_offset,
-            ));
-        } else {
-            // Slow Path (Calculate AO)
-            context
-                .vertices
-                .append(&mut gen_face_pos_y_ao(context, tex_offset));
-        }
+        context
+            .vertices
+            .append(&mut gen_face_pos_y_ao(context, tex_offset));
     }
 
     // --- Bottom Face (Negative Y) ---
-    let y_bottom_edge = y == 0;
-    if y_bottom_edge || chunk[x][y - 1][z].is_transparent() {
+    if context.should_draw_face(0, -1, 0) {
         let tex_offset = tex_offsets[5];
         context.extend_indicies(&QUAD_INDICES);
-
-        if y_bottom_edge {
-            // Fast Path (World Bottom Limit)
-            context
-                .vertices
-                .append(&mut gen_face_neg_y_no_ao(rel_x, y_f32, rel_z, tex_offset));
-        } else {
-            // Slow Path (Calculate AO)
-            context
-                .vertices
-                .append(&mut gen_face_neg_y_ao(context, tex_offset));
-        }
+        context
+            .vertices
+            .append(&mut gen_face_neg_y_ao(context, tex_offset));
     }
 
     // --- East Face (Positive Z) ---
-    let z_east_edge = z == CHUNK_DEPTH - 1;
-    if (z_east_edge && surrounding_chunks[2].is_none_or(|other| other[x][y][0].is_transparent()))
-        || (!z_east_edge && chunk[x][y][z + 1].is_transparent())
-    {
+    if context.should_draw_face(0, 0, 1) {
         let tex_offset = tex_offsets[1];
         context.extend_indicies(&QUAD_INDICES);
-
-        if z_east_edge && surrounding_chunks[2].is_none() {
-            // Fast Path (No AO check possible)
-            context.vertices.append(&mut gen_face_pos_z_no_ao(
-                rel_x,
-                y_f32,
-                rel_z + 1.0,
-                tex_offset,
-            ));
-        } else {
-            // Slow Path (Calculate AO)
-            context
-                .vertices
-                .append(&mut gen_face_pos_z_ao(context, tex_offset));
-        }
+        context
+            .vertices
+            .append(&mut gen_face_pos_z_ao(context, tex_offset));
     }
 
     // --- West Face (Negative Z) ---
-    let z_west_edge = z == 0;
-    if (z_west_edge
-        && surrounding_chunks[3].is_none_or(|other| other[x][y][LAST_CHUNK_DEPTH].is_transparent()))
-        || (!z_west_edge && chunk[x][y][z - 1].is_transparent())
-    {
+    if context.should_draw_face(0, 0, -1) {
         let tex_offset = tex_offsets[3];
         context.extend_indicies(&QUAD_INDICES);
-
-        if z_west_edge && surrounding_chunks[3].is_none() {
-            // Fast Path (No AO check possible)
-            context
-                .vertices
-                .append(&mut gen_face_neg_z_no_ao(rel_x, y_f32, rel_z, tex_offset));
-        } else {
-            // Slow Path (Calculate AO)
-            context
-                .vertices
-                .append(&mut gen_face_neg_z_ao(context, tex_offset));
-        }
+        context
+            .vertices
+            .append(&mut gen_face_neg_z_ao(context, tex_offset));
     }
 }
 
@@ -530,36 +416,10 @@ const fn calculate_ao_light(
     // ---
     // But for now, we'll stick to previous logic.
 }
-fn gen_face_pos_x_no_ao(
-    xplusone: f32,
-    y_f32: f32,
-    rel_z: f32,
+fn gen_face_pos_x_ao<T: BlockProvider>(
+    context: &MeshGenerationContext<T>,
     tex_offset: [f32; 2],
 ) -> Vec<Vertex> {
-    vec![
-        Vertex {
-            position: [xplusone, 1.0 + y_f32, rel_z],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
-            light_level: SIDE_BRIGHTNESS,
-        },
-        Vertex {
-            position: [xplusone, y_f32, rel_z],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
-            light_level: SIDE_BRIGHTNESS,
-        },
-        Vertex {
-            position: [xplusone, y_f32, 1.0 + rel_z],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: SIDE_BRIGHTNESS,
-        },
-        Vertex {
-            position: [xplusone, 1.0 + y_f32, 1.0 + rel_z],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: SIDE_BRIGHTNESS,
-        },
-    ]
-}
-fn gen_face_pos_x_ao(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
     let [xplusone, y_f32, rel_z] = [
         context.worldpos_f32()[0] + 1.0,
         context.worldpos_f32()[1],
@@ -603,31 +463,10 @@ fn gen_face_pos_x_ao(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> V
         },
     ]
 }
-fn gen_face_neg_x_no_ao(rel_x: f32, y_f32: f32, rel_z: f32, tex_offset: [f32; 2]) -> Vec<Vertex> {
-    vec![
-        Vertex {
-            position: [rel_x, 1.0 + y_f32, rel_z],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
-            light_level: SIDE_BRIGHTNESS,
-        },
-        Vertex {
-            position: [rel_x, y_f32, rel_z],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
-            light_level: SIDE_BRIGHTNESS,
-        },
-        Vertex {
-            position: [rel_x, y_f32, 1.0 + rel_z],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: SIDE_BRIGHTNESS,
-        },
-        Vertex {
-            position: [rel_x, 1.0 + y_f32, 1.0 + rel_z],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: SIDE_BRIGHTNESS,
-        },
-    ]
-}
-fn gen_face_neg_x_ao(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
+fn gen_face_neg_x_ao<T: BlockProvider>(
+    context: &MeshGenerationContext<T>,
+    tex_offset: [f32; 2],
+) -> Vec<Vertex> {
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -680,36 +519,10 @@ fn gen_face_neg_x_ao(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> V
     ]
 }
 
-fn gen_face_pos_y_no_ao(
-    rel_x: f32,
-    yplusone: f32,
-    rel_z: f32,
+fn gen_face_pos_y_ao<T: BlockProvider>(
+    context: &MeshGenerationContext<T>,
     tex_offset: [f32; 2],
 ) -> Vec<Vertex> {
-    vec![
-        Vertex {
-            position: [rel_x, yplusone, rel_z],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
-            light_level: TOP_BRIGHTNESS,
-        },
-        Vertex {
-            position: [rel_x, yplusone, 1.0 + rel_z],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
-            light_level: TOP_BRIGHTNESS,
-        },
-        Vertex {
-            position: [1.0 + rel_x, yplusone, 1.0 + rel_z],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: TOP_BRIGHTNESS,
-        },
-        Vertex {
-            position: [1.0 + rel_x, yplusone, rel_z],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: TOP_BRIGHTNESS,
-        },
-    ]
-}
-fn gen_face_pos_y_ao(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
     let [rel_x, yplusone, rel_z] = [
         context.worldpos_f32()[0],
         context.worldpos_f32()[1] + 1.0,
@@ -760,31 +573,10 @@ fn gen_face_pos_y_ao(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> V
     ]
 }
 
-fn gen_face_neg_y_no_ao(rel_x: f32, y_f32: f32, rel_z: f32, tex_offset: [f32; 2]) -> Vec<Vertex> {
-    vec![
-        Vertex {
-            position: [1.0 + rel_x, y_f32, rel_z],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
-            light_level: BOTTOM_BRIGHTNESS,
-        },
-        Vertex {
-            position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
-            light_level: BOTTOM_BRIGHTNESS,
-        },
-        Vertex {
-            position: [rel_x, y_f32, 1.0 + rel_z],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: BOTTOM_BRIGHTNESS,
-        },
-        Vertex {
-            position: [rel_x, y_f32, rel_z],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: BOTTOM_BRIGHTNESS,
-        },
-    ]
-}
-fn gen_face_neg_y_ao(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
+fn gen_face_neg_y_ao<T: BlockProvider>(
+    context: &MeshGenerationContext<T>,
+    tex_offset: [f32; 2],
+) -> Vec<Vertex> {
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
         context.worldpos_f32()[1],
@@ -832,37 +624,10 @@ fn gen_face_neg_y_ao(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> V
     ]
 }
 
-fn gen_face_pos_z_no_ao(
-    rel_x: f32,
-    y_f32: f32,
-    zplusone: f32,
+fn gen_face_pos_z_ao<T: BlockProvider>(
+    context: &MeshGenerationContext<T>,
     tex_offset: [f32; 2],
 ) -> Vec<Vertex> {
-    vec![
-        Vertex {
-            position: [rel_x, 1.0 + y_f32, zplusone],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
-            light_level: FRONT_BRIGHTNESS,
-        },
-        Vertex {
-            position: [rel_x, y_f32, zplusone],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
-            light_level: FRONT_BRIGHTNESS,
-        },
-        Vertex {
-            position: [1.0 + rel_x, y_f32, zplusone],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: FRONT_BRIGHTNESS,
-        },
-        Vertex {
-            position: [1.0 + rel_x, 1.0 + y_f32, zplusone],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: FRONT_BRIGHTNESS,
-        },
-    ]
-}
-
-fn gen_face_pos_z_ao(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -916,32 +681,10 @@ fn gen_face_pos_z_ao(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> V
     ]
 }
 
-fn gen_face_neg_z_no_ao(rel_x: f32, y_f32: f32, rel_z: f32, tex_offset: [f32; 2]) -> Vec<Vertex> {
-    vec![
-        Vertex {
-            position: [1.0 + rel_x, 1.0 + y_f32, rel_z],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
-            light_level: BACK_BRIGHTNESS,
-        },
-        Vertex {
-            position: [1.0 + rel_x, y_f32, rel_z],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
-            light_level: BACK_BRIGHTNESS,
-        },
-        Vertex {
-            position: [rel_x, y_f32, rel_z],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: BACK_BRIGHTNESS,
-        },
-        Vertex {
-            position: [rel_x, 1.0 + y_f32, rel_z],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: BACK_BRIGHTNESS,
-        },
-    ]
-}
-
-fn gen_face_neg_z_ao(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
+fn gen_face_neg_z_ao<T: BlockProvider>(
+    context: &MeshGenerationContext<T>,
+    tex_offset: [f32; 2],
+) -> Vec<Vertex> {
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -994,13 +737,16 @@ fn gen_face_neg_z_ao(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> V
     ]
 }
 
+const BLOCK_WATER_HEIGHT: f32 = 0.5;
+
 #[inline]
-fn generate_liquid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6]) {
-    let [x, y, z] = context.position_array();
+fn generate_liquid<T: BlockProvider>(
+    context: &mut MeshGenerationContext<T>,
+    tex_offsets: [[f32; 2]; 6],
+) {
     let [rel_x, y_f32, rel_z] = context.worldpos_f32();
-    let yplusoff = y_f32 + 0.5;
-    let chunk = context.chunk;
-    if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
+    let yplusoff = y_f32 + BLOCK_WATER_HEIGHT;
+    if !context.is_neighbor_liquid(0, 1, 0) {
         let tex_offset = tex_offsets[0];
         context.extend_indicies(&BIDIR_INDICES);
         context.vertices.append(&mut vec![
@@ -1026,7 +772,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 
             },
         ]);
     }
-    if y != 0 && !(chunk[x][y - 1][z].is_liquid() || chunk[x][y - 1][z].is_solid()) {
+    if !context.is_neighbor_liquid(0, -1, 0) && context.should_draw_face(0, -1, 0) {
         let tex_offset = tex_offsets[5];
         context.extend_indicies(&BIDIR_INDICES);
         context.vertices.append(&mut vec![
@@ -1052,15 +798,10 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 
             },
         ]);
     }
-    if (z == LAST_CHUNK_DEPTH
-        && context.surrounding_chunks[2]
-            .is_none_or(|other| other[x][y][0].is_transparent() && !other[x][y][0].is_liquid()))
-        || (z != LAST_CHUNK_DEPTH
-            && (chunk[x][y][z + 1].is_transparent() && !chunk[x][y][z + 1].is_liquid()))
-    {
+    if !context.is_neighbor_liquid(0, 0, 1) && context.should_draw_face(0, 0, 1) {
         let tex_offset = tex_offsets[1];
         context.extend_indicies(&BIDIR_INDICES);
-        if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
+        if !context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, yplusoff, 1.0 + rel_z],
@@ -1108,15 +849,10 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 
             ]);
         }
     }
-    if (x == CHUNK_WIDTH - 1
-        && context.surrounding_chunks[0]
-            .is_none_or(|other| other[0][y][z].is_transparent() && !other[0][y][z].is_liquid()))
-        || (x != CHUNK_WIDTH - 1
-            && (chunk[x + 1][y][z].is_transparent() && !chunk[x + 1][y][z].is_liquid()))
-    {
+    if !context.is_neighbor_liquid(1, 0, 0) && context.should_draw_face(1, 0, 0) {
         let tex_offset = tex_offsets[2];
         context.extend_indicies(&BIDIR_INDICES);
-        if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
+        if !context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [1.0 + rel_x, yplusoff, rel_z],
@@ -1165,17 +901,10 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 
             ]);
         }
     }
-    let z_zero = z == 0;
-    if (z_zero
-        && context.surrounding_chunks[3].is_none_or(|other| {
-            other[x][y][LAST_CHUNK_DEPTH].is_transparent()
-                && !other[x][y][LAST_CHUNK_DEPTH].is_liquid()
-        }))
-        || (!z_zero && chunk[x][y][z - 1].is_transparent() && !chunk[x][y][z - 1].is_liquid())
-    {
+    if !context.is_neighbor_liquid(0, 0, -1) && context.should_draw_face(0, 0, -1) {
         let tex_offset = tex_offsets[1];
         context.extend_indicies(&BIDIR_INDICES);
-        if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
+        if !context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, yplusoff, rel_z],
@@ -1223,16 +952,10 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 
             ]);
         }
     }
-    if (x == 0
-        && context.surrounding_chunks[1].is_none_or(|other| {
-            other[CHUNK_WIDTH - 1][y][z].is_transparent()
-                && !other[CHUNK_WIDTH - 1][y][z].is_liquid()
-        }))
-        || (x != 0 && chunk[x - 1][y][z].is_transparent() && !chunk[x - 1][y][z].is_liquid())
-    {
+    if !context.is_neighbor_liquid(-1, 0, 0) && context.should_draw_face(-1, 0, 0) {
         let tex_offset = tex_offsets[2];
         context.extend_indicies(&BIDIR_INDICES);
-        if y < CHUNK_HEIGHT - 1 && !chunk[x][y + 1][z].is_liquid() {
+        if !context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, yplusoff, rel_z],

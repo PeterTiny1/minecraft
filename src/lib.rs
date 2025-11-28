@@ -125,12 +125,8 @@ impl AppState<'_> {
         render_context.write_uniforms();
 
         // --- 3. Update World (Chunk Loading) ---
-        if let Some(chunk_location) = chunk::nearest_visible_unloaded(
-            camera.get_position().x,
-            camera.get_position().z,
-            &generated_chunkdata,
-            camera,
-        ) {
+        if let Some(chunk_location) = chunk::nearest_visible_unloaded(&generated_chunkdata, camera)
+        {
             if let Entry::Vacant(entry) = generated_chunkdata.entry(chunk_location) {
                 let location = &format!("{}.bin", chunk_location.iter().join(","));
                 let path = Path::new(location);
