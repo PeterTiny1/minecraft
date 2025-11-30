@@ -73,6 +73,7 @@ fn halve_image_weighted(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgb
 impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
+    #[must_use]
     pub fn create_depth_texture(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
@@ -111,6 +112,9 @@ impl Texture {
         Self { view, sampler }
     }
 
+    /// # Errors
+    ///
+    /// If bytes cannot be loaded as an image
     pub fn from_bytes_mip(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -125,6 +129,9 @@ impl Texture {
         ))
     }
 
+    /// # Errors
+    ///
+    /// If bytes cannot be loaded as an image
     pub fn from_bytes(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -139,6 +146,7 @@ impl Texture {
         ))
     }
 
+    #[must_use]
     pub fn from_image(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -179,6 +187,7 @@ impl Texture {
         Self { view, sampler }
     }
 
+    #[must_use]
     pub fn from_image_mip(
         device: &wgpu::Device,
         queue: &wgpu::Queue,

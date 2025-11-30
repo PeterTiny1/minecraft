@@ -70,10 +70,11 @@ pub struct AppState<'a> {
 }
 
 impl AppState<'_> {
+    #[must_use]
     pub fn new(save: bool) -> Self {
         let camera_controller = camera::PlayerController::new(10.0, 0.05);
         let player = Player::new(Vec3::new(0.0, 100.0, 0.0));
-        let chunk_manager = ChunkManager::new();
+        let chunk_manager = ChunkManager::default();
 
         Self {
             window: None,
@@ -200,7 +201,6 @@ impl AppState<'_> {
         self.chunk_manager.insert_chunk(render_context);
     }
 
-    /// This is the moved `save_file` function, now a method on AppState
     fn save_all_chunks(&self) {
         let generated_chunkdata = self.chunk_manager.generated_data.lock().unwrap();
         for (chunk_location, data) in generated_chunkdata.iter() {
@@ -365,9 +365,13 @@ impl ApplicationHandler for AppState<'_> {
     }
 }
 
-// This function moves all the logic from fn main() into
-// a public function that our new, tiny main.rs can call.
-// This is the new "entry point" for the library.
+/// # Errors
+///
+/// Will return Err if something goes wrong
+///
+/// # Panics
+///
+/// Will panic if there somehow isn't a first argument
 pub fn run() -> Result<(), impl std::error::Error> {
     env_logger::init();
     let mut save = false;

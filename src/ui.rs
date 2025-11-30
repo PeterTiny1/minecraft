@@ -53,7 +53,9 @@ const CROSSHAIR: [Vertex; 4] = [
     Vertex([-0.03125, 0.03125], [0.0, 1.0]),
 ];
 
-#[allow(clippy::cast_precision_loss)]
+/// # Panics
+///
+/// If crosshair.png cannot be loaded
 #[inline]
 pub fn init_state(render_context: &RenderContext, size: PhysicalSize<u32>) -> State {
     let crosshair_bind_group = load_texture(

@@ -98,6 +98,7 @@ impl Uniforms {
     }
 }
 
+#[must_use]
 pub fn create_render_pipeline(
     device: &wgpu::Device,
     layout: &wgpu::PipelineLayout,
@@ -168,6 +169,13 @@ pub struct RenderContext<'a> {
 }
 
 impl RenderContext<'_> {
+    /// Panics
+    ///
+    /// If a surface cannot be created
+    /// If an adapter cannot be created
+    /// If a device or queue cannot be created
+    /// If atlas.png cannot be loaded
+    #[must_use]
     pub fn new(window: &'static Window, size: PhysicalSize<u32>) -> Self {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
         let surface: wgpu::Surface<'_> = instance.create_surface(window).unwrap();
@@ -303,6 +311,10 @@ impl RenderContext<'_> {
         self.depth_texture =
             texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
     }
+
+    /// Errors
+    ///
+    /// self.surface.get_current_texture fails
     pub fn render(
         &self,
         chunk_manager: &ChunkManager,
@@ -370,6 +382,7 @@ impl RenderContext<'_> {
     }
 }
 
+#[must_use]
 pub fn load_texture(
     device: &wgpu::Device,
     texture_bind_group_layout: &wgpu::BindGroupLayout,
@@ -392,6 +405,7 @@ pub fn load_texture(
     })
 }
 
+#[must_use]
 pub fn create_index_buffer(device: &wgpu::Device, chunk_indices: &[u32]) -> wgpu::Buffer {
     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Vertex Buffer"),

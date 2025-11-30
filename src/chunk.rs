@@ -20,20 +20,14 @@ use crate::{
     world_gen::generate,
     AppState, RENDER_DISTANCE, SEED,
 };
-#[cfg(target_os = "windows")]
-pub const CHUNK_WIDTH: usize = 16;
-#[cfg(not(target_os = "windows"))]
 pub const CHUNK_WIDTH: usize = 32;
 pub const CHUNK_WIDTH_I32: i32 = CHUNK_WIDTH as i32;
 pub const CHUNK_HEIGHT: usize = 256;
-#[cfg(target_os = "windows")]
-pub const CHUNK_DEPTH: usize = 16;
-#[cfg(not(target_os = "windows"))]
 pub const CHUNK_DEPTH: usize = 32;
 pub const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
 
 /// Stores the data of a chunk, 32x256x32 on Linux, 16x256x16 on Windows, accessed in order x, y, z
-pub type Chunk = [[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH];
+pub type Chunk = Box<[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH]>;
 pub type ChunkDataStorage = HashMap<[i32; 2], ChunkData>;
 pub trait BlockProvider {
     fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType>;
@@ -70,21 +64,10 @@ pub struct ChunkManager {
 }
 
 impl ChunkManager {
-    pub fn new() -> Self {
-        let generated_chunk_buffers = HashMap::new();
-        let (send_generate, recv_generate) = mpsc::sync_channel(10);
-        let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
-        let generated_chunkdata = Arc::new(Mutex::new(HashMap::new()));
-        start_meshgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
-        let noise = OpenSimplex::new(SEED);
-        Self {
-            generated_buffers: generated_chunk_buffers,
-            generated_data: generated_chunkdata,
-            noise,
-            sender: send_generate,
-            receiver: recv_chunk,
-        }
-    }
+    /// # Panics
+    ///
+    /// If the file at the path cannot be read
+    /// If bincode cannot decode the data
     pub fn load_chunk(
         &self,
         path: &Path,
@@ -108,6 +91,10 @@ impl ChunkManager {
             Err(mpsc::TrySendError::Full(_)) => todo!(),
         }
     }
+
+    /// Panics
+    ///
+    /// If the number of indices exceeds the 32 bit integer limit
     pub fn insert_chunk(&mut self, render_context: &RenderContext) {
         while let Ok((mesh, indices, index)) = self.receiver.try_recv() {
             self.generated_buffers.insert(
@@ -163,7 +150,25 @@ impl ChunkManager {
     }
 }
 
-#[derive(Debug, Clone, Copy, Encode, Decode)]
+impl Default for ChunkManager {
+    fn default() -> Self {
+        let generated_chunk_buffers = HashMap::new();
+        let (send_generate, recv_generate) = mpsc::sync_channel(10);
+        let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
+        let generated_chunkdata = Arc::new(Mutex::new(HashMap::new()));
+        start_meshgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
+        let noise = OpenSimplex::new(SEED);
+        Self {
+            generated_buffers: generated_chunk_buffers,
+            generated_data: generated_chunkdata,
+            noise,
+            sender: send_generate,
+            receiver: recv_chunk,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct ChunkData {
     pub contents: Chunk,
 }
@@ -172,6 +177,7 @@ const MAX_DISTANCE_X: i32 = RENDER_DISTANCE as i32 / CHUNK_WIDTH_I32 + 1;
 const MAX_DISTANCE_Y: i32 = RENDER_DISTANCE as i32 / CHUNK_DEPTH_I32 + 1;
 
 #[allow(clippy::cast_precision_loss)]
+#[must_use]
 pub fn chunkcoord_to_aabb(coord: [i32; 2]) -> Aabb<f32> {
     let min = Vec3::new(
         (coord[0] * CHUNK_WIDTH_I32) as f32,
@@ -185,8 +191,9 @@ pub fn chunkcoord_to_aabb(coord: [i32; 2]) -> Aabb<f32> {
 }
 
 #[allow(clippy::cast_possible_truncation)]
-pub fn nearest_visible_unloaded(
-    generated_chunks: &HashMap<[i32; 2], ChunkData>,
+#[must_use]
+pub fn nearest_visible_unloaded<S: ::std::hash::BuildHasher>(
+    generated_chunks: &HashMap<[i32; 2], ChunkData, S>,
     camera: &camera::Camera,
 ) -> Option<[i32; 2]> {
     let chunk_x = (camera.get_position().x as i32).div_euclid(CHUNK_WIDTH_I32);
@@ -257,6 +264,9 @@ fn manage_meshgen(
     }
 }
 
+/// # Panics
+///
+/// If the lock cannot be acquired for whatever reason
 pub fn save_file(state: &AppState) {
     let generated_chunkdata = state.chunk_manager.generated_data.lock().unwrap();
     let iterator = generated_chunkdata.iter();

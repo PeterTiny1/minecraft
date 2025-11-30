@@ -32,6 +32,7 @@ enum Axis {
 }
 
 impl Player {
+    #[must_use] 
     pub fn new(position: Vec3<f32>) -> Self {
         Self {
             position,
@@ -44,6 +45,7 @@ impl Player {
 
     /// Calculates the player's Axis-Aligned Bounding Box (AABB).
     /// `self.position` is considered the bottom-center of the player.
+    #[must_use] 
     pub fn aabb(&self) -> Aabb<f32> {
         // The center of the AABB is halfway up the player's height from their position.
         let center = self.position + Vec3::new(0.0, self.half_extents.y, 0.0);
@@ -209,10 +211,12 @@ impl Player {
         }
     }
 
+    #[must_use] 
     pub fn get_camera_position(&self) -> Vec3<f32> {
         self.position + Vec3::new(0.0, EYE_HEIGHT, 0.0)
     }
 
+    #[must_use] 
     pub const fn get_looking_at(&self) -> Option<(Vec3<i32>, usize)> {
         self.looking_at_block
     }
