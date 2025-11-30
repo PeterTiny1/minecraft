@@ -852,30 +852,6 @@ fn generate_liquid<T: BlockProvider>(
         let tex_offset = tex_offsets[2];
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
-            let yplusoff = y_f32 + 1.0;
-            context.vertices.append(&mut vec![
-                Vertex {
-                    position: [1.0 + rel_x, yplusoff, rel_z],
-                    uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                },
-                Vertex {
-                    position: [1.0 + rel_x, y_f32, rel_z],
-                    uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                },
-                Vertex {
-                    position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                },
-                Vertex {
-                    position: [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                    uv: add_arrs(TOP_RIGHT_WATER, tex_offset).map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                },
-            ]);
-        } else {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [1.0 + rel_x, y_f32 + 1.0, rel_z],
@@ -895,6 +871,29 @@ fn generate_liquid<T: BlockProvider>(
                 Vertex {
                     position: [1.0 + rel_x, y_f32 + 1.0, 1.0 + rel_z],
                     uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+                    light_level: TOP_BRIGHTNESS,
+                },
+            ]);
+        } else {
+            context.vertices.append(&mut vec![
+                Vertex {
+                    position: [1.0 + rel_x, yplusoff, rel_z],
+                    uv: add_arrs(TOP_LEFT_WATER, tex_offset).map(f16::from_f32),
+                    light_level: TOP_BRIGHTNESS,
+                },
+                Vertex {
+                    position: [1.0 + rel_x, y_f32, rel_z],
+                    uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+                    light_level: TOP_BRIGHTNESS,
+                },
+                Vertex {
+                    position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
+                    uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+                    light_level: TOP_BRIGHTNESS,
+                },
+                Vertex {
+                    position: [1.0 + rel_x, yplusoff, 1.0 + rel_z],
+                    uv: add_arrs(TOP_RIGHT_WATER, tex_offset).map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
                 },
             ]);
