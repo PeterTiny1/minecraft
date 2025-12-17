@@ -37,6 +37,8 @@ pub use block::BlockType;
 pub use chunk::ChunkData; // Exporting this to fix HashMap type
 pub use renderer::RenderContext;
 
+use crate::chunk::{MeshRegen, CHUNK_DEPTH, CHUNK_WIDTH};
+
 // --- CONSTANTS ---
 pub const RENDER_DISTANCE: f32 = 768.0;
 pub const SEED: u32 = 0;
@@ -172,7 +174,19 @@ impl AppState<'_> {
                                 block::BlockType::Stone; // Or your "held item"
 
                             // Send a remesh request
-                            match self.chunk_manager.sender.try_send([chunk_x, chunk_z]) {
+                            match self.chunk_manager.sender.try_send(MeshRegen {
+                                chunk: [chunk_x, chunk_z],
+                                neighbours: [
+                                    local_x == CHUNK_WIDTH - 1,
+                                    local_x == CHUNK_WIDTH - 1 && local_z == CHUNK_DEPTH - 1,
+                                    local_z == CHUNK_DEPTH - 1,
+                                    local_z == CHUNK_DEPTH - 1 && local_x == 0,
+                                    local_x == 0,
+                                    local_x == 0 && local_z == 0,
+                                    local_z == 0,
+                                    local_z == 0 && local_x == CHUNK_WIDTH - 1,
+                                ],
+                            }) {
                                 Ok(()) => {}
                                 Err(mpsc::TrySendError::Disconnected(_)) => {
                                     panic!("Got disconnected!")
@@ -193,7 +207,19 @@ impl AppState<'_> {
                     chunk.contents[local_x][location.y as usize][local_z] = block::BlockType::Air;
 
                     // Send a remesh request
-                    match self.chunk_manager.sender.try_send([chunk_x, chunk_z]) {
+                    match self.chunk_manager.sender.try_send(MeshRegen {
+                        chunk: [chunk_x, chunk_z],
+                        neighbours: [
+                            local_x == CHUNK_WIDTH - 1,
+                            local_x == CHUNK_WIDTH - 1 && local_z == CHUNK_DEPTH - 1,
+                            local_z == CHUNK_DEPTH - 1,
+                            local_z == CHUNK_DEPTH - 1 && local_x == 0,
+                            local_x == 0,
+                            local_x == 0 && local_z == 0,
+                            local_z == 0,
+                            local_z == 0 && local_x == CHUNK_WIDTH - 1,
+                        ],
+                    }) {
                         Ok(()) => {}
                         Err(mpsc::TrySendError::Disconnected(_)) => panic!("Got disconnected!"),
                         Err(mpsc::TrySendError::Full(_)) => todo!(),

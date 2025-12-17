@@ -28,6 +28,12 @@ pub const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
 /// Stores the data of a chunk, 32x256x32 on Linux, 16x256x16 on Windows, accessed in order x, y, z
 pub type Chunk = Box<[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH]>;
 pub type ChunkDataStorage = HashMap<[i32; 2], ChunkData>;
+pub struct MeshRegen {
+    pub chunk: [i32; 2],
+    // NORTH CLOCKWISE
+    pub neighbours: [bool; 8],
+}
+
 pub trait BlockProvider {
     fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType>;
 }
@@ -58,7 +64,7 @@ pub struct ChunkManager {
     pub generated_data: Arc<RwLock<ChunkDataStorage>>,
     noise: OpenSimplex,
 
-    pub sender: mpsc::SyncSender<[i32; 2]>,
+    pub sender: mpsc::SyncSender<MeshRegen>,
     pub receiver: mpsc::Receiver<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
 }
 
@@ -84,7 +90,10 @@ impl ChunkManager {
         e.insert(ChunkData {
             contents: chunk_contents,
         });
-        match self.sender.try_send(chunk_location) {
+        match self.sender.try_send(MeshRegen {
+            chunk: chunk_location,
+            neighbours: [true; 8],
+        }) {
             Ok(()) => {}
             Err(mpsc::TrySendError::Disconnected(_)) => panic!("Got disconnected!"),
             Err(mpsc::TrySendError::Full(_)) => todo!(),
@@ -220,7 +229,7 @@ pub fn nearest_visible_unloaded<S: ::std::hash::BuildHasher>(
 }
 
 pub fn start_meshgen(
-    recv_generate: mpsc::Receiver<[i32; 2]>,
+    recv_generate: mpsc::Receiver<MeshRegen>,
     chunkdata_arc: Arc<RwLock<ChunkDataStorage>>,
     send_chunk: mpsc::SyncSender<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
 ) -> thread::JoinHandle<()> {
@@ -228,9 +237,9 @@ pub fn start_meshgen(
 }
 
 fn manage_meshgen(
-    recv_generate: &mpsc::Receiver<[i32; 2]>,
+    recv_generate: &mpsc::Receiver<MeshRegen>,
     chunkdata_arc: &Arc<RwLock<HashMap<[i32; 2], ChunkData>>>,
-    send_chunk: &mpsc::SyncSender<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
+    send_chunk: &mpsc::SyncSender<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
 ) {
     let mut waiting = vec![];
     loop {
@@ -244,10 +253,38 @@ fn manage_meshgen(
             }
         }
         waiting = new_waiting;
-        if let Ok(chunk_location) = recv_generate.recv() {
+        if let Ok(MeshRegen {
+            chunk: chunk_location,
+            neighbours,
+        }) = recv_generate.recv()
+        {
             let generated_chunkdata = chunkdata_arc.read().unwrap();
             let [x, y] = chunk_location;
-            let chunks_to_remesh = [[x, y], [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+            let mut chunks_to_remesh = vec![[x, y]];
+            if neighbours[0] {
+                chunks_to_remesh.push([x + 1, y]);
+            }
+            if neighbours[1] {
+                chunks_to_remesh.push([x + 1, y + 1]);
+            }
+            if neighbours[2] {
+                chunks_to_remesh.push([x, y + 1]);
+            }
+            if neighbours[3] {
+                chunks_to_remesh.push([x - 1, y + 1]);
+            }
+            if neighbours[4] {
+                chunks_to_remesh.push([x - 1, y]);
+            }
+            if neighbours[5] {
+                chunks_to_remesh.push([x - 1, y - 1]);
+            }
+            if neighbours[6] {
+                chunks_to_remesh.push([x, y - 1]);
+            }
+            if neighbours[7] {
+                chunks_to_remesh.push([x + 1, y - 1]);
+            }
             for loc in chunks_to_remesh {
                 if !generated_chunkdata.contains_key(&loc) {
                     continue;
