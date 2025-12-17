@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fs::File,
     path::Path,
-    sync::{mpsc, Arc, Mutex},
+    sync::{mpsc, Arc, RwLock},
     thread,
 };
 
@@ -56,7 +56,7 @@ struct ChunkBuffers {
 
 pub struct ChunkManager {
     generated_buffers: HashMap<[i32; 2], ChunkBuffers>,
-    pub generated_data: Arc<Mutex<ChunkDataStorage>>,
+    pub generated_data: Arc<RwLock<ChunkDataStorage>>,
     noise: OpenSimplex,
 
     pub sender: mpsc::SyncSender<[i32; 2]>,
@@ -155,7 +155,7 @@ impl Default for ChunkManager {
         let generated_chunk_buffers = HashMap::new();
         let (send_generate, recv_generate) = mpsc::sync_channel(10);
         let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
-        let generated_chunkdata = Arc::new(Mutex::new(HashMap::new()));
+        let generated_chunkdata = Arc::new(RwLock::new(HashMap::new()));
         start_meshgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
         let noise = OpenSimplex::new(SEED);
         Self {
@@ -220,7 +220,7 @@ pub fn nearest_visible_unloaded<S: ::std::hash::BuildHasher>(
 
 pub fn start_meshgen(
     recv_generate: mpsc::Receiver<[i32; 2]>,
-    chunkdata_arc: Arc<Mutex<ChunkDataStorage>>,
+    chunkdata_arc: Arc<RwLock<ChunkDataStorage>>,
     send_chunk: mpsc::SyncSender<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || manage_meshgen(&recv_generate, &chunkdata_arc, &send_chunk))
@@ -228,7 +228,7 @@ pub fn start_meshgen(
 
 fn manage_meshgen(
     recv_generate: &mpsc::Receiver<[i32; 2]>,
-    chunkdata_arc: &Arc<Mutex<HashMap<[i32; 2], ChunkData>>>,
+    chunkdata_arc: &Arc<RwLock<HashMap<[i32; 2], ChunkData>>>,
     send_chunk: &mpsc::SyncSender<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
 ) {
     let mut waiting = vec![];
@@ -244,7 +244,7 @@ fn manage_meshgen(
         }
         waiting = new_waiting;
         if let Ok(chunk_location) = recv_generate.recv() {
-            let generated_chunkdata = chunkdata_arc.lock().unwrap();
+            let generated_chunkdata = chunkdata_arc.read().unwrap();
             let [x, y] = chunk_location;
             let chunks_to_remesh = [[x, y], [x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
             for loc in chunks_to_remesh {
@@ -268,7 +268,7 @@ fn manage_meshgen(
 ///
 /// If the lock cannot be acquired for whatever reason
 pub fn save_file(state: &AppState) {
-    let generated_chunkdata = state.chunk_manager.generated_data.lock().unwrap();
+    let generated_chunkdata = state.chunk_manager.generated_data.read().unwrap();
     let iterator = generated_chunkdata.iter();
     for (chunk_location, data) in iterator {
         let location = format!("{}.bin", chunk_location.iter().join(","));

@@ -101,7 +101,7 @@ impl AppState<'_> {
         let render_context = self.render_context.as_mut().unwrap();
 
         // --- 1. Lock Shared Data ---
-        let mut generated_chunkdata = self.chunk_manager.generated_data.lock().unwrap();
+        let generated_chunkdata = self.chunk_manager.generated_data.read().unwrap();
 
         // --- 2. Update Camera, Player, and Uniforms ---
 
@@ -124,7 +124,8 @@ impl AppState<'_> {
         // D. NOW update the uniforms with the final camera state
         render_context.uniforms.update_view_proj(camera);
         render_context.write_uniforms();
-
+        drop(generated_chunkdata);
+        let mut generated_chunkdata = self.chunk_manager.generated_data.write().unwrap();
         // --- 3. Update World (Chunk Loading) ---
         if let Some(chunk_location) = chunk::nearest_visible_unloaded(&generated_chunkdata, camera)
         {
@@ -202,7 +203,7 @@ impl AppState<'_> {
     }
 
     fn save_all_chunks(&self) {
-        let generated_chunkdata = self.chunk_manager.generated_data.lock().unwrap();
+        let generated_chunkdata = self.chunk_manager.generated_data.read().unwrap();
         for (chunk_location, data) in generated_chunkdata.iter() {
             let location = format!("{}.bin", chunk_location.iter().join(","));
             let path = Path::new(&location);
