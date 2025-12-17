@@ -1,6 +1,6 @@
 use crate::{camera, chunk::ChunkManager, texture, ui};
-use futures::executor::block_on;
 use half::f16;
+use pollster::block_on;
 use vek::{Aabb, Mat4, Vec4};
 use wgpu::{util::DeviceExt, PipelineCompilationOptions};
 use winit::{dpi::PhysicalSize, window::Window};

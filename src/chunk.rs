@@ -7,7 +7,6 @@ use std::{
 };
 
 use bincode::{Decode, Encode};
-use itertools::Itertools;
 use noise::OpenSimplex;
 use vek::{Aabb, Vec3};
 use wgpu::util::DeviceExt;
@@ -129,19 +128,21 @@ impl ChunkManager {
         }
     }
     pub fn render_chunks(&self, render_pass: &mut wgpu::RenderPass, camera: &camera::Camera) {
-        for chunk_location in self
+        let mut keys: Vec<_> = self
             .generated_buffers
             .keys()
-            .sorted_by(|&a, &b| {
-                ((b[0] * CHUNK_WIDTH_I32 - camera.get_position().x as i32).pow(2)
-                    + (b[1] * CHUNK_DEPTH_I32 - camera.get_position().z as i32).pow(2))
-                .cmp(
-                    &((a[0] * CHUNK_WIDTH_I32 - camera.get_position().x as i32).pow(2)
-                        + (a[1] * CHUNK_DEPTH_I32 - camera.get_position().z as i32).pow(2)),
-                )
-            })
             .filter(|c| cuboid_intersects_frustum(&chunkcoord_to_aabb(**c), camera))
-        {
+            .collect();
+
+        keys.sort_by(|&a, &b| {
+            ((b[0] * CHUNK_WIDTH_I32 - camera.get_position().x as i32).pow(2)
+                + (b[1] * CHUNK_DEPTH_I32 - camera.get_position().z as i32).pow(2))
+            .cmp(
+                &((a[0] * CHUNK_WIDTH_I32 - camera.get_position().x as i32).pow(2)
+                    + (a[1] * CHUNK_DEPTH_I32 - camera.get_position().z as i32).pow(2)),
+            )
+        });
+        for chunk_location in keys.into_iter() {
             let chunk = &self.generated_buffers[chunk_location];
             render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
             render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
@@ -271,7 +272,14 @@ pub fn save_file(state: &AppState) {
     let generated_chunkdata = state.chunk_manager.generated_data.read().unwrap();
     let iterator = generated_chunkdata.iter();
     for (chunk_location, data) in iterator {
-        let location = format!("{}.bin", chunk_location.iter().join(","));
+        let location = format!(
+            "{}.bin",
+            chunk_location
+                .iter()
+                .map(i32::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        );
         let path = Path::new(&location);
         if let Ok(mut file) = File::create(path) {
             bincode::encode_into_std_write(data, &mut file, bincode::config::standard()).unwrap();

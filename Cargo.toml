@@ -10,20 +10,17 @@ edition = "2021"
 env_logger = "0.11.8"
 log = "0.4.28"
 wgpu = "27.0"
-futures = "0.3.31"
 bytemuck = { version = "1.24", features = ["derive"] }
 vek = { version = "0.17", default-features = false }
 noise = { version = "0.9", default-features = false }
-itertools = "0.14"
 bincode = "2.0"
 winit = "0.30"
 half = { version = "2.7", default-features = false, features = ["bytemuck"] }
+pollster = "0.4.0"
 
 [dependencies.image]
 version = "0.25"
 default-features = false
 features = ["png"]
-
-[profile.release]
 # lto = true
 # debug = true

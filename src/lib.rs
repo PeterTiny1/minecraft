@@ -12,7 +12,6 @@ pub mod ui;
 pub mod world_gen;
 
 // --- IMPORTS ---
-use itertools::Itertools;
 use player::Player;
 use std::{
     collections::{hash_map::Entry, HashMap}, // HashMap is used by ChunkDataStorage
@@ -130,7 +129,14 @@ impl AppState<'_> {
         if let Some(chunk_location) = chunk::nearest_visible_unloaded(&generated_chunkdata, camera)
         {
             if let Entry::Vacant(entry) = generated_chunkdata.entry(chunk_location) {
-                let location = &format!("{}.bin", chunk_location.iter().join(","));
+                let location = &format!(
+                    "{}.bin",
+                    chunk_location
+                        .iter()
+                        .map(i32::to_string)
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
                 let path = Path::new(location);
                 // Pass the noise generator from the chunk_manager
                 self.chunk_manager.load_chunk(path, entry, chunk_location);
@@ -205,7 +211,14 @@ impl AppState<'_> {
     fn save_all_chunks(&self) {
         let generated_chunkdata = self.chunk_manager.generated_data.read().unwrap();
         for (chunk_location, data) in generated_chunkdata.iter() {
-            let location = format!("{}.bin", chunk_location.iter().join(","));
+            let location = format!(
+                "{}.bin",
+                chunk_location
+                    .iter()
+                    .map(i32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
             let path = Path::new(&location);
             if let Ok(mut file) = File::create(path) {
                 bincode::encode_into_std_write(data, &mut file, bincode::config::standard())
