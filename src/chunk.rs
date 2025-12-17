@@ -25,7 +25,6 @@ pub const CHUNK_HEIGHT: usize = 256;
 pub const CHUNK_DEPTH: usize = 32;
 pub const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
 
-/// Stores the data of a chunk, 32x256x32 on Linux, 16x256x16 on Windows, accessed in order x, y, z
 pub type Chunk = Box<[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH]>;
 pub type ChunkDataStorage = HashMap<[i32; 2], ChunkData>;
 pub struct MeshRegen {
@@ -42,8 +41,8 @@ impl BlockProvider for ChunkDataStorage {
         let chunk_x = x.div_euclid(CHUNK_WIDTH_I32);
         let chunk_z = z.div_euclid(CHUNK_DEPTH_I32);
         let chunk = self.get(&[chunk_x, chunk_z])?;
-        let x = (x - (x.div_euclid(CHUNK_WIDTH_I32) * CHUNK_WIDTH_I32)) as usize;
-        let z = (z - (z.div_euclid(CHUNK_DEPTH_I32) * CHUNK_DEPTH_I32)) as usize;
+        let x = x.rem_euclid(CHUNK_WIDTH_I32) as usize;
+        let z = z.rem_euclid(CHUNK_DEPTH_I32) as usize;
         #[allow(clippy::cast_sign_loss)]
         if y >= 0 && (y as usize) < CHUNK_HEIGHT {
             Some(chunk.contents[x][y as usize][z])
