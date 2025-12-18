@@ -332,11 +332,6 @@ fn generate_solid<T: BlockProvider>(
     if context.should_draw_face(1, 0, 0) {
         let tex_offset = tex_offsets[2];
         context.extend_indicies(&QUAD_INDICES);
-
-        // Note: For now, we use the AO path or No-AO path based on preference.
-        // If you want to keep the "Fast Path vs Slow Path" logic,
-        // you can check if the neighbor is None explicitly, but usually
-        // passing 'None' to your AO calculator is fine (it treats missing blocks as bright air).
         context
             .vertices
             .append(&mut gen_face_pos_x_ao(context, tex_offset));
