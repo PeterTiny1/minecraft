@@ -334,7 +334,7 @@ fn generate_solid<T: BlockProvider>(
         context.extend_indicies(&QUAD_INDICES);
         context
             .vertices
-            .append(&mut gen_face_pos_x_ao(context, tex_offset));
+            .append(&mut gen_face_pos_x(context, tex_offset));
     }
 
     // --- South Face (Negative X) ---
@@ -343,7 +343,7 @@ fn generate_solid<T: BlockProvider>(
         context.extend_indicies(&QUAD_INDICES);
         context
             .vertices
-            .append(&mut gen_face_neg_x_ao(context, tex_offset));
+            .append(&mut gen_face_neg_x(context, tex_offset));
     }
 
     // --- Top Face (Positive Y) ---
@@ -352,7 +352,7 @@ fn generate_solid<T: BlockProvider>(
         context.extend_indicies(&QUAD_INDICES);
         context
             .vertices
-            .append(&mut gen_face_pos_y_ao(context, tex_offset));
+            .append(&mut gen_face_pos_y(context, tex_offset));
     }
 
     // --- Bottom Face (Negative Y) ---
@@ -361,7 +361,7 @@ fn generate_solid<T: BlockProvider>(
         context.extend_indicies(&QUAD_INDICES);
         context
             .vertices
-            .append(&mut gen_face_neg_y_ao(context, tex_offset));
+            .append(&mut gen_face_neg_y(context, tex_offset));
     }
 
     // --- East Face (Positive Z) ---
@@ -370,7 +370,7 @@ fn generate_solid<T: BlockProvider>(
         context.extend_indicies(&QUAD_INDICES);
         context
             .vertices
-            .append(&mut gen_face_pos_z_ao(context, tex_offset));
+            .append(&mut gen_face_pos_z(context, tex_offset));
     }
 
     // --- West Face (Negative Z) ---
@@ -379,7 +379,7 @@ fn generate_solid<T: BlockProvider>(
         context.extend_indicies(&QUAD_INDICES);
         context
             .vertices
-            .append(&mut gen_face_neg_z_ao(context, tex_offset));
+            .append(&mut gen_face_neg_z(context, tex_offset));
     }
 }
 
@@ -410,7 +410,7 @@ const fn calculate_ao_light(
     // ---
     // But for now, we'll stick to previous logic.
 }
-fn gen_face_pos_x_ao<T: BlockProvider>(
+fn gen_face_pos_x<T: BlockProvider>(
     context: &MeshGenerationContext<T>,
     tex_offset: [f32; 2],
 ) -> Vec<Vertex> {
@@ -457,7 +457,7 @@ fn gen_face_pos_x_ao<T: BlockProvider>(
         },
     ]
 }
-fn gen_face_neg_x_ao<T: BlockProvider>(
+fn gen_face_neg_x<T: BlockProvider>(
     context: &MeshGenerationContext<T>,
     tex_offset: [f32; 2],
 ) -> Vec<Vertex> {
@@ -513,7 +513,7 @@ fn gen_face_neg_x_ao<T: BlockProvider>(
     ]
 }
 
-fn gen_face_pos_y_ao<T: BlockProvider>(
+fn gen_face_pos_y<T: BlockProvider>(
     context: &MeshGenerationContext<T>,
     tex_offset: [f32; 2],
 ) -> Vec<Vertex> {
@@ -567,7 +567,7 @@ fn gen_face_pos_y_ao<T: BlockProvider>(
     ]
 }
 
-fn gen_face_neg_y_ao<T: BlockProvider>(
+fn gen_face_neg_y<T: BlockProvider>(
     context: &MeshGenerationContext<T>,
     tex_offset: [f32; 2],
 ) -> Vec<Vertex> {
@@ -618,7 +618,7 @@ fn gen_face_neg_y_ao<T: BlockProvider>(
     ]
 }
 
-fn gen_face_pos_z_ao<T: BlockProvider>(
+fn gen_face_pos_z<T: BlockProvider>(
     context: &MeshGenerationContext<T>,
     tex_offset: [f32; 2],
 ) -> Vec<Vertex> {
@@ -675,7 +675,7 @@ fn gen_face_pos_z_ao<T: BlockProvider>(
     ]
 }
 
-fn gen_face_neg_z_ao<T: BlockProvider>(
+fn gen_face_neg_z<T: BlockProvider>(
     context: &MeshGenerationContext<T>,
     tex_offset: [f32; 2],
 ) -> Vec<Vertex> {
