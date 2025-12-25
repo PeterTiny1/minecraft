@@ -187,7 +187,7 @@ impl RenderContext<'_> {
         .unwrap();
         let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: None,
-            required_features: wgpu::Features::default(),
+            required_features: wgpu::Features::default().union(wgpu::Features::SHADER_F16),
             required_limits: if cfg!(target_arch = "wasm32") {
                 wgpu::Limits::downlevel_webgl2_defaults()
             } else {
