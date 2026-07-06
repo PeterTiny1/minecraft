@@ -172,8 +172,8 @@ impl PlayerController {
         let dt_secs = dt.as_secs_f32();
 
         // Apply rotation
-        camera.yaw += self.rotate_horizontal * self.sensitivity * dt_secs;
-        camera.pitch += self.rotate_vertical * self.sensitivity * dt_secs;
+        camera.yaw = (self.rotate_horizontal * self.sensitivity).mul_add(dt_secs, camera.yaw);
+        camera.pitch = (self.rotate_vertical * self.sensitivity).mul_add(dt_secs, camera.pitch);
 
         // Clamp pitch
         camera.pitch = camera.pitch.clamp(

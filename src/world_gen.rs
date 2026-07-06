@@ -151,7 +151,7 @@ fn generate_heightmap(
                 };
                 let effect = 1.0 / (1.0 + gradient_x.hypot(gradient_z));
                 let octave_noise = noise.get([sample_x, sample_z, octave as f64]);
-                noise_height += octave_noise * amplitude * effect;
+                noise_height = (octave_noise * amplitude).mul_add(effect, noise_height);
                 amplitude *= PERSISTENCE;
                 frequency *= LACUNARITY;
             }

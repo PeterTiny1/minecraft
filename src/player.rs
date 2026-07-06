@@ -76,14 +76,14 @@ impl Player {
         let direction = (forward * forward_force + right * right_force).normalized();
 
         if direction.x.is_finite() && direction.y.is_finite() && direction.z.is_finite() {
-            self.velocity.x += direction.x * controller.get_speed() * dt;
-            self.velocity.z += direction.z * controller.get_speed() * dt;
+            self.velocity.x = (direction.x * controller.get_speed()).mul_add(dt, self.velocity.x);
+            self.velocity.z = (direction.z * controller.get_speed()).mul_add(dt, self.velocity.z);
         }
 
-        self.velocity.y += up_force * controller.get_speed() * dt * 5.0; // Multiplier 5.0 for faster vertical movement
+        self.velocity.y = (up_force * controller.get_speed() * dt).mul_add(5.0, self.velocity.y); // Multiplier 5.0 for faster vertical movement
 
         // --- 2. Apply Gravity & Drag  ---
-        self.velocity.y -= GRAVITY * dt;
+        self.velocity.y = GRAVITY.mul_add(-dt, self.velocity.y);
         self.velocity.y = self.velocity.y.max(-MAX_FALL_SPEED);
 
         // Air friction
