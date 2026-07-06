@@ -49,9 +49,9 @@ fn halve_image_weighted(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgb
                 }
             }
 
-            if total_weight > 0 {
+            if let Some(div_r) = weighted_sum_r.checked_div(total_weight) {
                 // Calculate the weighted average for the color channels
-                let avg_r = u8::try_from(weighted_sum_r / total_weight).unwrap();
+                let avg_r = u8::try_from(div_r).unwrap();
                 let avg_g = u8::try_from(weighted_sum_g / total_weight).unwrap();
                 let avg_b = u8::try_from(weighted_sum_b / total_weight).unwrap();
 
@@ -61,7 +61,7 @@ fn halve_image_weighted(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgb
                 // Set the pixel in the new ImageBuffer
                 new_img.put_pixel(x, y, Rgba([avg_r, avg_g, avg_b, avg_a]));
             } else {
-                // If all pixels in the block were fully transparent, the new pixel is also transparent black
+                // If total_weight was 0, the new pixel is transparent black
                 new_img.put_pixel(x, y, Rgba([0, 0, 0, 0]));
             }
         }
