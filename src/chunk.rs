@@ -173,21 +173,11 @@ impl ChunkManager {
         }
     }
     pub fn render_chunks(&self, render_pass: &mut wgpu::RenderPass, camera: &camera::Camera) {
-        let mut keys: Vec<_> = self
+        for chunk_location in self
             .generated_buffers
             .keys()
             .filter(|c| cuboid_intersects_frustum(&chunkcoord_to_aabb(**c), camera))
-            .collect();
-
-        keys.sort_by(|&a, &b| {
-            ((b[0] * CHUNK_WIDTH_I32 - camera.get_position().x as i32).pow(2)
-                + (b[1] * CHUNK_DEPTH_I32 - camera.get_position().z as i32).pow(2))
-            .cmp(
-                &((a[0] * CHUNK_WIDTH_I32 - camera.get_position().x as i32).pow(2)
-                    + (a[1] * CHUNK_DEPTH_I32 - camera.get_position().z as i32).pow(2)),
-            )
-        });
-        for chunk_location in keys {
+        {
             let chunk = &self.generated_buffers[chunk_location];
             render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
             render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
