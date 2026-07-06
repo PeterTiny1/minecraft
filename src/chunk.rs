@@ -173,7 +173,6 @@ impl ChunkManager {
         }
     }
     pub fn render_chunks(&self, render_pass: &mut wgpu::RenderPass, camera: &camera::Camera) {
-        println!("{}", self.generated_buffers.len());
         self.generated_buffers
             .iter() // Iterates over (&chunk_location, &chunk_data) pairs
             .filter(|(location, _chunk)| {
