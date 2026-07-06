@@ -314,7 +314,7 @@ impl RenderContext<'_> {
 
     /// Errors
     ///
-    /// self.surface.get_current_texture fails
+    /// `self.surface.get_current_texture` fails
     pub fn render(
         &self,
         chunk_manager: &ChunkManager,

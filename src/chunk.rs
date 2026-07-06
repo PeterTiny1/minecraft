@@ -150,7 +150,7 @@ impl ChunkManager {
                     + (a[1] * CHUNK_DEPTH_I32 - camera.get_position().z as i32).pow(2)),
             )
         });
-        for chunk_location in keys.into_iter() {
+        for chunk_location in keys {
             let chunk = &self.generated_buffers[chunk_location];
             render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
             render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
