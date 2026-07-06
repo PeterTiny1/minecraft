@@ -3,7 +3,7 @@ use std::f32::consts::FRAC_1_SQRT_2;
 
 use crate::{
     block::BlockType,
-    chunk::{BlockProvider, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32},
+    chunk::{LocatedChunk, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32},
     renderer::Vertex,
 };
 
@@ -202,98 +202,156 @@ const TOP_RIGHT_WATER: [f32; 2] = [
     TOP_RIGHT[1] + TEXTURE_WIDTH * BLOCK_WATER_HEIGHT,
 ];
 
-struct MeshGenerationContext<'a, T: BlockProvider> {
-    world: &'a T,
-    global_x: i32,
-    global_y: i32,
-    global_z: i32,
-    indices: &'a mut Vec<Index>,
-    vertices: &'a mut Vec<Vertex>,
+pub struct MeshGenerationContext<'a> {
+    pub center: &'a LocatedChunk,
+    pub neighbors: &'a [LocatedChunk],
+    // Storing both local and global positions prevents recalculations later
+    pub local_x: i32,
+    pub local_y: i32,
+    pub local_z: i32,
+    pub global_x: i32,
+    pub global_y: i32,
+    pub global_z: i32,
+    pub indices: &'a mut Vec<Index>,
+    pub vertices: &'a mut Vec<Vertex>,
 }
 
-impl<T: BlockProvider> MeshGenerationContext<'_, T> {
+impl MeshGenerationContext<'_> {
     #[allow(clippy::cast_precision_loss)]
-    fn worldpos_f32(&self) -> [f32; 3] {
-        [self.global_x, self.global_y, self.global_z].map(|c| c as f32)
+    pub const fn worldpos_f32(&self) -> [f32; 3] {
+        [
+            self.global_x as f32,
+            self.global_y as f32,
+            self.global_z as f32,
+        ]
     }
-    fn extend_indicies(&mut self, base_indices: &[Index]) {
+
+    pub fn extend_indices(&mut self, base_indices: &[Index]) {
         let len_index = Index::try_from(self.vertices.len()).unwrap();
         self.indices
             .extend(base_indices.iter().map(|i| *i + len_index));
     }
 
-    fn should_draw_face(&self, offset_x: i32, offset_y: i32, offset_z: i32) -> bool {
-        let neighbor_pos = [
-            self.global_x + offset_x,
-            self.global_y + offset_y,
-            self.global_z + offset_z,
-        ];
+    /// Internal Helper: Resolves a relative block offset locally or via neighbors
+    fn get_block_at_offset(&self, dx: i32, dy: i32, dz: i32) -> Option<BlockType> {
+        let target_y = self.local_y + dy;
 
-        // Ask the world for the block
-        self.world
-            .get_block(neighbor_pos[0], neighbor_pos[1], neighbor_pos[2])
-            .is_none_or(super::block::BlockType::is_transparent)
+        // 1. Height safety check (bedrock / sky limits)
+        if target_y < 0 || target_y >= CHUNK_HEIGHT as i32 {
+            return Some(BlockType::Air);
+        }
+
+        let target_x = self.local_x + dx;
+        let target_z = self.local_z + dz;
+
+        // 2. Fast Path: The block resides entirely inside the current center chunk
+        if (0..CHUNK_WIDTH_I32).contains(&target_x) && (0..CHUNK_DEPTH_I32).contains(&target_z) {
+            return Some(
+                self.center.data.contents[target_x as usize][target_y as usize][target_z as usize],
+            );
+        }
+
+        // 3. Slow Path: The offset crossed a chunk boundary. Determine target chunk coordinates.
+        let mut target_chunk_x = self.center.loc[0];
+        let mut target_chunk_z = self.center.loc[1];
+        let mut rem_x = target_x;
+        let mut rem_z = target_z;
+
+        if target_x < 0 {
+            target_chunk_x -= 1;
+            rem_x += CHUNK_WIDTH_I32;
+        } else if target_x >= CHUNK_WIDTH_I32 {
+            target_chunk_x += 1;
+            rem_x -= CHUNK_WIDTH_I32;
+        }
+
+        if target_z < 0 {
+            target_chunk_z -= 1;
+            rem_z += CHUNK_DEPTH_I32;
+        } else if target_z >= CHUNK_DEPTH_I32 {
+            target_chunk_z += 1;
+            rem_z -= CHUNK_DEPTH_I32;
+        }
+
+        // 4. Query the neighborhood snapshot vec passed to this job
+        self.neighbors
+            .iter()
+            .find(|n| n.loc == [target_chunk_x, target_chunk_z])
+            .map(|neighbor| {
+                neighbor.data.contents[rem_x as usize][target_y as usize][rem_z as usize]
+            })
     }
-    fn is_neighbor_liquid(&self, offset_x: i32, offset_y: i32, offset_z: i32) -> bool {
-        let neighbor_pos = [
-            self.global_x + offset_x,
-            self.global_y + offset_y,
-            self.global_z + offset_z,
-        ];
 
-        // Ask the world for the block
-        self.world
-            .get_block(neighbor_pos[0], neighbor_pos[1], neighbor_pos[2])
-            .is_some_and(super::block::BlockType::is_liquid)
+    pub fn should_draw_face(&self, offset_x: i32, offset_y: i32, offset_z: i32) -> bool {
+        // If the neighbor chunk isn't loaded (None), we default to drawing the face
+        self.get_block_at_offset(offset_x, offset_y, offset_z)
+            .is_none_or(|block| block.is_transparent())
+    }
+
+    pub fn is_neighbor_liquid(&self, offset_x: i32, offset_y: i32, offset_z: i32) -> bool {
+        self.get_block_at_offset(offset_x, offset_y, offset_z)
+            .is_some_and(|block| block.is_liquid())
     }
 
     pub fn is_neighbor_solid(&self, dx: i32, dy: i32, dz: i32) -> bool {
-        // 1. Calculate Global Position
-        let gx = self.global_x + dx;
-        let gy = self.global_y + dy;
-        let gz = self.global_z + dz;
-
-        // 2. Check the World
-        self.world
-            .get_block(gx, gy, gz)
+        self.get_block_at_offset(dx, dy, dz)
             .is_some_and(|block| !block.is_transparent())
+    }
+    fn extend_indicies(&mut self, base_indices: &[Index]) {
+        let len_index = Index::try_from(self.vertices.len()).unwrap();
+
+        self.indices
+            .extend(base_indices.iter().map(|i| *i + len_index));
     }
 }
 
-/// # Panics
-///
-/// If the chunk at the passed in coordinates doesn't exist
-pub fn generate_chunk_mesh<T: BlockProvider>(
-    world: &T,
-    chunk_x: i32,
-    chunk_z: i32,
+pub fn generate_chunk_mesh(
+    chunk: &LocatedChunk,
+    neighbours: &[LocatedChunk],
 ) -> (Vec<Vertex>, Vec<Index>) {
     let (mut vertices, mut indices) = (vec![], vec![]);
-    let base_x = chunk_x * CHUNK_WIDTH_I32;
-    let base_z = chunk_z * CHUNK_DEPTH_I32;
+
+    let base_x = chunk.loc[0] * CHUNK_WIDTH_I32;
+    let base_z = chunk.loc[1] * CHUNK_DEPTH_I32;
+
+    // 1. Grab direct, lightning-fast reference to our local array data
+    let contents = &chunk.data.contents;
+
     for x in 0..CHUNK_WIDTH_I32 {
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH_I32 {
+                // 2. Direct indexing into the dense heap array (Incredibly cache-friendly)
+                let block_type = contents[x as usize][y][z as usize];
+                if block_type == BlockType::Air {
+                    continue;
+                }
+
                 let global_x = base_x + x;
                 let global_y = y as i32;
                 let global_z = base_z + z;
+
+                // 3. Create a lightweight structure to pass down your local/neighbor context
+                // (You can modify your MeshGenerationContext to own local pointers instead of a world trait)
                 let mut context = MeshGenerationContext {
-                    world,
+                    center: chunk,
+                    neighbors: neighbours,
+                    local_x: x,
+                    local_y: y as i32,
+                    local_z: z,
                     global_x,
                     global_y,
                     global_z,
                     indices: &mut indices,
                     vertices: &mut vertices,
                 };
-                let block_type = world.get_block(global_x, global_y, global_z).unwrap();
+
                 let tex_offsets = get_texture_offsets(block_type);
+
                 match block_type {
-                    BlockType::Air => {}
                     BlockType::Flower0 => {
-                        context.extend_indicies(&FLOWER_INDICES);
-                        context
-                            .vertices
-                            .extend(generate_flower(context.worldpos_f32()));
+                        context.extend_indices(&FLOWER_INDICES);
+                        let world_pos = context.worldpos_f32();
+                        context.vertices.extend(generate_flower(world_pos));
                     }
                     _ if block_type.is_liquid() => {
                         generate_liquid(&mut context, tex_offsets);
@@ -301,7 +359,7 @@ pub fn generate_chunk_mesh<T: BlockProvider>(
                     _ if block_type.is_grasslike() => {
                         let tex_offset = tex_offsets[0];
                         let world_position = context.worldpos_f32();
-                        context.extend_indicies(&GRASS_INDICES);
+                        context.extend_indices(&GRASS_INDICES);
                         context.vertices.extend(create_grass_face(
                             tex_offset,
                             world_position,
@@ -323,10 +381,7 @@ pub fn generate_chunk_mesh<T: BlockProvider>(
     (vertices, indices)
 }
 
-fn generate_solid<T: BlockProvider>(
-    context: &mut MeshGenerationContext<T>,
-    tex_offsets: [[f32; 2]; 6],
-) {
+fn generate_solid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6]) {
     // --- North Face (Positive X) ---
     // The "should_draw_face" handles the edge check AND the neighbor check automatically.
     if context.should_draw_face(1, 0, 0) {
@@ -410,10 +465,7 @@ const fn calculate_ao_light(
     // ---
     // But for now, we'll stick to previous logic.
 }
-fn gen_face_pos_x<T: BlockProvider>(
-    context: &MeshGenerationContext<T>,
-    tex_offset: [f32; 2],
-) -> Vec<Vertex> {
+fn gen_face_pos_x(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
     let [xplusone, y_f32, rel_z] = [
         context.worldpos_f32()[0] + 1.0,
         context.worldpos_f32()[1],
@@ -457,10 +509,7 @@ fn gen_face_pos_x<T: BlockProvider>(
         },
     ]
 }
-fn gen_face_neg_x<T: BlockProvider>(
-    context: &MeshGenerationContext<T>,
-    tex_offset: [f32; 2],
-) -> Vec<Vertex> {
+fn gen_face_neg_x(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -513,10 +562,7 @@ fn gen_face_neg_x<T: BlockProvider>(
     ]
 }
 
-fn gen_face_pos_y<T: BlockProvider>(
-    context: &MeshGenerationContext<T>,
-    tex_offset: [f32; 2],
-) -> Vec<Vertex> {
+fn gen_face_pos_y(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
     let [rel_x, yplusone, rel_z] = [
         context.worldpos_f32()[0],
         context.worldpos_f32()[1] + 1.0,
@@ -567,10 +613,7 @@ fn gen_face_pos_y<T: BlockProvider>(
     ]
 }
 
-fn gen_face_neg_y<T: BlockProvider>(
-    context: &MeshGenerationContext<T>,
-    tex_offset: [f32; 2],
-) -> Vec<Vertex> {
+fn gen_face_neg_y(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
         context.worldpos_f32()[1],
@@ -618,10 +661,7 @@ fn gen_face_neg_y<T: BlockProvider>(
     ]
 }
 
-fn gen_face_pos_z<T: BlockProvider>(
-    context: &MeshGenerationContext<T>,
-    tex_offset: [f32; 2],
-) -> Vec<Vertex> {
+fn gen_face_pos_z(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -675,10 +715,7 @@ fn gen_face_pos_z<T: BlockProvider>(
     ]
 }
 
-fn gen_face_neg_z<T: BlockProvider>(
-    context: &MeshGenerationContext<T>,
-    tex_offset: [f32; 2],
-) -> Vec<Vertex> {
+fn gen_face_neg_z(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -734,10 +771,7 @@ fn gen_face_neg_z<T: BlockProvider>(
 const BLOCK_WATER_HEIGHT: f32 = 0.5;
 
 #[inline]
-fn generate_liquid<T: BlockProvider>(
-    context: &mut MeshGenerationContext<T>,
-    tex_offsets: [[f32; 2]; 6],
-) {
+fn generate_liquid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6]) {
     let [rel_x, y_f32, rel_z] = context.worldpos_f32();
     let yplusoff = y_f32 + BLOCK_WATER_HEIGHT;
     if !context.is_neighbor_liquid(0, 1, 0) {

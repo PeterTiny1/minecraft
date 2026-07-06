@@ -1,24 +1,22 @@
-// --- MODULES ---
-// We make them public `pub mod` so they form the library's API
-pub mod block;
-pub mod camera;
-pub mod chunk;
-pub mod mesh_gen;
-pub mod player;
-pub mod ray;
-pub mod renderer;
-pub mod texture;
-pub mod ui;
-pub mod world_gen;
+pub(crate) mod block;
+pub(crate) mod camera;
+pub(crate) mod chunk;
+pub(crate) mod mesh_gen;
+pub(crate) mod player;
+pub(crate) mod ray;
+pub(crate) mod renderer;
+pub(crate) mod texture;
+pub(crate) mod ui;
+pub(crate) mod world_gen;
 
 // --- IMPORTS ---
 use player::Player;
 use std::{
-    collections::{hash_map::Entry, HashMap}, // HashMap is used by ChunkDataStorage
+    collections::HashMap, // HashMap is used by ChunkDataStorage
     env,
     fs::File, // Needed for save_all_chunks
     path::Path,
-    sync::mpsc,
+    sync::Arc,
     time::Instant,
 };
 use winit::{
@@ -37,7 +35,7 @@ pub use block::BlockType;
 pub use chunk::ChunkData; // Exporting this to fix HashMap type
 pub use renderer::RenderContext;
 
-use crate::chunk::{MeshRegen, CHUNK_DEPTH, CHUNK_WIDTH};
+use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
 
 // --- CONSTANTS ---
 pub const RENDER_DISTANCE: f32 = 768.0;
@@ -110,132 +108,129 @@ impl AppState<'_> {
         let camera = self.camera.as_mut().unwrap();
         let render_context = self.render_context.as_mut().unwrap();
 
-        // --- 1. Lock Shared Data ---
-        let generated_chunkdata = self.chunk_manager.generated_data.read().unwrap();
+        // --- 1. Physics & Camera (Requires Read Lock) ---
+        {
+            let world_data = &self.chunk_manager.generated_data;
+            self.camera_controller.update_camera(&mut camera.data, dt);
+            self.player.update_physics(
+                dt.as_secs_f32(),
+                world_data,
+                &self.camera_controller,
+                &camera.data,
+            );
+        } // Read lock drops here automatically!
 
-        // --- 2. Update Camera, Player, and Uniforms ---
-
-        // A. Update camera rotation from mouse input
-        // (This assumes `update_camera` is in `PlayerController` and applies the mouse delta)
-        self.camera_controller.update_camera(&mut camera.data, dt);
-
-        // B. Update player physics & get block player is looking at
-        // (This assumes `update_physics` now takes the controller to get input)
-        self.player.update_physics(
-            dt.as_secs_f32(),
-            &generated_chunkdata,
-            &self.camera_controller,
-            &camera.data, // Pass camera data for raycasting
-        );
-
-        // C. Camera follows player's new position
         camera.data.position = self.player.get_camera_position();
-
-        // D. NOW update the uniforms with the final camera state
         render_context.uniforms.update_view_proj(camera);
         render_context.write_uniforms();
-        drop(generated_chunkdata);
-        let mut generated_chunkdata = self.chunk_manager.generated_data.write().unwrap();
-        // --- 3. Update World (Chunk Loading) ---
-        if let Some(chunk_location) = chunk::nearest_visible_unloaded(&generated_chunkdata, camera)
+
+        // A. Chunk Loading
+        if let Some(chunk_loc) =
+            chunk::nearest_visible_unloaded(&self.chunk_manager.generated_data, camera)
         {
-            if let Entry::Vacant(entry) = generated_chunkdata.entry(chunk_location) {
-                let location = &format!(
-                    "{}.bin",
-                    chunk_location
-                        .iter()
-                        .map(i32::to_string)
-                        .collect::<Vec<_>>()
-                        .join(",")
-                );
-                let path = Path::new(location);
-                // Pass the noise generator from the chunk_manager
-                self.chunk_manager.load_chunk(path, entry, chunk_location);
-            }
+            let path_str = format!("{},{}.bin", chunk_loc[0], chunk_loc[1]);
+
+            // 1. Kick off generation/loading internally
+            let _center_arc = self
+                .chunk_manager
+                .load_and_insert_chunk(Path::new(&path_str), chunk_loc);
+
+            // 2. Queue up the mesh job using our fresh Arc handle
+            // and the now-unlocked map reference
+            self.chunk_manager
+                .queue_mesh_job(&self.chunk_manager.generated_data, chunk_loc);
         }
 
-        // --- 4. Handle Block Breaking/Placing ---
-        // (We now get `looking_at_block` from the player)
-        if let Some((location, previous_step)) = self.player.looking_at_block {
+        // B. Block Interaction (Breaking / Placing)
+        if let Some((location, previous_step)) = self.player.get_looking_at() {
             let now = Instant::now();
+            let is_place = self.input.right_pressed;
+            let is_break =
+                self.input.left_pressed && (now - self.last_break_time).as_millis() > 250;
 
-            if self.input.right_pressed {
-                let location = location - DIRECTION_OFFSETS[previous_step];
-                if location.y < 256 && location.y > -1 {
-                    let chunk_x = location.x.div_euclid(CHUNK_WIDTH_I32);
-                    let chunk_z = location.z.div_euclid(CHUNK_DEPTH_I32);
-                    if let Some(chunk) = generated_chunkdata.get_mut(&[chunk_x, chunk_z]) {
-                        let local_x = location.x.rem_euclid(CHUNK_WIDTH_I32) as usize;
-                        let local_z = location.z.rem_euclid(CHUNK_DEPTH_I32) as usize;
-                        if chunk.contents[local_x][location.y as usize][local_z]
-                            == block::BlockType::Air
-                        {
-                            chunk.contents[local_x][location.y as usize][local_z] =
-                                block::BlockType::Stone; // Or your "held item"
+            if is_place || is_break {
+                // Calculate target block position
+                let target_pos = if is_place {
+                    location - DIRECTION_OFFSETS[previous_step]
+                } else {
+                    self.last_break_time = now;
+                    location
+                };
 
-                            // Send a remesh request
-                            match self.chunk_manager.sender.try_send(MeshRegen {
-                                chunk: [chunk_x, chunk_z],
-                                neighbours: [
-                                    local_x == CHUNK_WIDTH - 1,
-                                    local_x == CHUNK_WIDTH - 1 && local_z == CHUNK_DEPTH - 1,
-                                    local_z == CHUNK_DEPTH - 1,
-                                    local_z == CHUNK_DEPTH - 1 && local_x == 0,
-                                    local_x == 0,
-                                    local_x == 0 && local_z == 0,
-                                    local_z == 0,
-                                    local_z == 0 && local_x == CHUNK_WIDTH - 1,
-                                ],
-                            }) {
-                                Ok(()) => {}
-                                Err(mpsc::TrySendError::Disconnected(_)) => {
-                                    panic!("Got disconnected!")
-                                }
-                                Err(mpsc::TrySendError::Full(_)) => todo!(),
+                if target_pos.y >= 0 && target_pos.y < CHUNK_HEIGHT as i32 {
+                    let chunk_x = target_pos.x.div_euclid(CHUNK_WIDTH_I32);
+                    let chunk_z = target_pos.z.div_euclid(CHUNK_DEPTH_I32);
+                    let chunk_loc = [chunk_x, chunk_z];
+
+                    if let Some(chunk_arc) = self.chunk_manager.generated_data.get_mut(&chunk_loc) {
+                        let local_x = target_pos.x.rem_euclid(CHUNK_WIDTH_I32) as usize;
+                        let local_z = target_pos.z.rem_euclid(CHUNK_DEPTH_I32) as usize;
+                        let local_y = target_pos.y as usize;
+
+                        // Safely modify using Copy-On-Write via Arc::make_mut
+                        let chunk = Arc::make_mut(chunk_arc);
+                        let current_block = chunk.contents[local_x][local_y][local_z];
+
+                        let new_block = if is_place && current_block == block::BlockType::Air {
+                            Some(block::BlockType::Stone)
+                        } else if is_break {
+                            Some(block::BlockType::Air)
+                        } else {
+                            None
+                        };
+
+                        if let Some(block) = new_block {
+                            chunk.contents[local_x][local_y][local_z] = block;
+
+                            let world_data = &self.chunk_manager.generated_data;
+                            // Remesh the modified center chunk
+                            self.chunk_manager.queue_mesh_job(world_data, chunk_loc);
+
+                            // Remesh adjacent neighbor chunks if the block was on a boundary seam
+                            if local_x == 0 {
+                                self.chunk_manager
+                                    .queue_mesh_job(world_data, [chunk_x - 1, chunk_z]);
+                            }
+                            if local_x == CHUNK_WIDTH - 1 {
+                                self.chunk_manager
+                                    .queue_mesh_job(world_data, [chunk_x + 1, chunk_z]);
+                            }
+                            if local_z == 0 {
+                                self.chunk_manager
+                                    .queue_mesh_job(world_data, [chunk_x, chunk_z - 1]);
+                            }
+                            if local_z == CHUNK_DEPTH - 1 {
+                                self.chunk_manager
+                                    .queue_mesh_job(world_data, [chunk_x, chunk_z + 1]);
+                            }
+
+                            // Diagonal corner seams
+                            if local_x == 0 && local_z == 0 {
+                                self.chunk_manager
+                                    .queue_mesh_job(world_data, [chunk_x - 1, chunk_z - 1]);
+                            }
+                            if local_x == CHUNK_WIDTH - 1 && local_z == CHUNK_DEPTH - 1 {
+                                self.chunk_manager
+                                    .queue_mesh_job(world_data, [chunk_x + 1, chunk_z + 1]);
+                            }
+                            if local_x == 0 && local_z == CHUNK_DEPTH - 1 {
+                                self.chunk_manager
+                                    .queue_mesh_job(world_data, [chunk_x - 1, chunk_z + 1]);
+                            }
+                            if local_x == CHUNK_WIDTH - 1 && local_z == 0 {
+                                self.chunk_manager
+                                    .queue_mesh_job(world_data, [chunk_x + 1, chunk_z - 1]);
                             }
                         }
                     }
                 }
-            } else if self.input.left_pressed && (now - self.last_break_time).as_millis() > 250 {
-                self.last_break_time = now;
-                let chunk_x = location.x.div_euclid(CHUNK_WIDTH_I32);
-                let chunk_z = location.z.div_euclid(CHUNK_DEPTH_I32);
-                let local_x = location.x.rem_euclid(CHUNK_WIDTH_I32) as usize;
-                let local_z = location.z.rem_euclid(CHUNK_DEPTH_I32) as usize;
-
-                if let Some(chunk) = generated_chunkdata.get_mut(&[chunk_x, chunk_z]) {
-                    chunk.contents[local_x][location.y as usize][local_z] = block::BlockType::Air;
-
-                    // Send a remesh request
-                    match self.chunk_manager.sender.try_send(MeshRegen {
-                        chunk: [chunk_x, chunk_z],
-                        neighbours: [
-                            local_x == CHUNK_WIDTH - 1,
-                            local_x == CHUNK_WIDTH - 1 && local_z == CHUNK_DEPTH - 1,
-                            local_z == CHUNK_DEPTH - 1,
-                            local_z == CHUNK_DEPTH - 1 && local_x == 0,
-                            local_x == 0,
-                            local_x == 0 && local_z == 0,
-                            local_z == 0,
-                            local_z == 0 && local_x == CHUNK_WIDTH - 1,
-                        ],
-                    }) {
-                        Ok(()) => {}
-                        Err(mpsc::TrySendError::Disconnected(_)) => panic!("Got disconnected!"),
-                        Err(mpsc::TrySendError::Full(_)) => todo!(),
-                    }
-                }
             }
         }
-
-        // --- 5. Finalize ---
-        // (Drop the lock *before* inserting new meshes)
-        drop(generated_chunkdata);
         self.chunk_manager.insert_chunk(render_context);
     }
 
     fn save_all_chunks(&self) {
-        let generated_chunkdata = self.chunk_manager.generated_data.read().unwrap();
+        let generated_chunkdata = &self.chunk_manager.generated_data;
         for (chunk_location, data) in generated_chunkdata.iter() {
             let location = format!(
                 "{}.bin",

@@ -1,8 +1,7 @@
 use std::{
     collections::HashMap,
-    fs::File,
     path::Path,
-    sync::{mpsc, Arc, RwLock},
+    sync::{mpsc, Arc},
     thread,
 };
 
@@ -17,7 +16,7 @@ use crate::{
     mesh_gen::{generate_chunk_mesh, Index},
     renderer::{cuboid_intersects_frustum, RenderContext, Vertex},
     world_gen::generate,
-    AppState, RENDER_DISTANCE, SEED,
+    RENDER_DISTANCE, SEED,
 };
 pub const CHUNK_WIDTH: usize = 32;
 pub const CHUNK_WIDTH_I32: i32 = CHUNK_WIDTH as i32;
@@ -26,13 +25,30 @@ pub const CHUNK_DEPTH: usize = 32;
 pub const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
 
 pub type Chunk = Box<[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH]>;
-pub type ChunkDataStorage = HashMap<[i32; 2], ChunkData>;
-pub struct MeshRegen {
-    pub chunk: [i32; 2],
-    // NORTH CLOCKWISE
-    pub neighbours: [bool; 8],
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct ChunkData {
+    pub contents: Chunk,
 }
-
+pub type ChunkDataStorage = HashMap<[i32; 2], Arc<ChunkData>>;
+pub struct LocatedChunk {
+    pub loc: [i32; 2],
+    pub data: Arc<ChunkData>,
+}
+pub struct MeshJob {
+    pub chunk: LocatedChunk,
+    // NORTH CLOCKWISE
+    pub neighbours: Vec<LocatedChunk>,
+}
+const NEIGHBOUR_OFFSETS: [[i32; 2]; 8] = [
+    [1, 0],   // 0: [x + 1, y]
+    [1, 1],   // 1: [x + 1, y + 1]
+    [0, 1],   // 2: [x, y + 1]
+    [-1, 1],  // 3: [x - 1, y + 1]
+    [-1, 0],  // 4: [x - 1, y]
+    [-1, -1], // 5: [x - 1, y - 1]
+    [0, -1],  // 6: [x, y - 1]
+    [1, -1],  // 7: [x + 1, y - 1]
+];
 pub trait BlockProvider {
     fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType>;
 }
@@ -60,10 +76,10 @@ struct ChunkBuffers {
 
 pub struct ChunkManager {
     generated_buffers: HashMap<[i32; 2], ChunkBuffers>,
-    pub generated_data: Arc<RwLock<ChunkDataStorage>>,
+    pub generated_data: ChunkDataStorage,
     noise: OpenSimplex,
 
-    pub sender: mpsc::SyncSender<MeshRegen>,
+    pub sender: mpsc::SyncSender<MeshJob>,
     pub receiver: mpsc::Receiver<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
 }
 
@@ -75,9 +91,9 @@ impl ChunkManager {
     pub fn load_chunk(
         &self,
         path: &Path,
-        e: std::collections::hash_map::VacantEntry<'_, [i32; 2], ChunkData>,
+        e: std::collections::hash_map::VacantEntry<'_, [i32; 2], Arc<ChunkData>>,
         chunk_location: [i32; 2],
-    ) {
+    ) -> Arc<ChunkData> {
         let chunk_contents = if path.exists() {
             let buffer = std::fs::read(path).unwrap();
             bincode::decode_from_slice(&buffer, bincode::config::standard())
@@ -86,19 +102,40 @@ impl ChunkManager {
         } else {
             generate(&self.noise, chunk_location)
         };
-        e.insert(ChunkData {
+
+        let center_arc = Arc::new(ChunkData {
             contents: chunk_contents,
         });
-        match self.sender.try_send(MeshRegen {
-            chunk: chunk_location,
-            neighbours: [true; 8],
-        }) {
-            Ok(()) => {}
-            Err(mpsc::TrySendError::Disconnected(_)) => panic!("Got disconnected!"),
-            Err(mpsc::TrySendError::Full(_)) => todo!(),
-        }
-    }
 
+        // Insert and return a clone of the Arc
+        e.insert(center_arc.clone());
+
+        center_arc
+    }
+    pub fn load_and_insert_chunk(
+        &mut self,
+        path: &Path,
+        chunk_location: [i32; 2],
+    ) -> Arc<ChunkData> {
+        let chunk_contents = if path.exists() {
+            let buffer = std::fs::read(path).unwrap();
+            bincode::decode_from_slice(&buffer, bincode::config::standard())
+                .unwrap()
+                .0
+        } else {
+            generate(&self.noise, chunk_location)
+        };
+
+        let center_arc = Arc::new(ChunkData {
+            contents: chunk_contents,
+        });
+
+        // Grab the entry and insert it completely internally where it won't conflict
+        self.generated_data
+            .insert(chunk_location, center_arc.clone());
+
+        center_arc
+    }
     /// Panics
     ///
     /// If the number of indices exceeds the 32 bit integer limit
@@ -157,6 +194,29 @@ impl ChunkManager {
             render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
         }
     }
+    pub fn queue_mesh_job(&self, world_map: &HashMap<[i32; 2], Arc<ChunkData>>, loc: [i32; 2]) {
+        if let Some(center_arc) = world_map.get(&loc) {
+            let mut neighbours = Vec::new();
+            for offset in NEIGHBOUR_OFFSETS {
+                let n_loc = [loc[0] + offset[0], loc[1] + offset[1]];
+                if let Some(neighbor_arc) = world_map.get(&n_loc) {
+                    neighbours.push(LocatedChunk {
+                        loc: n_loc,
+                        data: neighbor_arc.clone(),
+                    });
+                }
+            }
+
+            let job = MeshJob {
+                chunk: LocatedChunk {
+                    loc,
+                    data: center_arc.clone(),
+                },
+                neighbours,
+            };
+            let _ = self.sender.try_send(job); // Handle or log error if needed
+        }
+    }
 }
 
 impl Default for ChunkManager {
@@ -164,8 +224,8 @@ impl Default for ChunkManager {
         let generated_chunk_buffers = HashMap::new();
         let (send_generate, recv_generate) = mpsc::sync_channel(10);
         let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
-        let generated_chunkdata = Arc::new(RwLock::new(HashMap::new()));
-        start_meshgen(recv_generate, Arc::clone(&generated_chunkdata), send_chunk);
+        let generated_chunkdata = HashMap::new();
+        start_meshgen(recv_generate, send_chunk);
         let noise = OpenSimplex::new(SEED);
         Self {
             generated_buffers: generated_chunk_buffers,
@@ -175,11 +235,6 @@ impl Default for ChunkManager {
             receiver: recv_chunk,
         }
     }
-}
-
-#[derive(Debug, Clone, Encode, Decode)]
-pub struct ChunkData {
-    pub contents: Chunk,
 }
 
 const MAX_DISTANCE_X: i32 = RENDER_DISTANCE as i32 / CHUNK_WIDTH_I32 + 1;
@@ -201,8 +256,8 @@ pub fn chunkcoord_to_aabb(coord: [i32; 2]) -> Aabb<f32> {
 
 #[allow(clippy::cast_possible_truncation)]
 #[must_use]
-pub fn nearest_visible_unloaded<S: ::std::hash::BuildHasher>(
-    generated_chunks: &HashMap<[i32; 2], ChunkData, S>,
+pub fn nearest_visible_unloaded(
+    generated_chunks: &HashMap<[i32; 2], Arc<ChunkData>>,
     camera: &camera::Camera,
 ) -> Option<[i32; 2]> {
     let chunk_x = (camera.get_position().x as i32).div_euclid(CHUNK_WIDTH_I32);
@@ -228,16 +283,14 @@ pub fn nearest_visible_unloaded<S: ::std::hash::BuildHasher>(
 }
 
 pub fn start_meshgen(
-    recv_generate: mpsc::Receiver<MeshRegen>,
-    chunkdata_arc: Arc<RwLock<ChunkDataStorage>>,
+    recv_generate: mpsc::Receiver<MeshJob>,
     send_chunk: mpsc::SyncSender<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
 ) -> thread::JoinHandle<()> {
-    thread::spawn(move || manage_meshgen(&recv_generate, &chunkdata_arc, &send_chunk))
+    thread::spawn(move || manage_meshgen(&recv_generate, &send_chunk))
 }
 
 fn manage_meshgen(
-    recv_generate: &mpsc::Receiver<MeshRegen>,
-    chunkdata_arc: &Arc<RwLock<HashMap<[i32; 2], ChunkData>>>,
+    recv_generate: &mpsc::Receiver<MeshJob>,
     send_chunk: &mpsc::SyncSender<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
 ) {
     let mut waiting = vec![];
@@ -251,70 +304,22 @@ fn manage_meshgen(
             }
         }
         waiting = new_waiting;
-        if let Ok(MeshRegen {
-            chunk: chunk_location,
-            neighbours,
-        }) = recv_generate.recv()
-        {
-            let generated_chunkdata = chunkdata_arc.read().unwrap();
-            // The 8 neighbor directions mapping to [dx, dy], matching your exact order
-            const NEIGHBOR_OFFSETS: [[i32; 2]; 8] = [
-                [1, 0],   // 0: [x + 1, y]
-                [1, 1],   // 1: [x + 1, y + 1]
-                [0, 1],   // 2: [x, y + 1]
-                [-1, 1],  // 3: [x - 1, y + 1]
-                [-1, 0],  // 4: [x - 1, y]
-                [-1, -1], // 5: [x - 1, y - 1]
-                [0, -1],  // 6: [x, y - 1]
-                [1, -1],  // 7: [x + 1, y - 1]
-            ];
 
-            let [x, y] = chunk_location;
-            let mut chunks_to_remesh = vec![[x, y]];
+        // 1. Receive the self-contained MeshJob.
+        // We can destructure it right here in the match arm.
+        if let Ok(MeshJob { chunk, neighbours }) = recv_generate.recv() {
+            // 2. Compute the mesh using only the isolated data given to this job.
+            // No global HashMap, no RwLock reading, zero lock contention!
+            let (mesh, indices) = generate_chunk_mesh(&chunk, &neighbours);
 
-            // Zip the booleans with the offsets, filter for true, and map to target coordinates
-            chunks_to_remesh.extend(
-                neighbours
-                    .iter()
-                    .zip(NEIGHBOR_OFFSETS.iter())
-                    .filter(|(&should_remesh, _)| should_remesh)
-                    .map(|(_, &[dx, dy])| [x + dx, y + dy]),
-            );
-            for loc in chunks_to_remesh {
-                if !generated_chunkdata.contains_key(&loc) {
-                    continue;
+            // 3. Try to push the completed mesh data up to the main thread
+            match send_chunk.try_send((mesh, indices, chunk.loc)) {
+                Ok(()) => {}
+                Err(mpsc::TrySendError::Disconnected(_)) => {
+                    break;
                 }
-                let (mesh, indices) = generate_chunk_mesh(&*generated_chunkdata, loc[0], loc[1]);
-                match send_chunk.try_send((mesh, indices, loc)) {
-                    Ok(()) => {}
-                    Err(mpsc::TrySendError::Disconnected(_)) => {
-                        break;
-                    }
-                    Err(mpsc::TrySendError::Full(v)) => waiting.push(v),
-                }
+                Err(mpsc::TrySendError::Full(v)) => waiting.push(v),
             }
-        }
-    }
-}
-
-/// # Panics
-///
-/// If the lock cannot be acquired for whatever reason
-pub fn save_file(state: &AppState) {
-    let generated_chunkdata = state.chunk_manager.generated_data.read().unwrap();
-    let iterator = generated_chunkdata.iter();
-    for (chunk_location, data) in iterator {
-        let location = format!(
-            "{}.bin",
-            chunk_location
-                .iter()
-                .map(i32::to_string)
-                .collect::<Vec<_>>()
-                .join(",")
-        );
-        let path = Path::new(&location);
-        if let Ok(mut file) = File::create(path) {
-            bincode::encode_into_std_write(data, &mut file, bincode::config::standard()).unwrap();
         }
     }
 }
