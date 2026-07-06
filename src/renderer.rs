@@ -7,36 +7,42 @@ use winit::{dpi::PhysicalSize, window::Window};
 
 #[must_use]
 pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) -> bool {
-    const PLANES: [Vec4<f32>; 6] = [
-        Vec4::new(1.0, 0.0, 0.0, 1.0),  // Left   (x = -w)
-        Vec4::new(-1.0, 0.0, 0.0, 1.0), // Right  (x =  w)
-        Vec4::new(0.0, 1.0, 0.0, 1.0),  // Bottom (y = -w)
-        Vec4::new(0.0, -1.0, 0.0, 1.0), // Top    (y =  w)
-        Vec4::new(0.0, 0.0, 1.0, 0.0),  // Near   (z =  0)
-        Vec4::new(0.0, 0.0, -1.0, 1.0), // Far    (z =  w)
-    ];
-
+    // 1. Get the combined View-Projection matrix
     let transform_matrix = camera.get_transformation();
 
-    let vertices = [
-        Vec4::new(cuboid.min.x, cuboid.min.y, cuboid.min.z, 1.0),
-        Vec4::new(cuboid.min.x, cuboid.min.y, cuboid.max.z, 1.0),
-        Vec4::new(cuboid.min.x, cuboid.max.y, cuboid.min.z, 1.0),
-        Vec4::new(cuboid.min.x, cuboid.max.y, cuboid.max.z, 1.0),
-        Vec4::new(cuboid.max.x, cuboid.min.y, cuboid.min.z, 1.0),
-        Vec4::new(cuboid.max.x, cuboid.min.y, cuboid.max.z, 1.0),
-        Vec4::new(cuboid.max.x, cuboid.max.y, cuboid.min.z, 1.0),
-        Vec4::new(cuboid.max.x, cuboid.max.y, cuboid.max.z, 1.0),
+    // 2. Extract the matrix rows using vek's native API
+    let rows: [Vec4<f32>; 4] = transform_matrix.into_row_arrays().map(Vec4::from);
+    let r0 = rows[0]; // Row 0 controls X clip coordinates
+    let r1 = rows[1]; // Row 1 controls Y clip coordinates
+    let r2 = rows[2]; // Row 2 controls Z clip coordinates
+    let r3 = rows[3]; // Row 3 controls W clip coordinates
+
+    // 3. Construct the 6 frustum planes explicitly mapped to WebGPU's clip space:
+    // X: [-w, w], Y: [-w, w], Z: [0, w]
+    let planes = [
+        r3 + r0, // Left plane   (w + x >= 0)
+        r3 - r0, // Right plane  (w - x >= 0)
+        r3 + r1, // Bottom plane (w + y >= 0)
+        r3 - r1, // Top plane    (w - y >= 0)
+        r2,      // Near plane   (z >= 0)      <-- Specific to WebGPU / DX
+        r3 - r2, // Far plane    (w - z >= 0)  <-- Specific to WebGPU / DX
     ];
 
-    let vertices_clip = vertices.map(|v| transform_matrix * v);
+    // 4. Calculate the center and extents (half-sizes) of the AABB
+    let center = (cuboid.min + cuboid.max) * 0.5;
+    let extents = cuboid.max - center;
 
-    for plane in PLANES {
-        let mut all = true;
-        for vert in vertices_clip {
-            all &= plane.dot(vert) < 0.0;
-        }
-        if all {
+    // 5. Test the AABB against each plane using the "Effective Radius" method
+    for plane in planes {
+        // Project the AABB's half-sizes onto the plane's normal vector
+        let radius =
+            extents.x * plane.x.abs() + extents.y * plane.y.abs() + extents.z * plane.z.abs();
+
+        // Calculate the signed distance from the AABB center to the plane
+        let distance = center.x * plane.x + center.y * plane.y + center.z * plane.z + plane.w;
+
+        // If the box is entirely on the outside ("behind") any single plane, it's culled
+        if distance < -radius {
             return false;
         }
     }
