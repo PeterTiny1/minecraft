@@ -285,12 +285,12 @@ impl MeshGenerationContext<'_> {
     pub fn should_draw_face(&self, offset_x: i32, offset_y: i32, offset_z: i32) -> bool {
         // If the neighbor chunk isn't loaded (None), we default to drawing the face
         self.get_block_at_offset(offset_x, offset_y, offset_z)
-            .is_none_or(|block| block.is_transparent())
+            .is_none_or(super::block::BlockType::is_transparent)
     }
 
     pub fn is_neighbor_liquid(&self, offset_x: i32, offset_y: i32, offset_z: i32) -> bool {
         self.get_block_at_offset(offset_x, offset_y, offset_z)
-            .is_some_and(|block| block.is_liquid())
+            .is_some_and(super::block::BlockType::is_liquid)
     }
 
     pub fn is_neighbor_solid(&self, dx: i32, dy: i32, dz: i32) -> bool {

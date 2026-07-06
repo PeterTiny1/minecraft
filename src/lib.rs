@@ -250,7 +250,7 @@ impl AppState<'_> {
 
     fn save_all_chunks(&self) {
         let generated_chunkdata = &self.chunk_manager.generated_data;
-        for (chunk_location, data) in generated_chunkdata.iter() {
+        for (chunk_location, data) in generated_chunkdata {
             let location = format!(
                 "{}.bin",
                 chunk_location
