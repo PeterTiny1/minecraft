@@ -135,10 +135,29 @@ impl AppState<'_> {
                 .chunk_manager
                 .load_and_insert_chunk(Path::new(&path_str), chunk_loc);
 
+            let world_data = &self.chunk_manager.generated_data;
+            let [chunk_x, chunk_z] = chunk_loc;
             // 2. Queue up the mesh job using our fresh Arc handle
             // and the now-unlocked map reference
+            self.chunk_manager.queue_mesh_job(world_data, chunk_loc);
             self.chunk_manager
-                .queue_mesh_job(&self.chunk_manager.generated_data, chunk_loc);
+                .queue_mesh_job(world_data, [chunk_x - 1, chunk_z]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x + 1, chunk_z]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x, chunk_z - 1]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x, chunk_z + 1]);
+
+            // Diagonal corner seams
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x - 1, chunk_z - 1]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x + 1, chunk_z + 1]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x - 1, chunk_z + 1]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x + 1, chunk_z - 1]);
         }
 
         // B. Block Interaction (Breaking / Placing)
