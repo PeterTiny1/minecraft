@@ -173,16 +173,19 @@ impl ChunkManager {
         }
     }
     pub fn render_chunks(&self, render_pass: &mut wgpu::RenderPass, camera: &camera::Camera) {
-        for chunk_location in self
-            .generated_buffers
-            .keys()
-            .filter(|c| cuboid_intersects_frustum(&chunkcoord_to_aabb(**c), camera))
-        {
-            let chunk = &self.generated_buffers[chunk_location];
-            render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
-            render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
-            render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
-        }
+        println!("{}", self.generated_buffers.len());
+        self.generated_buffers
+            .iter() // Iterates over (&chunk_location, &chunk_data) pairs
+            .filter(|(location, _chunk)| {
+                // Dereference location explicitly depending on map type (or use **location)
+                cuboid_intersects_frustum(&chunkcoord_to_aabb(**location), camera)
+            })
+            .for_each(|(_location, chunk)| {
+                // We already have a direct reference to `chunk` here—no map lookup needed!
+                render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
+                render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
+            });
     }
     pub fn queue_mesh_job(&self, world_map: &HashMap<[i32; 2], Arc<ChunkData>>, loc: [i32; 2]) {
         if let Some(center_arc) = world_map.get(&loc) {
@@ -250,26 +253,40 @@ pub fn nearest_visible_unloaded(
     generated_chunks: &HashMap<[i32; 2], Arc<ChunkData>>,
     camera: &camera::Camera,
 ) -> Option<[i32; 2]> {
-    let chunk_x = (camera.get_position().x as i32).div_euclid(CHUNK_WIDTH_I32);
-    let chunk_z = (camera.get_position().z as i32).div_euclid(CHUNK_WIDTH_I32);
-    let length = |a, b| a * a + b * b;
-    (-MAX_DISTANCE_X..=MAX_DISTANCE_X)
-        .flat_map(|i| {
-            (-MAX_DISTANCE_Y..=MAX_DISTANCE_Y).filter_map(move |j| {
-                let distance = length(i, j);
-                let location = [i + chunk_x, j + chunk_z];
-                if distance <= (RENDER_DISTANCE * RENDER_DISTANCE) as i32
-                    && !generated_chunks.contains_key(&location)
-                    && cuboid_intersects_frustum(&chunkcoord_to_aabb([i, j]), camera)
-                {
-                    Some((location, distance))
-                } else {
-                    None
-                }
-            })
-        })
-        .reduce(|acc, v| if acc.1 > v.1 { v } else { acc })
-        .map(|(loc, _)| loc)
+    let cam_pos = camera.get_position();
+    let chunk_x = (cam_pos.x as i32).div_euclid(CHUNK_WIDTH_I32);
+    let chunk_z = (cam_pos.z as i32).div_euclid(CHUNK_DEPTH_I32);
+
+    let r_squared = (RENDER_DISTANCE * RENDER_DISTANCE) as i32;
+
+    let mut nearest_chunk = None;
+    let mut shortest_distance = i32::MAX;
+
+    for i in -MAX_DISTANCE_X..=MAX_DISTANCE_X {
+        for j in -MAX_DISTANCE_Y..=MAX_DISTANCE_Y {
+            let distance = i * i + j * j;
+
+            // 1. Quick distance check first (cheapest operation)
+            if distance > r_squared || distance >= shortest_distance {
+                continue;
+            }
+
+            let location = [i + chunk_x, j + chunk_z];
+
+            // 2. HashMap lookup (medium cost)
+            if generated_chunks.contains_key(&location) {
+                continue;
+            }
+
+            // 3. Frustum intersection check (most expensive)
+            if cuboid_intersects_frustum(&chunkcoord_to_aabb(location), camera) {
+                shortest_distance = distance;
+                nearest_chunk = Some(location);
+            }
+        }
+    }
+
+    nearest_chunk
 }
 
 pub fn start_meshgen(
