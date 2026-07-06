@@ -243,7 +243,6 @@ fn manage_meshgen(
     let mut waiting = vec![];
     loop {
         let mut new_waiting = vec![];
-        // TODO: work out why this doesn't work in practice
         for item in waiting {
             match send_chunk.try_send(item) {
                 Ok(()) => {}
@@ -258,32 +257,29 @@ fn manage_meshgen(
         }) = recv_generate.recv()
         {
             let generated_chunkdata = chunkdata_arc.read().unwrap();
+            // The 8 neighbor directions mapping to [dx, dy], matching your exact order
+            const NEIGHBOR_OFFSETS: [[i32; 2]; 8] = [
+                [1, 0],   // 0: [x + 1, y]
+                [1, 1],   // 1: [x + 1, y + 1]
+                [0, 1],   // 2: [x, y + 1]
+                [-1, 1],  // 3: [x - 1, y + 1]
+                [-1, 0],  // 4: [x - 1, y]
+                [-1, -1], // 5: [x - 1, y - 1]
+                [0, -1],  // 6: [x, y - 1]
+                [1, -1],  // 7: [x + 1, y - 1]
+            ];
+
             let [x, y] = chunk_location;
             let mut chunks_to_remesh = vec![[x, y]];
-            if neighbours[0] {
-                chunks_to_remesh.push([x + 1, y]);
-            }
-            if neighbours[1] {
-                chunks_to_remesh.push([x + 1, y + 1]);
-            }
-            if neighbours[2] {
-                chunks_to_remesh.push([x, y + 1]);
-            }
-            if neighbours[3] {
-                chunks_to_remesh.push([x - 1, y + 1]);
-            }
-            if neighbours[4] {
-                chunks_to_remesh.push([x - 1, y]);
-            }
-            if neighbours[5] {
-                chunks_to_remesh.push([x - 1, y - 1]);
-            }
-            if neighbours[6] {
-                chunks_to_remesh.push([x, y - 1]);
-            }
-            if neighbours[7] {
-                chunks_to_remesh.push([x + 1, y - 1]);
-            }
+
+            // Zip the booleans with the offsets, filter for true, and map to target coordinates
+            chunks_to_remesh.extend(
+                neighbours
+                    .iter()
+                    .zip(NEIGHBOR_OFFSETS.iter())
+                    .filter(|(&should_remesh, _)| should_remesh)
+                    .map(|(_, &[dx, dy])| [x + dx, y + dy]),
+            );
             for loc in chunks_to_remesh {
                 if !generated_chunkdata.contains_key(&loc) {
                     continue;
