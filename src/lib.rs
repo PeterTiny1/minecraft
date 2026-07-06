@@ -44,6 +44,15 @@ pub const RENDER_DISTANCE: f32 = 768.0;
 pub const SEED: u32 = 0;
 pub type ChunkDataStorage = HashMap<[i32; 2], chunk::ChunkData>;
 
+pub const DIRECTION_OFFSETS: [Vec3<i32>; 6] = [
+    Vec3 { x: -1, y: 0, z: 0 },
+    Vec3 { x: 1, y: 0, z: 0 },
+    Vec3 { x: 0, y: -1, z: 0 },
+    Vec3 { x: 0, y: 1, z: 0 },
+    Vec3 { x: 0, y: 0, z: -1 },
+    Vec3 { x: 0, y: 0, z: 1 },
+];
+
 // --- LOCAL STRUCTS ---
 
 #[derive(Default)]
@@ -151,16 +160,7 @@ impl AppState<'_> {
             let now = Instant::now();
 
             if self.input.right_pressed {
-                let location = location
-                    + match previous_step {
-                        0 => Vec3 { x: 1, y: 0, z: 0 },
-                        1 => Vec3 { x: -1, y: 0, z: 0 },
-                        2 => Vec3 { x: 0, y: 1, z: 0 },
-                        3 => Vec3 { x: 0, y: -1, z: 0 },
-                        4 => Vec3 { x: 0, y: 0, z: 1 },
-                        5 => Vec3 { x: 0, y: 0, z: -1 },
-                        _ => unreachable!(),
-                    };
+                let location = location - DIRECTION_OFFSETS[previous_step];
                 if location.y < 256 && location.y > -1 {
                     let chunk_x = location.x.div_euclid(CHUNK_WIDTH_I32);
                     let chunk_z = location.z.div_euclid(CHUNK_DEPTH_I32);

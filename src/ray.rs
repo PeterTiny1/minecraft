@@ -1,13 +1,6 @@
 use vek::{num_traits::Zero, Vec3};
 
-const DIRECTION_OFFSETS: [Vec3<i32>; 6] = [
-    Vec3 { x: -1, y: 0, z: 0 },
-    Vec3 { x: 1, y: 0, z: 0 },
-    Vec3 { x: 0, y: -1, z: 0 },
-    Vec3 { x: 0, y: 1, z: 0 },
-    Vec3 { x: 0, y: 0, z: -1 },
-    Vec3 { x: 0, y: 0, z: 1 },
-];
+use crate::DIRECTION_OFFSETS;
 
 pub struct Ray {
     origin: Vec3<f32>,
