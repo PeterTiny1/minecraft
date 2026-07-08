@@ -36,10 +36,10 @@ pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) ->
     for plane in planes {
         // Project the AABB's half-sizes onto the plane's normal vector
         let radius =
-            extents.x * plane.x.abs() + extents.y * plane.y.abs() + extents.z * plane.z.abs();
+            extents.z.mul_add(plane.z.abs(), extents.y.mul_add(plane.y.abs(), extents.x * plane.x.abs()));
 
         // Calculate the signed distance from the AABB center to the plane
-        let distance = center.x * plane.x + center.y * plane.y + center.z * plane.z + plane.w;
+        let distance = center.z.mul_add(plane.z, center.y.mul_add(plane.y, center.x * plane.x)) + plane.w;
 
         // If the box is entirely on the outside ("behind") any single plane, it's culled
         if distance < -radius {
