@@ -228,7 +228,7 @@ impl Texture {
         // 3. Keep track of the current mip's image data buffers for all layers
         // Start with the raw RGBA8 buffers of your base images
         let mut current_mip_buffers: Vec<image::RgbaImage> =
-            imgs.iter().map(|img| img.to_rgba8()).collect();
+            imgs.iter().map(image::DynamicImage::to_rgba8).collect();
 
         let mut current_width = base_width;
         let mut current_height = base_height;

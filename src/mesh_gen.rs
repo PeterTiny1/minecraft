@@ -58,7 +58,7 @@ fn create_grass_face(
     } else {
         (CLOSE_CORNER, FAR_CORNER)
     };
-    let tex_index = tex_index as u32;
+    let tex_index = u32::from(tex_index);
     [
         Vertex {
             position: [x + CLOSE_CORNER, y + 1.0, z + add0],
@@ -398,7 +398,7 @@ const fn calculate_ao_light(
     // But for now, we'll stick to previous logic.
 }
 fn gen_face_pos_x(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let tex_index = tex_index as u32;
+    let tex_index = u32::from(tex_index);
     let [xplusone, y_f32, rel_z] = [
         context.worldpos_f32()[0] + 1.0,
         context.worldpos_f32()[1],
@@ -447,7 +447,7 @@ fn gen_face_pos_x(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex>
     ]
 }
 fn gen_face_neg_x(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let tex_index = tex_index as u32;
+    let tex_index = u32::from(tex_index);
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -505,7 +505,7 @@ fn gen_face_neg_x(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex>
 }
 
 fn gen_face_pos_y(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let tex_index = tex_index as u32;
+    let tex_index = u32::from(tex_index);
     let [rel_x, yplusone, rel_z] = [
         context.worldpos_f32()[0],
         context.worldpos_f32()[1] + 1.0,
@@ -561,7 +561,7 @@ fn gen_face_pos_y(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex>
 }
 
 fn gen_face_neg_y(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let tex_index = tex_index as u32;
+    let tex_index = u32::from(tex_index);
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
         context.worldpos_f32()[1],
@@ -614,7 +614,7 @@ fn gen_face_neg_y(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex>
 }
 
 fn gen_face_pos_z(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let tex_index = tex_index as u32;
+    let tex_index = u32::from(tex_index);
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -673,7 +673,7 @@ fn gen_face_pos_z(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex>
 }
 
 fn gen_face_neg_z(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let tex_index = tex_index as u32;
+    let tex_index = u32::from(tex_index);
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -737,7 +737,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     let [rel_x, y_f32, rel_z] = context.worldpos_f32();
     let yplusoff = y_f32 + BLOCK_WATER_HEIGHT;
     if !context.is_neighbor_liquid(0, 1, 0) {
-        let tex_index = tex_indices[0] as u32;
+        let tex_index = u32::from(tex_indices[0]);
         context.extend_indicies(&BIDIR_INDICES);
         context.vertices.append(&mut vec![
             Vertex {
@@ -767,7 +767,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
         ]);
     }
     if !context.is_neighbor_liquid(0, -1, 0) && context.should_draw_face(0, -1, 0) {
-        let tex_index = tex_indices[5] as u32;
+        let tex_index = u32::from(tex_indices[5]);
         context.extend_indicies(&BIDIR_INDICES);
         context.vertices.append(&mut vec![
             Vertex {
@@ -797,7 +797,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
         ]);
     }
     if !context.is_neighbor_liquid(0, 0, 1) && context.should_draw_face(0, 0, 1) {
-        let tex_index = tex_indices[1] as u32;
+        let tex_index = u32::from(tex_indices[1]);
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
@@ -856,7 +856,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
         }
     }
     if !context.is_neighbor_liquid(1, 0, 0) && context.should_draw_face(1, 0, 0) {
-        let tex_index = tex_indices[2] as u32;
+        let tex_index = u32::from(tex_indices[2]);
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
@@ -915,7 +915,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
         }
     }
     if !context.is_neighbor_liquid(0, 0, -1) && context.should_draw_face(0, 0, -1) {
-        let tex_index = tex_indices[1] as u32;
+        let tex_index = u32::from(tex_indices[1]);
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
@@ -974,7 +974,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
         }
     }
     if !context.is_neighbor_liquid(-1, 0, 0) && context.should_draw_face(-1, 0, 0) {
-        let tex_index = tex_indices[2] as u32;
+        let tex_index = u32::from(tex_indices[2]);
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
