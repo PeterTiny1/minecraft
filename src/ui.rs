@@ -56,15 +56,38 @@ const CROSSHAIR: [Vertex; 4] = [
 /// # Panics
 ///
 /// If crosshair.png cannot be loaded
-#[inline]
 pub fn init_state(render_context: &RenderContext, size: PhysicalSize<u32>) -> State {
+    let ui_bind_group_layout =
+        render_context
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: Some("ui_bind_group_layout"),
+            });
     let crosshair_bind_group = load_texture(
         &render_context.device,
-        &render_context.texture_bind_group_layout,
+        &ui_bind_group_layout,
         &texture::Texture::from_bytes(
             &render_context.device,
             &render_context.queue,
-            include_bytes!("crosshair.png"),
+            include_bytes!("textures/crosshair.png"),
             "crosshair.png",
         )
         .unwrap(),
@@ -89,7 +112,7 @@ pub fn init_state(render_context: &RenderContext, size: PhysicalSize<u32>) -> St
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
                     bind_group_layouts: &[
-                        &render_context.texture_bind_group_layout,
+                        &ui_bind_group_layout,
                         &render_context.device.create_bind_group_layout(
                             &wgpu::BindGroupLayoutDescriptor {
                                 entries: &[wgpu::BindGroupLayoutEntry {

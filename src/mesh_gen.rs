@@ -7,88 +7,30 @@ use crate::{
     renderer::Vertex,
 };
 
-const TEXTURE_WIDTH: f32 = 1.0 / 16.0;
 pub type Index = u32;
 #[inline]
-const fn get_texture_offsets(block_type: BlockType) -> [[f32; 2]; 6] {
-    const TEXTURE_WIDTH_2: f32 = TEXTURE_WIDTH * 2.;
-    const TEXTURE_WIDTH_3: f32 = TEXTURE_WIDTH * 3.;
-    const TEXTURE_WIDTH_4: f32 = TEXTURE_WIDTH * 4.;
-    const TEXTURE_WIDTH_5: f32 = TEXTURE_WIDTH * 5.;
-    const TEXTURE_WIDTH_6: f32 = TEXTURE_WIDTH * 6.;
-    const TEXTURE_WIDTH_7: f32 = TEXTURE_WIDTH * 7.;
-    const TEXTURE_WIDTH_8: f32 = TEXTURE_WIDTH * 8.;
-    const TEXTURE_WIDTH_9: f32 = TEXTURE_WIDTH * 9.;
+const fn get_texture_indices(block_type: BlockType) -> [u8; 6] {
     match block_type {
-        BlockType::Stone => [[0., TEXTURE_WIDTH_8]; 6],
-        BlockType::GrassBlock0 => [
-            [0., TEXTURE_WIDTH],
-            [TEXTURE_WIDTH, TEXTURE_WIDTH],
-            [TEXTURE_WIDTH, TEXTURE_WIDTH],
-            [TEXTURE_WIDTH, TEXTURE_WIDTH],
-            [TEXTURE_WIDTH, TEXTURE_WIDTH],
-            [0., 0.],
-        ],
-        BlockType::GrassBlock1 => [
-            [0., TEXTURE_WIDTH_2],
-            [TEXTURE_WIDTH, TEXTURE_WIDTH_2],
-            [TEXTURE_WIDTH, TEXTURE_WIDTH_2],
-            [TEXTURE_WIDTH, TEXTURE_WIDTH_2],
-            [TEXTURE_WIDTH, TEXTURE_WIDTH_2],
-            [0., 0.],
-        ],
-        BlockType::GrassBlock2 => [
-            [0., TEXTURE_WIDTH_3],
-            [TEXTURE_WIDTH, TEXTURE_WIDTH_3],
-            [TEXTURE_WIDTH, TEXTURE_WIDTH_3],
-            [TEXTURE_WIDTH, TEXTURE_WIDTH_3],
-            [TEXTURE_WIDTH, TEXTURE_WIDTH_3],
-            [0., 0.],
-        ],
-        BlockType::BirchWood => [
-            [TEXTURE_WIDTH_7, TEXTURE_WIDTH],
-            [TEXTURE_WIDTH_6, TEXTURE_WIDTH],
-            [TEXTURE_WIDTH_6, TEXTURE_WIDTH],
-            [TEXTURE_WIDTH_6, TEXTURE_WIDTH],
-            [TEXTURE_WIDTH_6, TEXTURE_WIDTH],
-            [TEXTURE_WIDTH_7, TEXTURE_WIDTH],
-        ],
-        BlockType::Wood => [
-            [TEXTURE_WIDTH_7, TEXTURE_WIDTH_2],
-            [TEXTURE_WIDTH_6, TEXTURE_WIDTH_2],
-            [TEXTURE_WIDTH_6, TEXTURE_WIDTH_2],
-            [TEXTURE_WIDTH_6, TEXTURE_WIDTH_2],
-            [TEXTURE_WIDTH_6, TEXTURE_WIDTH_2],
-            [TEXTURE_WIDTH_7, TEXTURE_WIDTH_2],
-        ],
-        BlockType::DarkWood => [
-            [TEXTURE_WIDTH_7, TEXTURE_WIDTH_3],
-            [TEXTURE_WIDTH_6, TEXTURE_WIDTH_3],
-            [TEXTURE_WIDTH_6, TEXTURE_WIDTH_3],
-            [TEXTURE_WIDTH_6, TEXTURE_WIDTH_3],
-            [TEXTURE_WIDTH_6, TEXTURE_WIDTH_3],
-            [TEXTURE_WIDTH_7, TEXTURE_WIDTH_3],
-        ],
-        BlockType::BirchLeaf => [[TEXTURE_WIDTH_5, TEXTURE_WIDTH]; 6],
-        BlockType::Leaf => [[TEXTURE_WIDTH_5, TEXTURE_WIDTH_2]; 6],
-        BlockType::DarkLeaf => [[TEXTURE_WIDTH_5, TEXTURE_WIDTH_3]; 6],
-        BlockType::Grass0 => [[TEXTURE_WIDTH_2, TEXTURE_WIDTH]; 6],
-        BlockType::Grass1 => [[TEXTURE_WIDTH_2, TEXTURE_WIDTH_2]; 6],
-        BlockType::Grass2 => [[TEXTURE_WIDTH_2, TEXTURE_WIDTH_3]; 6],
-        BlockType::Flower0 => [[TEXTURE_WIDTH_3, TEXTURE_WIDTH]; 6],
-        BlockType::Flower1 => [[TEXTURE_WIDTH_3, TEXTURE_WIDTH_2]; 6],
-        BlockType::Flower2 => [[TEXTURE_WIDTH_3, TEXTURE_WIDTH_3]; 6],
-        BlockType::Water => [
-            [TEXTURE_WIDTH_4, 0.],
-            [TEXTURE_WIDTH_5, 0.],
-            [TEXTURE_WIDTH_5, 0.],
-            [TEXTURE_WIDTH_5, 0.],
-            [TEXTURE_WIDTH_5, 0.],
-            [TEXTURE_WIDTH_4, 0.],
-        ],
-        BlockType::Sand => [[TEXTURE_WIDTH_9, 0.]; 6],
-        BlockType::Dirt => [[0., 0.]; 6],
-        BlockType::Air => [[0.; 2]; 6],
+        BlockType::Stone => [0; 6],
+        BlockType::Dirt => [1; 6],
+        BlockType::GrassBlock0 => [2, 3, 3, 3, 3, 1],
+        BlockType::GrassBlock1 => [4, 5, 5, 5, 5, 1],
+        BlockType::GrassBlock2 => [6, 7, 7, 7, 7, 1],
+        BlockType::BirchWood => [8, 9, 9, 9, 9, 8],
+        BlockType::Wood => [10, 11, 11, 11, 11, 10],
+        BlockType::DarkWood => [12, 13, 13, 13, 13, 12],
+        BlockType::BirchLeaf => [14; 6],
+        BlockType::Leaf => [15; 6],
+        BlockType::DarkLeaf => [16; 6],
+        BlockType::Grass0 => [17; 6],
+        BlockType::Grass1 => [18; 6],
+        BlockType::Grass2 => [19; 6],
+        BlockType::Flower0 => [20; 6],
+        BlockType::Flower1 => [21; 6],
+        BlockType::Flower2 => [22; 6],
+        BlockType::Sand => [23; 6],
+        BlockType::Water => [24, 25, 25, 25, 25, 24],
+        BlockType::Air => [0; 6],
     }
 }
 const TOP_BRIGHTNESS: f32 = 1.0;
@@ -97,24 +39,16 @@ const SIDE_BRIGHTNESS: f32 = 0.8;
 const FRONT_BRIGHTNESS: f32 = 0.9;
 const BACK_BRIGHTNESS: f32 = 0.7;
 const AO_BRIGHTNESS: f32 = 0.5;
-#[test]
-fn test_add_arrs() {
-    assert_eq!(add_arrs([1.0, 2.0], [3.0, 4.0]), [4.0, 6.0]);
-}
 
-#[inline]
-fn add_arrs(a: [f32; 2], b: [f32; 2]) -> [f32; 2] {
-    [a[0] + b[0], a[1] + b[1]]
-}
 const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
 const FAR_CORNER: f32 = 0.5 - 0.5 * FRAC_1_SQRT_2;
 const TOP_LEFT: [f32; 2] = [0.0, 0.0];
-const TOP_RIGHT: [f32; 2] = [TEXTURE_WIDTH, 0.0];
-const BOTTOM_LEFT: [f32; 2] = [0.0, TEXTURE_WIDTH];
-const BOTTOM_RIGHT: [f32; 2] = [TEXTURE_WIDTH, TEXTURE_WIDTH];
+const TOP_RIGHT: [f32; 2] = [1.0, 0.0];
+const BOTTOM_LEFT: [f32; 2] = [0.0, 1.0];
+const BOTTOM_RIGHT: [f32; 2] = [1.0, 1.0];
 #[inline]
 fn create_grass_face(
-    tex_offset: [f32; 2],
+    tex_index: u8,
     world_position: [f32; 3],
     diagonal: bool,
 ) -> std::array::IntoIter<Vertex, 4> {
@@ -124,26 +58,31 @@ fn create_grass_face(
     } else {
         (CLOSE_CORNER, FAR_CORNER)
     };
+    let tex_index = tex_index as u32;
     [
         Vertex {
             position: [x + CLOSE_CORNER, y + 1.0, z + add0],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
+            uv: TOP_LEFT.map(f16::from_f32),
             light_level: 1.0,
+            tex_index,
         },
         Vertex {
             position: [x + CLOSE_CORNER, y, z + add0],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+            uv: BOTTOM_LEFT.map(f16::from_f32),
             light_level: 1.0,
+            tex_index,
         },
         Vertex {
             position: [x + FAR_CORNER, y, z + add1],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+            uv: BOTTOM_RIGHT.map(f16::from_f32),
             light_level: 1.0,
+            tex_index,
         },
         Vertex {
             position: [x + FAR_CORNER, y + 1.0, z + add1],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+            uv: TOP_RIGHT.map(f16::from_f32),
             light_level: 1.0,
+            tex_index,
         },
     ]
     .into_iter()
@@ -151,13 +90,10 @@ fn create_grass_face(
 
 const FLOWER_INDICES: [Index; 12] = [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0];
 const STEM_CORNERS: [[f32; 2]; 4] = [
-    [TEXTURE_WIDTH * (3.0 + (6.0 / 16.0)), TEXTURE_WIDTH],
-    [
-        TEXTURE_WIDTH * (3.0 + (6.0 / 16.0)),
-        TEXTURE_WIDTH * (23.0 / 16.0),
-    ],
-    [TEXTURE_WIDTH * 3.0, TEXTURE_WIDTH * (23.0 / 16.0)],
-    [TEXTURE_WIDTH * 3.0, TEXTURE_WIDTH],
+    [6.0 / 16.0, 0.0],        // Top-right local coordinate
+    [6.0 / 16.0, 7.0 / 16.0], // Bottom-right local coordinate (23/16 - 16/16)
+    [0.0, 7.0 / 16.0],        // Bottom-left local coordinate
+    [0.0, 0.0],               // Top-left local coordinate
 ];
 const CLOSE_FLOWER_CORNER: f32 = 0.716_506_35;
 #[inline]
@@ -168,21 +104,25 @@ fn generate_flower(position: [f32; 3]) -> std::array::IntoIter<Vertex, 4> {
             position: [x + CLOSE_FLOWER_CORNER, y + 1.0, z + FAR_CORNER],
             uv: STEM_CORNERS[0].map(f16::from_f32),
             light_level: 1.0,
+            tex_index: 20,
         },
         Vertex {
             position: [x + CLOSE_FLOWER_CORNER, y, z + FAR_CORNER],
             uv: STEM_CORNERS[1].map(f16::from_f32),
             light_level: 1.0,
+            tex_index: 20,
         },
         Vertex {
             position: [x + FAR_CORNER, y, z + CLOSE_FLOWER_CORNER],
             uv: STEM_CORNERS[2].map(f16::from_f32),
             light_level: 1.0,
+            tex_index: 20,
         },
         Vertex {
             position: [x + FAR_CORNER, y + 1.0, z + CLOSE_FLOWER_CORNER],
             uv: STEM_CORNERS[3].map(f16::from_f32),
             light_level: 1.0,
+            tex_index: 20,
         },
     ]
     .into_iter()
@@ -193,14 +133,8 @@ const GRASS_INDICES: [Index; 24] = [
 ];
 const BIDIR_INDICES: [Index; 12] = [0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0];
 const QUAD_INDICES: [Index; 6] = [0, 1, 2, 0, 2, 3];
-const TOP_LEFT_WATER: [f32; 2] = [
-    TOP_LEFT[0],
-    TOP_LEFT[1] + TEXTURE_WIDTH * BLOCK_WATER_HEIGHT,
-];
-const TOP_RIGHT_WATER: [f32; 2] = [
-    TOP_RIGHT[0],
-    TOP_RIGHT[1] + TEXTURE_WIDTH * BLOCK_WATER_HEIGHT,
-];
+const TOP_LEFT_WATER: [f32; 2] = [TOP_LEFT[0], TOP_LEFT[1] + BLOCK_WATER_HEIGHT];
+const TOP_RIGHT_WATER: [f32; 2] = [TOP_RIGHT[0], TOP_RIGHT[1] + BLOCK_WATER_HEIGHT];
 
 pub struct MeshGenerationContext<'a> {
     pub center: &'a LocatedChunk,
@@ -345,7 +279,7 @@ pub fn generate_chunk_mesh(
                     vertices: &mut vertices,
                 };
 
-                let tex_offsets = get_texture_offsets(block_type);
+                let tex_indices = get_texture_indices(block_type);
 
                 match block_type {
                     BlockType::Flower0 => {
@@ -354,25 +288,23 @@ pub fn generate_chunk_mesh(
                         context.vertices.extend(generate_flower(world_pos));
                     }
                     _ if block_type.is_liquid() => {
-                        generate_liquid(&mut context, tex_offsets);
+                        generate_liquid(&mut context, tex_indices);
                     }
                     _ if block_type.is_grasslike() => {
-                        let tex_offset = tex_offsets[0];
+                        let tex_index = tex_indices[0];
                         let world_position = context.worldpos_f32();
                         context.extend_indices(&GRASS_INDICES);
                         context.vertices.extend(create_grass_face(
-                            tex_offset,
+                            tex_index,
                             world_position,
                             false,
                         ));
-                        context.vertices.extend(create_grass_face(
-                            tex_offset,
-                            world_position,
-                            true,
-                        ));
+                        context
+                            .vertices
+                            .extend(create_grass_face(tex_index, world_position, true));
                     }
                     _ => {
-                        generate_solid(&mut context, tex_offsets);
+                        generate_solid(&mut context, tex_indices);
                     }
                 }
             }
@@ -381,20 +313,20 @@ pub fn generate_chunk_mesh(
     (vertices, indices)
 }
 
-fn generate_solid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6]) {
+fn generate_solid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     // --- North Face (Positive X) ---
     // The "should_draw_face" handles the edge check AND the neighbor check automatically.
     if context.should_draw_face(1, 0, 0) {
-        let tex_offset = tex_offsets[2];
+        let tex_index = tex_indices[2];
         context.extend_indicies(&QUAD_INDICES);
         context
             .vertices
-            .append(&mut gen_face_pos_x(context, tex_offset));
+            .append(&mut gen_face_pos_x(context, tex_index));
     }
 
     // --- South Face (Negative X) ---
     if context.should_draw_face(-1, 0, 0) {
-        let tex_offset = tex_offsets[4];
+        let tex_offset = tex_indices[4];
         context.extend_indicies(&QUAD_INDICES);
         context
             .vertices
@@ -403,7 +335,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6
 
     // --- Top Face (Positive Y) ---
     if context.should_draw_face(0, 1, 0) {
-        let tex_offset = tex_offsets[0];
+        let tex_offset = tex_indices[0];
         context.extend_indicies(&QUAD_INDICES);
         context
             .vertices
@@ -412,7 +344,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6
 
     // --- Bottom Face (Negative Y) ---
     if context.should_draw_face(0, -1, 0) {
-        let tex_offset = tex_offsets[5];
+        let tex_offset = tex_indices[5];
         context.extend_indicies(&QUAD_INDICES);
         context
             .vertices
@@ -421,7 +353,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6
 
     // --- East Face (Positive Z) ---
     if context.should_draw_face(0, 0, 1) {
-        let tex_offset = tex_offsets[1];
+        let tex_offset = tex_indices[1];
         context.extend_indicies(&QUAD_INDICES);
         context
             .vertices
@@ -430,7 +362,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6
 
     // --- West Face (Negative Z) ---
     if context.should_draw_face(0, 0, -1) {
-        let tex_offset = tex_offsets[3];
+        let tex_offset = tex_indices[3];
         context.extend_indicies(&QUAD_INDICES);
         context
             .vertices
@@ -465,7 +397,8 @@ const fn calculate_ao_light(
     // ---
     // But for now, we'll stick to previous logic.
 }
-fn gen_face_pos_x(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
+fn gen_face_pos_x(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
+    let tex_index = tex_index as u32;
     let [xplusone, y_f32, rel_z] = [
         context.worldpos_f32()[0] + 1.0,
         context.worldpos_f32()[1],
@@ -489,27 +422,32 @@ fn gen_face_pos_x(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<
     vec![
         Vertex {
             position: [xplusone, 1.0 + y_f32, 1.0 + rel_z],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
+            uv: TOP_LEFT.map(f16::from_f32),
             light_level: light_1,
+            tex_index,
         },
         Vertex {
             position: [xplusone, y_f32, 1.0 + rel_z],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+            uv: BOTTOM_LEFT.map(f16::from_f32),
             light_level: light_2,
+            tex_index,
         },
         Vertex {
             position: [xplusone, y_f32, rel_z],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+            uv: BOTTOM_RIGHT.map(f16::from_f32),
             light_level: light_3,
+            tex_index,
         },
         Vertex {
             position: [xplusone, 1.0 + y_f32, rel_z],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+            uv: TOP_RIGHT.map(f16::from_f32),
             light_level: light_4,
+            tex_index,
         },
     ]
 }
-fn gen_face_neg_x(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
+fn gen_face_neg_x(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
+    let tex_index = tex_index as u32;
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -541,28 +479,33 @@ fn gen_face_neg_x(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<
     vec![
         Vertex {
             position: [rel_x, 1.0 + y_f32, rel_z],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
-            light_level: light_0, // <- Clean
+            uv: TOP_LEFT.map(f16::from_f32),
+            light_level: light_0,
+            tex_index,
         },
         Vertex {
             position: [rel_x, y_f32, rel_z],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
-            light_level: light_1, // <- Clean
+            uv: BOTTOM_LEFT.map(f16::from_f32),
+            light_level: light_1,
+            tex_index,
         },
         Vertex {
             position: [rel_x, y_f32, 1.0 + rel_z],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: light_2, // <- Clean
+            uv: BOTTOM_RIGHT.map(f16::from_f32),
+            light_level: light_2,
+            tex_index,
         },
         Vertex {
             position: [rel_x, 1.0 + y_f32, 1.0 + rel_z],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
-            light_level: light_3, // <- Clean
+            uv: TOP_RIGHT.map(f16::from_f32),
+            light_level: light_3,
+            tex_index,
         },
     ]
 }
 
-fn gen_face_pos_y(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
+fn gen_face_pos_y(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
+    let tex_index = tex_index as u32;
     let [rel_x, yplusone, rel_z] = [
         context.worldpos_f32()[0],
         context.worldpos_f32()[1] + 1.0,
@@ -592,28 +535,33 @@ fn gen_face_pos_y(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<
     vec![
         Vertex {
             position: [rel_x, yplusone, rel_z],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
+            uv: TOP_LEFT.map(f16::from_f32),
             light_level: light_0,
+            tex_index,
         },
         Vertex {
             position: [rel_x, yplusone, 1.0 + rel_z],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+            uv: BOTTOM_LEFT.map(f16::from_f32),
             light_level: light_1,
+            tex_index,
         },
         Vertex {
             position: [1.0 + rel_x, yplusone, 1.0 + rel_z],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+            uv: BOTTOM_RIGHT.map(f16::from_f32),
             light_level: light_2,
+            tex_index,
         },
         Vertex {
             position: [1.0 + rel_x, yplusone, rel_z],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+            uv: TOP_RIGHT.map(f16::from_f32),
             light_level: light_3,
+            tex_index,
         },
     ]
 }
 
-fn gen_face_neg_y(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
+fn gen_face_neg_y(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
+    let tex_index = tex_index as u32;
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
         context.worldpos_f32()[1],
@@ -640,28 +588,33 @@ fn gen_face_neg_y(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<
     vec![
         Vertex {
             position: [1.0 + rel_x, y_f32, rel_z],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
+            uv: TOP_LEFT.map(f16::from_f32),
             light_level: light_0,
+            tex_index,
         },
         Vertex {
             position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+            uv: BOTTOM_LEFT.map(f16::from_f32),
             light_level: light_1,
+            tex_index,
         },
         Vertex {
             position: [rel_x, y_f32, 1.0 + rel_z],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+            uv: BOTTOM_RIGHT.map(f16::from_f32),
             light_level: light_2,
+            tex_index,
         },
         Vertex {
             position: [rel_x, y_f32, rel_z],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+            uv: TOP_RIGHT.map(f16::from_f32),
             light_level: light_3,
+            tex_index,
         },
     ]
 }
 
-fn gen_face_pos_z(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
+fn gen_face_pos_z(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
+    let tex_index = tex_index as u32;
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -694,28 +647,33 @@ fn gen_face_pos_z(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<
     vec![
         Vertex {
             position: [rel_x, 1.0 + y_f32, zplusone],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
+            uv: TOP_LEFT.map(f16::from_f32),
             light_level: light_0,
+            tex_index,
         },
         Vertex {
             position: [rel_x, y_f32, zplusone],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+            uv: BOTTOM_LEFT.map(f16::from_f32),
             light_level: light_1,
+            tex_index,
         },
         Vertex {
             position: [1.0 + rel_x, y_f32, zplusone],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+            uv: BOTTOM_RIGHT.map(f16::from_f32),
             light_level: light_2,
+            tex_index,
         },
         Vertex {
             position: [1.0 + rel_x, 1.0 + y_f32, zplusone],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+            uv: TOP_RIGHT.map(f16::from_f32),
             light_level: light_3,
+            tex_index,
         },
     ]
 }
 
-fn gen_face_neg_z(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<Vertex> {
+fn gen_face_neg_z(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
+    let tex_index = tex_index as u32;
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -747,23 +705,27 @@ fn gen_face_neg_z(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<
     vec![
         Vertex {
             position: [1.0 + rel_x, 1.0 + y_f32, rel_z],
-            uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
+            uv: TOP_LEFT.map(f16::from_f32),
             light_level: light_0,
+            tex_index,
         },
         Vertex {
             position: [1.0 + rel_x, y_f32, rel_z],
-            uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+            uv: BOTTOM_LEFT.map(f16::from_f32),
             light_level: light_1,
+            tex_index,
         },
         Vertex {
             position: [rel_x, y_f32, rel_z],
-            uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+            uv: BOTTOM_RIGHT.map(f16::from_f32),
             light_level: light_2,
+            tex_index,
         },
         Vertex {
             position: [rel_x, 1.0 + y_f32, rel_z],
-            uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+            uv: TOP_RIGHT.map(f16::from_f32),
             light_level: light_3,
+            tex_index,
         },
     ]
 }
@@ -771,261 +733,301 @@ fn gen_face_neg_z(context: &MeshGenerationContext, tex_offset: [f32; 2]) -> Vec<
 const BLOCK_WATER_HEIGHT: f32 = 0.5;
 
 #[inline]
-fn generate_liquid(context: &mut MeshGenerationContext, tex_offsets: [[f32; 2]; 6]) {
+fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     let [rel_x, y_f32, rel_z] = context.worldpos_f32();
     let yplusoff = y_f32 + BLOCK_WATER_HEIGHT;
     if !context.is_neighbor_liquid(0, 1, 0) {
-        let tex_offset = tex_offsets[0];
+        let tex_index = tex_indices[0] as u32;
         context.extend_indicies(&BIDIR_INDICES);
         context.vertices.append(&mut vec![
             Vertex {
                 position: [rel_x, yplusoff, rel_z],
-                uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
+                uv: TOP_LEFT.map(f16::from_f32),
                 light_level: TOP_BRIGHTNESS,
+                tex_index,
             },
             Vertex {
                 position: [rel_x, yplusoff, 1.0 + rel_z],
-                uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+                uv: BOTTOM_LEFT.map(f16::from_f32),
                 light_level: TOP_BRIGHTNESS,
+                tex_index,
             },
             Vertex {
                 position: [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+                uv: BOTTOM_RIGHT.map(f16::from_f32),
                 light_level: TOP_BRIGHTNESS,
+                tex_index,
             },
             Vertex {
                 position: [1.0 + rel_x, yplusoff, rel_z],
-                uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+                uv: TOP_RIGHT.map(f16::from_f32),
                 light_level: TOP_BRIGHTNESS,
+                tex_index,
             },
         ]);
     }
     if !context.is_neighbor_liquid(0, -1, 0) && context.should_draw_face(0, -1, 0) {
-        let tex_offset = tex_offsets[5];
+        let tex_index = tex_indices[5] as u32;
         context.extend_indicies(&BIDIR_INDICES);
         context.vertices.append(&mut vec![
             Vertex {
                 position: [rel_x, y_f32, rel_z],
-                uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
+                uv: TOP_LEFT.map(f16::from_f32),
                 light_level: TOP_BRIGHTNESS,
+                tex_index,
             },
             Vertex {
                 position: [rel_x, y_f32, 1.0 + rel_z],
-                uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+                uv: BOTTOM_LEFT.map(f16::from_f32),
                 light_level: TOP_BRIGHTNESS,
+                tex_index,
             },
             Vertex {
                 position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+                uv: BOTTOM_RIGHT.map(f16::from_f32),
                 light_level: TOP_BRIGHTNESS,
+                tex_index,
             },
             Vertex {
                 position: [1.0 + rel_x, y_f32, rel_z],
-                uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+                uv: TOP_RIGHT.map(f16::from_f32),
                 light_level: TOP_BRIGHTNESS,
+                tex_index,
             },
         ]);
     }
     if !context.is_neighbor_liquid(0, 0, 1) && context.should_draw_face(0, 0, 1) {
-        let tex_offset = tex_offsets[1];
+        let tex_index = tex_indices[1] as u32;
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
+                    uv: TOP_LEFT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [rel_x, y_f32, 1.0 + rel_z],
-                    uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_LEFT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_RIGHT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+                    uv: TOP_RIGHT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
             ]);
         } else {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, yplusoff, 1.0 + rel_z],
-                    uv: add_arrs(TOP_LEFT_WATER, tex_offset).map(f16::from_f32),
+                    uv: TOP_LEFT_WATER.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [rel_x, y_f32, 1.0 + rel_z],
-                    uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_LEFT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_RIGHT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                    uv: add_arrs(TOP_RIGHT_WATER, tex_offset).map(f16::from_f32),
+                    uv: TOP_RIGHT_WATER.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
             ]);
         }
     }
     if !context.is_neighbor_liquid(1, 0, 0) && context.should_draw_face(1, 0, 0) {
-        let tex_offset = tex_offsets[2];
+        let tex_index = tex_indices[2] as u32;
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [1.0 + rel_x, y_f32 + 1.0, rel_z],
-                    uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
+                    uv: TOP_LEFT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, rel_z],
-                    uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_LEFT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_RIGHT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+                    uv: TOP_RIGHT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
             ]);
         } else {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [1.0 + rel_x, yplusoff, rel_z],
-                    uv: add_arrs(TOP_LEFT_WATER, tex_offset).map(f16::from_f32),
+                    uv: TOP_LEFT_WATER.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, rel_z],
-                    uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_LEFT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_RIGHT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                    uv: add_arrs(TOP_RIGHT_WATER, tex_offset).map(f16::from_f32),
+                    uv: TOP_RIGHT_WATER.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
             ]);
         }
     }
     if !context.is_neighbor_liquid(0, 0, -1) && context.should_draw_face(0, 0, -1) {
-        let tex_offset = tex_offsets[1];
+        let tex_index = tex_indices[1] as u32;
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, y_f32 + 1.0, rel_z],
-                    uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
+                    uv: TOP_LEFT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [rel_x, y_f32, rel_z],
-                    uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_LEFT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, rel_z],
-                    uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_RIGHT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32 + 1.0, rel_z],
-                    uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+                    uv: TOP_RIGHT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
             ]);
         } else {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, yplusoff, rel_z],
-                    uv: add_arrs(TOP_LEFT_WATER, tex_offset).map(f16::from_f32),
+                    uv: TOP_LEFT_WATER.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [rel_x, y_f32, rel_z],
-                    uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_LEFT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, rel_z],
-                    uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_RIGHT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [1.0 + rel_x, yplusoff, rel_z],
-                    uv: add_arrs(TOP_RIGHT_WATER, tex_offset).map(f16::from_f32),
+                    uv: TOP_RIGHT_WATER.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
             ]);
         }
     }
     if !context.is_neighbor_liquid(-1, 0, 0) && context.should_draw_face(-1, 0, 0) {
-        let tex_offset = tex_offsets[2];
+        let tex_index = tex_indices[2] as u32;
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, y_f32 + 1.0, rel_z],
-                    uv: add_arrs(TOP_LEFT, tex_offset).map(f16::from_f32),
+                    uv: TOP_LEFT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [rel_x, y_f32, rel_z],
-                    uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_LEFT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [rel_x, y_f32, 1.0 + rel_z],
-                    uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_RIGHT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    uv: add_arrs(TOP_RIGHT, tex_offset).map(f16::from_f32),
+                    uv: TOP_RIGHT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
             ]);
         } else {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, yplusoff, rel_z],
-                    uv: add_arrs(TOP_LEFT_WATER, tex_offset).map(f16::from_f32),
+                    uv: TOP_LEFT_WATER.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [rel_x, y_f32, rel_z],
-                    uv: add_arrs(BOTTOM_LEFT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_LEFT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [rel_x, y_f32, 1.0 + rel_z],
-                    uv: add_arrs(BOTTOM_RIGHT, tex_offset).map(f16::from_f32),
+                    uv: BOTTOM_RIGHT.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
                 Vertex {
                     position: [rel_x, yplusoff, 1.0 + rel_z],
-                    uv: add_arrs(TOP_RIGHT_WATER, tex_offset).map(f16::from_f32),
+                    uv: TOP_RIGHT_WATER.map(f16::from_f32),
                     light_level: TOP_BRIGHTNESS,
+                    tex_index,
                 },
             ]);
         }

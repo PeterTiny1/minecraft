@@ -9,12 +9,14 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) tex_coords: vec2<f16>,
     @location(2) brightness: f32,
+    @location(3) tex_index: u32,
 };
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) tex_coords: vec2<f16>,
     @location(1) brightness: f32,
+    @location(2) tex_index: u32,
 };
 
 @vertex
@@ -25,16 +27,17 @@ fn vs_main(
     out.tex_coords = model.tex_coords;
     out.clip_position = uniforms.view_proj * vec4<f32>(model.position, 1.0);
     out.brightness = model.brightness;
+    out.tex_index = model.tex_index;
     return out;
 }
 
 @group(0) @binding(0)
-var t_diffuse: texture_2d<f32>;
+var t_diffuse: texture_2d_array<f32>;
 @group(0) @binding(1)
 var s_diffuse: sampler;
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let texture_sample = textureSample(t_diffuse, s_diffuse, vec2<f32>(in.tex_coords));
+    let texture_sample = textureSample(t_diffuse, s_diffuse, vec2<f32>(in.tex_coords), in.tex_index);
     // if (texture_sample.a <= 0.1) { discard; }
     let shadow_color = vec3<f32>(0.06, 0.0, 0.1);
     let final_color = mix(shadow_color, texture_sample.rgb, in.brightness);

@@ -35,11 +35,16 @@ pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) ->
     // 5. Test the AABB against each plane using the "Effective Radius" method
     for plane in planes {
         // Project the AABB's half-sizes onto the plane's normal vector
-        let radius =
-            extents.z.mul_add(plane.z.abs(), extents.y.mul_add(plane.y.abs(), extents.x * plane.x.abs()));
+        let radius = extents.z.mul_add(
+            plane.z.abs(),
+            extents.y.mul_add(plane.y.abs(), extents.x * plane.x.abs()),
+        );
 
         // Calculate the signed distance from the AABB center to the plane
-        let distance = center.z.mul_add(plane.z, center.y.mul_add(plane.y, center.x * plane.x)) + plane.w;
+        let distance = center
+            .z
+            .mul_add(plane.z, center.y.mul_add(plane.y, center.x * plane.x))
+            + plane.w;
 
         // If the box is entirely on the outside ("behind") any single plane, it's culled
         if distance < -radius {
@@ -57,6 +62,7 @@ pub struct Vertex {
     pub position: [f32; 3],
     pub uv: [f16; 2],
     pub light_level: f32,
+    pub tex_index: u32,
 }
 
 impl Vertex {
@@ -80,6 +86,14 @@ impl Vertex {
                         as wgpu::BufferAddress,
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32,
+                },
+                wgpu::VertexAttribute {
+                    offset: (std::mem::size_of::<[f32; 3]>()
+                        + std::mem::size_of::<[f16; 2]>()
+                        + std::mem::size_of::<f32>())
+                        as wgpu::BufferAddress,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Uint32,
                 },
             ],
         }
@@ -171,7 +185,6 @@ pub struct RenderContext<'a> {
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
-    pub texture_bind_group_layout: wgpu::BindGroupLayout,
 }
 
 impl RenderContext<'_> {
@@ -215,7 +228,7 @@ impl RenderContext<'_> {
             desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
-        let texture_bind_group_layout =
+        let diffuse_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
@@ -223,7 +236,7 @@ impl RenderContext<'_> {
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
+                            view_dimension: wgpu::TextureViewDimension::D2Array,
                             sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         },
                         count: None,
@@ -235,16 +248,43 @@ impl RenderContext<'_> {
                         count: None,
                     },
                 ],
-                label: Some("texture_bind_group_layout"),
+                label: Some("diffuse_bind_group_layout"),
             });
         let diffuse_bind_group = load_texture(
             &device,
-            &texture_bind_group_layout,
-            &texture::Texture::from_bytes_mip(
+            &diffuse_bind_group_layout,
+            &texture::Texture::from_bytes_mip_array(
                 &device,
                 &queue,
-                include_bytes!("atlas.png"),
-                "atlas.png",
+                &[
+                    include_bytes!("textures/stone.png"),
+                    include_bytes!("textures/dirt.png"),
+                    include_bytes!("textures/grass_top0.png"),
+                    include_bytes!("textures/grass_side0.png"),
+                    include_bytes!("textures/grass_top1.png"),
+                    include_bytes!("textures/grass_side1.png"),
+                    include_bytes!("textures/grass_top2.png"),
+                    include_bytes!("textures/grass_side2.png"),
+                    include_bytes!("textures/birch_top.png"),
+                    include_bytes!("textures/birch_side.png"),
+                    include_bytes!("textures/wood_top.png"),
+                    include_bytes!("textures/wood_side.png"),
+                    include_bytes!("textures/dark_wood_top.png"),
+                    include_bytes!("textures/dark_wood_side.png"),
+                    include_bytes!("textures/birch_leaves.png"),
+                    include_bytes!("textures/leaves.png"),
+                    include_bytes!("textures/dark_leaves.png"),
+                    include_bytes!("textures/grass0.png"),
+                    include_bytes!("textures/grass1.png"),
+                    include_bytes!("textures/grass2.png"),
+                    include_bytes!("textures/flower0.png"),
+                    include_bytes!("textures/flower1.png"),
+                    include_bytes!("textures/flower2.png"),
+                    include_bytes!("textures/sand.png"),
+                    include_bytes!("textures/water_top.png"),
+                    include_bytes!("textures/water_side.png"),
+                ],
+                "atlas",
             )
             .unwrap(),
             Some("diffuse_bind_group"),
@@ -283,7 +323,7 @@ impl RenderContext<'_> {
             &device,
             &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture_bind_group_layout, &uniform_bind_group_layout],
+                bind_group_layouts: &[&diffuse_bind_group_layout, &uniform_bind_group_layout],
                 push_constant_ranges: &[],
             }),
             config.format,
@@ -306,7 +346,6 @@ impl RenderContext<'_> {
             uniform_buffer,
             uniform_bind_group,
             depth_texture,
-            texture_bind_group_layout,
         }
     }
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
