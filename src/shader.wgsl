@@ -7,27 +7,32 @@ var<uniform> uniforms: Uniforms;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
-    @location(1) tex_coords: vec2<f16>,
-    @location(2) brightness: f32,
-    @location(3) tex_index: u32,
+    @location(1) data: vec4<u32>,
 };
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
-    @location(0) tex_coords: vec2<f16>,
+    @location(0) tex_coords: vec2<f32>,
     @location(1) brightness: f32,
     @location(2) tex_index: u32,
 };
 
 @vertex
-fn vs_main(
-    model: VertexInput,
-) -> VertexOutput {
+fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    out.tex_coords = model.tex_coords;
-    out.clip_position = uniforms.view_proj * vec4<f32>(model.position, 1.0);
-    out.brightness = model.brightness;
-    out.tex_index = model.tex_index;
+
+    out.clip_position = uniforms.view_proj * vec4<f32>(in.position, 1.0);
+
+    // 1. Unpack UV coordinates (e.g., 0 to 16 pixel bounds mapped to 0.0-1.0)
+    // We cast the vec2<u32> to vec2<f32> and divide by our texture limit
+    out.tex_coords = vec2<f32>(in.data.xy) / 16.0;
+
+    // 2. Unpack texture array index (remains an integer, e.g., 0 to 255)
+    out.tex_index = in.data.z;
+
+    // 3. Unpack light level (maps 0-255 byte scale back to a clean 0.0-1.0 float)
+    out.brightness = f32(in.data.w) / 255.0;
+
     return out;
 }
 

@@ -1,5 +1,4 @@
 use crate::{camera, chunk::ChunkManager, texture, ui};
-use half::f16;
 use pollster::block_on;
 use vek::{Aabb, Mat4, Vec4};
 use wgpu::{util::DeviceExt, PipelineCompilationOptions};
@@ -60,9 +59,7 @@ pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) ->
 /// location, uv, lightlevel
 pub struct Vertex {
     pub position: [f32; 3],
-    pub uv: [f16; 2],
-    pub light_level: f32,
-    pub tex_index: u32,
+    pub data: [u8; 4],
 }
 
 impl Vertex {
@@ -79,21 +76,7 @@ impl Vertex {
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
-                    format: wgpu::VertexFormat::Float16x2,
-                },
-                wgpu::VertexAttribute {
-                    offset: (std::mem::size_of::<[f32; 3]>() + std::mem::size_of::<[f16; 2]>())
-                        as wgpu::BufferAddress,
-                    shader_location: 2,
-                    format: wgpu::VertexFormat::Float32,
-                },
-                wgpu::VertexAttribute {
-                    offset: (std::mem::size_of::<[f32; 3]>()
-                        + std::mem::size_of::<[f16; 2]>()
-                        + std::mem::size_of::<f32>())
-                        as wgpu::BufferAddress,
-                    shader_location: 3,
-                    format: wgpu::VertexFormat::Uint32,
+                    format: wgpu::VertexFormat::Uint8x4,
                 },
             ],
         }
@@ -206,7 +189,7 @@ impl RenderContext<'_> {
         .unwrap();
         let (device, queue) = block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: None,
-            required_features: wgpu::Features::default().union(wgpu::Features::SHADER_F16),
+            required_features: wgpu::Features::default(),
             required_limits: if cfg!(target_arch = "wasm32") {
                 wgpu::Limits::downlevel_webgl2_defaults()
             } else {

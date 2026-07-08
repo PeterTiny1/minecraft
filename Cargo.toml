@@ -15,7 +15,6 @@ vek = { version = "0.17", default-features = false }
 noise = { version = "0.9", default-features = false }
 bincode = "2.0"
 winit = "0.30"
-half = { version = "2.7", default-features = false, features = ["bytemuck"] }
 pollster = "0.4.0"
 
 [dependencies.image]

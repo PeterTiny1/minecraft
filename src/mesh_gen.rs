@@ -1,4 +1,3 @@
-use half::f16;
 use std::f32::consts::FRAC_1_SQRT_2;
 
 use crate::{
@@ -42,10 +41,6 @@ const AO_BRIGHTNESS: f32 = 0.5;
 
 const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
 const FAR_CORNER: f32 = 0.5 - 0.5 * FRAC_1_SQRT_2;
-const TOP_LEFT: [f32; 2] = [0.0, 0.0];
-const TOP_RIGHT: [f32; 2] = [1.0, 0.0];
-const BOTTOM_LEFT: [f32; 2] = [0.0, 1.0];
-const BOTTOM_RIGHT: [f32; 2] = [1.0, 1.0];
 #[inline]
 fn create_grass_face(
     tex_index: u8,
@@ -58,71 +53,49 @@ fn create_grass_face(
     } else {
         (CLOSE_CORNER, FAR_CORNER)
     };
-    let tex_index = u32::from(tex_index);
     [
         Vertex {
             position: [x + CLOSE_CORNER, y + 1.0, z + add0],
-            uv: TOP_LEFT.map(f16::from_f32),
-            light_level: 1.0,
-            tex_index,
+            data: [0, 0, tex_index, 255],
         },
         Vertex {
             position: [x + CLOSE_CORNER, y, z + add0],
-            uv: BOTTOM_LEFT.map(f16::from_f32),
-            light_level: 1.0,
-            tex_index,
+            data: [0, 16, tex_index, 255],
         },
         Vertex {
             position: [x + FAR_CORNER, y, z + add1],
-            uv: BOTTOM_RIGHT.map(f16::from_f32),
-            light_level: 1.0,
-            tex_index,
+            data: [16, 16, tex_index, 255],
         },
         Vertex {
             position: [x + FAR_CORNER, y + 1.0, z + add1],
-            uv: TOP_RIGHT.map(f16::from_f32),
-            light_level: 1.0,
-            tex_index,
+            data: [16, 0, tex_index, 255],
         },
     ]
     .into_iter()
 }
 
 const FLOWER_INDICES: [Index; 12] = [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0];
-const STEM_CORNERS: [[f32; 2]; 4] = [
-    [6.0 / 16.0, 0.0],        // Top-right local coordinate
-    [6.0 / 16.0, 7.0 / 16.0], // Bottom-right local coordinate (23/16 - 16/16)
-    [0.0, 7.0 / 16.0],        // Bottom-left local coordinate
-    [0.0, 0.0],               // Top-left local coordinate
-];
 const CLOSE_FLOWER_CORNER: f32 = 0.716_506_35;
 #[inline]
 fn generate_flower(position: [f32; 3]) -> std::array::IntoIter<Vertex, 4> {
     let [x, y, z] = position;
+    let tex_index = 20;
     [
         Vertex {
             position: [x + CLOSE_FLOWER_CORNER, y + 1.0, z + FAR_CORNER],
-            uv: STEM_CORNERS[0].map(f16::from_f32),
-            light_level: 1.0,
-            tex_index: 20,
+            data: [0, 0, tex_index, 255],
         },
         Vertex {
             position: [x + CLOSE_FLOWER_CORNER, y, z + FAR_CORNER],
-            uv: STEM_CORNERS[1].map(f16::from_f32),
-            light_level: 1.0,
-            tex_index: 20,
+            data: [0, 7, tex_index, 255],
         },
         Vertex {
             position: [x + FAR_CORNER, y, z + CLOSE_FLOWER_CORNER],
-            uv: STEM_CORNERS[2].map(f16::from_f32),
-            light_level: 1.0,
-            tex_index: 20,
+            data: [6, 7, tex_index, 255],
         },
         Vertex {
             position: [x + FAR_CORNER, y + 1.0, z + CLOSE_FLOWER_CORNER],
-            uv: STEM_CORNERS[3].map(f16::from_f32),
-            light_level: 1.0,
-            tex_index: 20,
+            data: [6, 0, tex_index, 255],
         },
     ]
     .into_iter()
@@ -133,8 +106,6 @@ const GRASS_INDICES: [Index; 24] = [
 ];
 const BIDIR_INDICES: [Index; 12] = [0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0];
 const QUAD_INDICES: [Index; 6] = [0, 1, 2, 0, 2, 3];
-const TOP_LEFT_WATER: [f32; 2] = [TOP_LEFT[0], TOP_LEFT[1] + BLOCK_WATER_HEIGHT];
-const TOP_RIGHT_WATER: [f32; 2] = [TOP_RIGHT[0], TOP_RIGHT[1] + BLOCK_WATER_HEIGHT];
 
 pub struct MeshGenerationContext<'a> {
     pub center: &'a LocatedChunk,
@@ -398,7 +369,6 @@ const fn calculate_ao_light(
     // But for now, we'll stick to previous logic.
 }
 fn gen_face_pos_x(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let tex_index = u32::from(tex_index);
     let [xplusone, y_f32, rel_z] = [
         context.worldpos_f32()[0] + 1.0,
         context.worldpos_f32()[1],
@@ -415,39 +385,30 @@ fn gen_face_pos_x(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex>
     let c_y_minus_z_plus = context.is_neighbor_solid(1, -1, 1);
     let c_y_minus_z_minus = context.is_neighbor_solid(1, -1, -1);
     // Calculate AO for each vertex
-    let light_1 = calculate_ao_light(s_y_plus, s_z_minus, c_y_plus_z_minus, SIDE_BRIGHTNESS);
-    let light_2 = calculate_ao_light(s_y_minus, s_z_minus, c_y_minus_z_minus, SIDE_BRIGHTNESS);
-    let light_3 = calculate_ao_light(s_y_minus, s_z_plus, c_y_minus_z_plus, SIDE_BRIGHTNESS);
-    let light_4 = calculate_ao_light(s_y_plus, s_z_plus, c_y_plus_z_plus, SIDE_BRIGHTNESS);
+    let light_0 = calculate_ao_light(s_y_plus, s_z_minus, c_y_plus_z_minus, SIDE_BRIGHTNESS);
+    let light_1 = calculate_ao_light(s_y_minus, s_z_minus, c_y_minus_z_minus, SIDE_BRIGHTNESS);
+    let light_2 = calculate_ao_light(s_y_minus, s_z_plus, c_y_minus_z_plus, SIDE_BRIGHTNESS);
+    let light_3 = calculate_ao_light(s_y_plus, s_z_plus, c_y_plus_z_plus, SIDE_BRIGHTNESS);
     vec![
         Vertex {
             position: [xplusone, 1.0 + y_f32, 1.0 + rel_z],
-            uv: TOP_LEFT.map(f16::from_f32),
-            light_level: light_1,
-            tex_index,
+            data: [0, 0, tex_index, (light_0 * 255.0) as u8],
         },
         Vertex {
             position: [xplusone, y_f32, 1.0 + rel_z],
-            uv: BOTTOM_LEFT.map(f16::from_f32),
-            light_level: light_2,
-            tex_index,
+            data: [0, 16, tex_index, (light_1 * 255.0) as u8],
         },
         Vertex {
             position: [xplusone, y_f32, rel_z],
-            uv: BOTTOM_RIGHT.map(f16::from_f32),
-            light_level: light_3,
-            tex_index,
+            data: [16, 16, tex_index, (light_2 * 255.0) as u8],
         },
         Vertex {
             position: [xplusone, 1.0 + y_f32, rel_z],
-            uv: TOP_RIGHT.map(f16::from_f32),
-            light_level: light_4,
-            tex_index,
+            data: [16, 0, tex_index, (light_3 * 255.0) as u8],
         },
     ]
 }
 fn gen_face_neg_x(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let tex_index = u32::from(tex_index);
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -479,33 +440,24 @@ fn gen_face_neg_x(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex>
     vec![
         Vertex {
             position: [rel_x, 1.0 + y_f32, rel_z],
-            uv: TOP_LEFT.map(f16::from_f32),
-            light_level: light_0,
-            tex_index,
+            data: [0, 0, tex_index, (light_0 * 255.0) as u8],
         },
         Vertex {
             position: [rel_x, y_f32, rel_z],
-            uv: BOTTOM_LEFT.map(f16::from_f32),
-            light_level: light_1,
-            tex_index,
+            data: [0, 16, tex_index, (light_1 * 255.0) as u8],
         },
         Vertex {
             position: [rel_x, y_f32, 1.0 + rel_z],
-            uv: BOTTOM_RIGHT.map(f16::from_f32),
-            light_level: light_2,
-            tex_index,
+            data: [16, 16, tex_index, (light_2 * 255.0) as u8],
         },
         Vertex {
             position: [rel_x, 1.0 + y_f32, 1.0 + rel_z],
-            uv: TOP_RIGHT.map(f16::from_f32),
-            light_level: light_3,
-            tex_index,
+            data: [16, 0, tex_index, (light_3 * 255.0) as u8],
         },
     ]
 }
 
 fn gen_face_pos_y(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let tex_index = u32::from(tex_index);
     let [rel_x, yplusone, rel_z] = [
         context.worldpos_f32()[0],
         context.worldpos_f32()[1] + 1.0,
@@ -535,33 +487,24 @@ fn gen_face_pos_y(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex>
     vec![
         Vertex {
             position: [rel_x, yplusone, rel_z],
-            uv: TOP_LEFT.map(f16::from_f32),
-            light_level: light_0,
-            tex_index,
+            data: [0, 0, tex_index, (light_0 * 255.0) as u8],
         },
         Vertex {
             position: [rel_x, yplusone, 1.0 + rel_z],
-            uv: BOTTOM_LEFT.map(f16::from_f32),
-            light_level: light_1,
-            tex_index,
+            data: [0, 16, tex_index, (light_1 * 255.0) as u8],
         },
         Vertex {
             position: [1.0 + rel_x, yplusone, 1.0 + rel_z],
-            uv: BOTTOM_RIGHT.map(f16::from_f32),
-            light_level: light_2,
-            tex_index,
+            data: [16, 16, tex_index, (light_2 * 255.0) as u8],
         },
         Vertex {
             position: [1.0 + rel_x, yplusone, rel_z],
-            uv: TOP_RIGHT.map(f16::from_f32),
-            light_level: light_3,
-            tex_index,
+            data: [16, 0, tex_index, (light_3 * 255.0) as u8],
         },
     ]
 }
 
 fn gen_face_neg_y(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let tex_index = u32::from(tex_index);
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
         context.worldpos_f32()[1],
@@ -588,33 +531,24 @@ fn gen_face_neg_y(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex>
     vec![
         Vertex {
             position: [1.0 + rel_x, y_f32, rel_z],
-            uv: TOP_LEFT.map(f16::from_f32),
-            light_level: light_0,
-            tex_index,
+            data: [0, 0, tex_index, (light_0 * 255.0) as u8],
         },
         Vertex {
             position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-            uv: BOTTOM_LEFT.map(f16::from_f32),
-            light_level: light_1,
-            tex_index,
+            data: [0, 16, tex_index, (light_1 * 255.0) as u8],
         },
         Vertex {
             position: [rel_x, y_f32, 1.0 + rel_z],
-            uv: BOTTOM_RIGHT.map(f16::from_f32),
-            light_level: light_2,
-            tex_index,
+            data: [16, 16, tex_index, (light_2 * 255.0) as u8],
         },
         Vertex {
             position: [rel_x, y_f32, rel_z],
-            uv: TOP_RIGHT.map(f16::from_f32),
-            light_level: light_3,
-            tex_index,
+            data: [16, 0, tex_index, (light_3 * 255.0) as u8],
         },
     ]
 }
 
 fn gen_face_pos_z(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let tex_index = u32::from(tex_index);
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -647,33 +581,24 @@ fn gen_face_pos_z(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex>
     vec![
         Vertex {
             position: [rel_x, 1.0 + y_f32, zplusone],
-            uv: TOP_LEFT.map(f16::from_f32),
-            light_level: light_0,
-            tex_index,
+            data: [0, 0, tex_index, (light_0 * 255.0) as u8],
         },
         Vertex {
             position: [rel_x, y_f32, zplusone],
-            uv: BOTTOM_LEFT.map(f16::from_f32),
-            light_level: light_1,
-            tex_index,
+            data: [0, 16, tex_index, (light_1 * 255.0) as u8],
         },
         Vertex {
             position: [1.0 + rel_x, y_f32, zplusone],
-            uv: BOTTOM_RIGHT.map(f16::from_f32),
-            light_level: light_2,
-            tex_index,
+            data: [16, 16, tex_index, (light_2 * 255.0) as u8],
         },
         Vertex {
             position: [1.0 + rel_x, 1.0 + y_f32, zplusone],
-            uv: TOP_RIGHT.map(f16::from_f32),
-            light_level: light_3,
-            tex_index,
+            data: [16, 0, tex_index, (light_3 * 255.0) as u8],
         },
     ]
 }
 
 fn gen_face_neg_z(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let tex_index = u32::from(tex_index);
     // --- 1. Get Coordinates ---
     let [rel_x, y_f32, rel_z] = [
         context.worldpos_f32()[0],
@@ -705,27 +630,19 @@ fn gen_face_neg_z(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex>
     vec![
         Vertex {
             position: [1.0 + rel_x, 1.0 + y_f32, rel_z],
-            uv: TOP_LEFT.map(f16::from_f32),
-            light_level: light_0,
-            tex_index,
+            data: [0, 0, tex_index, (light_0 * 255.0) as u8],
         },
         Vertex {
             position: [1.0 + rel_x, y_f32, rel_z],
-            uv: BOTTOM_LEFT.map(f16::from_f32),
-            light_level: light_1,
-            tex_index,
+            data: [0, 16, tex_index, (light_1 * 255.0) as u8],
         },
         Vertex {
             position: [rel_x, y_f32, rel_z],
-            uv: BOTTOM_RIGHT.map(f16::from_f32),
-            light_level: light_2,
-            tex_index,
+            data: [16, 16, tex_index, (light_2 * 255.0) as u8],
         },
         Vertex {
             position: [rel_x, 1.0 + y_f32, rel_z],
-            uv: TOP_RIGHT.map(f16::from_f32),
-            light_level: light_3,
-            tex_index,
+            data: [16, 0, tex_index, (light_3 * 255.0) as u8],
         },
     ]
 }
@@ -737,297 +654,217 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     let [rel_x, y_f32, rel_z] = context.worldpos_f32();
     let yplusoff = y_f32 + BLOCK_WATER_HEIGHT;
     if !context.is_neighbor_liquid(0, 1, 0) {
-        let tex_index = u32::from(tex_indices[0]);
+        let tex_index = tex_indices[0];
         context.extend_indicies(&BIDIR_INDICES);
         context.vertices.append(&mut vec![
             Vertex {
                 position: [rel_x, yplusoff, rel_z],
-                uv: TOP_LEFT.map(f16::from_f32),
-                light_level: TOP_BRIGHTNESS,
-                tex_index,
+                data: [0, 0, tex_index, 255],
             },
             Vertex {
                 position: [rel_x, yplusoff, 1.0 + rel_z],
-                uv: BOTTOM_LEFT.map(f16::from_f32),
-                light_level: TOP_BRIGHTNESS,
-                tex_index,
+                data: [0, 16, tex_index, 255],
             },
             Vertex {
                 position: [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                uv: BOTTOM_RIGHT.map(f16::from_f32),
-                light_level: TOP_BRIGHTNESS,
-                tex_index,
+                data: [16, 16, tex_index, 255],
             },
             Vertex {
                 position: [1.0 + rel_x, yplusoff, rel_z],
-                uv: TOP_RIGHT.map(f16::from_f32),
-                light_level: TOP_BRIGHTNESS,
-                tex_index,
+                data: [16, 0, tex_index, 255],
             },
         ]);
     }
     if !context.is_neighbor_liquid(0, -1, 0) && context.should_draw_face(0, -1, 0) {
-        let tex_index = u32::from(tex_indices[5]);
+        let tex_index = tex_indices[5];
         context.extend_indicies(&BIDIR_INDICES);
         context.vertices.append(&mut vec![
             Vertex {
                 position: [rel_x, y_f32, rel_z],
-                uv: TOP_LEFT.map(f16::from_f32),
-                light_level: TOP_BRIGHTNESS,
-                tex_index,
+                data: [0, 0, tex_index, 255],
             },
             Vertex {
                 position: [rel_x, y_f32, 1.0 + rel_z],
-                uv: BOTTOM_LEFT.map(f16::from_f32),
-                light_level: TOP_BRIGHTNESS,
-                tex_index,
+                data: [0, 16, tex_index, 255],
             },
             Vertex {
                 position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                uv: BOTTOM_RIGHT.map(f16::from_f32),
-                light_level: TOP_BRIGHTNESS,
-                tex_index,
+                data: [16, 16, tex_index, 255],
             },
             Vertex {
                 position: [1.0 + rel_x, y_f32, rel_z],
-                uv: TOP_RIGHT.map(f16::from_f32),
-                light_level: TOP_BRIGHTNESS,
-                tex_index,
+                data: [16, 0, tex_index, 255],
             },
         ]);
     }
     if !context.is_neighbor_liquid(0, 0, 1) && context.should_draw_face(0, 0, 1) {
-        let tex_index = u32::from(tex_indices[1]);
+        let tex_index = tex_indices[1];
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    uv: TOP_LEFT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 0, tex_index, 255],
                 },
                 Vertex {
                     position: [rel_x, y_f32, 1.0 + rel_z],
-                    uv: BOTTOM_LEFT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    uv: BOTTOM_RIGHT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    uv: TOP_RIGHT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 0, tex_index, 255],
                 },
             ]);
         } else {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, yplusoff, 1.0 + rel_z],
-                    uv: TOP_LEFT_WATER.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
                 },
                 Vertex {
                     position: [rel_x, y_f32, 1.0 + rel_z],
-                    uv: BOTTOM_LEFT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    uv: BOTTOM_RIGHT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                    uv: TOP_RIGHT_WATER.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
                 },
             ]);
         }
     }
     if !context.is_neighbor_liquid(1, 0, 0) && context.should_draw_face(1, 0, 0) {
-        let tex_index = u32::from(tex_indices[2]);
+        let tex_index = tex_indices[2];
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [1.0 + rel_x, y_f32 + 1.0, rel_z],
-                    uv: TOP_LEFT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 0, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, rel_z],
-                    uv: BOTTOM_LEFT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    uv: BOTTOM_RIGHT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    uv: TOP_RIGHT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 0, tex_index, 255],
                 },
             ]);
         } else {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [1.0 + rel_x, yplusoff, rel_z],
-                    uv: TOP_LEFT_WATER.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, rel_z],
-                    uv: BOTTOM_LEFT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    uv: BOTTOM_RIGHT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                    uv: TOP_RIGHT_WATER.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
                 },
             ]);
         }
     }
     if !context.is_neighbor_liquid(0, 0, -1) && context.should_draw_face(0, 0, -1) {
-        let tex_index = u32::from(tex_indices[1]);
+        let tex_index = tex_indices[1];
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, y_f32 + 1.0, rel_z],
-                    uv: TOP_LEFT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 0, tex_index, 255],
                 },
                 Vertex {
                     position: [rel_x, y_f32, rel_z],
-                    uv: BOTTOM_LEFT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, rel_z],
-                    uv: BOTTOM_RIGHT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32 + 1.0, rel_z],
-                    uv: TOP_RIGHT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 0, tex_index, 255],
                 },
             ]);
         } else {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, yplusoff, rel_z],
-                    uv: TOP_LEFT_WATER.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
                 },
                 Vertex {
                     position: [rel_x, y_f32, rel_z],
-                    uv: BOTTOM_LEFT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, y_f32, rel_z],
-                    uv: BOTTOM_RIGHT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [1.0 + rel_x, yplusoff, rel_z],
-                    uv: TOP_RIGHT_WATER.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
                 },
             ]);
         }
     }
     if !context.is_neighbor_liquid(-1, 0, 0) && context.should_draw_face(-1, 0, 0) {
-        let tex_index = u32::from(tex_indices[2]);
+        let tex_index = tex_indices[2];
         context.extend_indicies(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, y_f32 + 1.0, rel_z],
-                    uv: TOP_LEFT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 0, tex_index, 255],
                 },
                 Vertex {
                     position: [rel_x, y_f32, rel_z],
-                    uv: BOTTOM_LEFT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [rel_x, y_f32, 1.0 + rel_z],
-                    uv: BOTTOM_RIGHT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    uv: TOP_RIGHT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 0, tex_index, 255],
                 },
             ]);
         } else {
             context.vertices.append(&mut vec![
                 Vertex {
                     position: [rel_x, yplusoff, rel_z],
-                    uv: TOP_LEFT_WATER.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
                 },
                 Vertex {
                     position: [rel_x, y_f32, rel_z],
-                    uv: BOTTOM_LEFT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [0, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [rel_x, y_f32, 1.0 + rel_z],
-                    uv: BOTTOM_RIGHT.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 16, tex_index, 255],
                 },
                 Vertex {
                     position: [rel_x, yplusoff, 1.0 + rel_z],
-                    uv: TOP_RIGHT_WATER.map(f16::from_f32),
-                    light_level: TOP_BRIGHTNESS,
-                    tex_index,
+                    data: [16, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
                 },
             ]);
         }
