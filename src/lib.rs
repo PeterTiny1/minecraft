@@ -451,25 +451,21 @@ impl ApplicationHandler for App {
     }
 }
 
-/// # Errors
-///
-/// Will return Err if something goes wrong
-///
-/// # Panics
-///
-/// Will panic if there somehow isn't a first argument
 pub fn run() -> Result<(), EventLoopError> {
     env_logger::init();
+    
     let mut save = false;
-    let mut args = env::args();
-    let _path = args.next().unwrap();
-    if let Some(arg) = args.next() {
-        match &*arg {
+
+    // Iterating properly over flags past argv[0]
+    for arg in env::args().skip(1) {
+        match arg.as_str() {
             "-save" | "-s" => save = true,
-            _ => println!("Invalid argument {arg}!"),
+            _ => eprintln!("Warning: Unrecognized argument '{arg}'"),
         }
     }
-    let event_loop = EventLoop::new().unwrap();
+
+    // Propagate EventLoop creation errors with `?` instead of unwrap()
+    let event_loop = EventLoop::new()?;
 
     let mut app = App::new(save);
     event_loop.run_app(&mut app)
