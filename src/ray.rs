@@ -1,4 +1,4 @@
-use vek::{num_traits::Zero, Vec3};
+use vek::{Vec3, num_traits::Zero};
 
 use crate::DIRECTION_OFFSETS;
 

@@ -2,8 +2,8 @@ use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 
 use crate::{
-    renderer::create_index_buffer, renderer::create_render_pipeline, renderer::load_texture,
-    renderer::RenderContext, texture,
+    renderer::RenderContext, renderer::create_index_buffer, renderer::create_render_pipeline,
+    renderer::load_texture, texture,
 };
 
 #[repr(C)]

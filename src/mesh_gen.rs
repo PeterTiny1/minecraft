@@ -2,7 +2,7 @@ use std::f32::consts::FRAC_1_SQRT_2;
 
 use crate::{
     block::BlockType,
-    chunk::{LocatedChunk, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32},
+    chunk::{CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32, LocatedChunk},
     renderer::Vertex,
 };
 

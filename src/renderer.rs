@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use crate::{camera, chunk::ChunkManager, texture, ui};
 use pollster::block_on;
 use vek::{Aabb, Mat4, Vec4};
-use wgpu::{util::DeviceExt, PipelineCompilationOptions};
+use wgpu::{PipelineCompilationOptions, util::DeviceExt};
 use winit::{dpi::PhysicalSize, window::Window};
 
 #[must_use]
@@ -156,8 +158,8 @@ pub fn create_render_pipeline(
     })
 }
 
-pub struct RenderContext<'a> {
-    surface: wgpu::Surface<'a>,
+pub struct RenderContext {
+    surface: wgpu::Surface<'static>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
@@ -170,7 +172,7 @@ pub struct RenderContext<'a> {
     depth_texture: texture::Texture,
 }
 
-impl RenderContext<'_> {
+impl RenderContext {
     /// Panics
     ///
     /// If a surface cannot be created
@@ -178,9 +180,12 @@ impl RenderContext<'_> {
     /// If a device or queue cannot be created
     /// If atlas.png cannot be loaded
     #[must_use]
-    pub fn new(window: &'static Window, size: PhysicalSize<u32>) -> Self {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let surface: wgpu::Surface<'_> = instance.create_surface(window).unwrap();
+    pub fn new(window: Arc<Window>, size: PhysicalSize<u32>) -> Self {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::VULKAN | wgpu::Backends::DX12 | wgpu::Backends::METAL,
+            ..Default::default()
+        });
+        let surface = instance.create_surface(window).unwrap();
         let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::default(),
             compatible_surface: Some(&surface),

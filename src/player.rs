@@ -151,18 +151,18 @@ impl Player {
             for x in min_x..=max_x {
                 for y in min_y..=max_y {
                     for z in min_z..=max_z {
-                        if let Some(block_type) = world.get_block(x, y, z) {
-                            if block_type.is_solid() {
-                                let block_aabb = Aabb {
-                                    min: Vec3::new(x as f32, y as f32, z as f32),
-                                    max: Vec3::new((x + 1) as f32, (y + 1) as f32, (z + 1) as f32),
-                                };
+                        if let Some(block_type) = world.get_block(x, y, z)
+                            && block_type.is_solid()
+                        {
+                            let block_aabb = Aabb {
+                                min: Vec3::new(x as f32, y as f32, z as f32),
+                                max: Vec3::new((x + 1) as f32, (y + 1) as f32, (z + 1) as f32),
+                            };
 
-                                if player_aabb_current.collides_with_aabb(block_aabb) {
-                                    collision_found = true;
-                                    self.handle_collision(axis, block_aabb, skin);
-                                    break;
-                                }
+                            if player_aabb_current.collides_with_aabb(block_aabb) {
+                                collision_found = true;
+                                self.handle_collision(axis, block_aabb, skin);
+                                break;
                             }
                         }
                     }

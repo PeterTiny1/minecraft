@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     path::Path,
-    sync::{mpsc, Arc},
+    sync::{Arc, mpsc},
     thread,
 };
 
@@ -11,12 +11,12 @@ use vek::{Aabb, Vec3};
 use wgpu::util::DeviceExt;
 
 use crate::{
+    RENDER_DISTANCE, SEED,
     block::BlockType,
     camera,
-    mesh_gen::{generate_chunk_mesh, Index},
-    renderer::{cuboid_intersects_frustum, RenderContext, Vertex},
+    mesh_gen::{Index, generate_chunk_mesh},
+    renderer::{RenderContext, Vertex, cuboid_intersects_frustum},
     world_gen::generate,
-    RENDER_DISTANCE, SEED,
 };
 pub const CHUNK_WIDTH: usize = 32;
 pub const CHUNK_WIDTH_I32: i32 = CHUNK_WIDTH as i32;

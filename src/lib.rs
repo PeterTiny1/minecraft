@@ -29,7 +29,7 @@ use winit::{
 };
 
 use chunk::{
-    ChunkManager, CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32,
+    CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32, ChunkManager,
 };
 use player::Player;
 
@@ -45,6 +45,7 @@ pub const DIRECTION_OFFSETS: [Vec3<i32>; 6] = [
     Vec3 { x: 0, y: 0, z: -1 },
     Vec3 { x: 0, y: 0, z: 1 },
 ];
+pub const PLAYER_START_POS: Vec3<f32> = Vec3::new(0.0, 100.0, 0.0);
 
 // --- LOCAL STRUCTS ---
 
@@ -54,36 +55,71 @@ struct InputState {
     right_pressed: bool,
 }
 
-// This is the "World" or "Orchestrator"
-pub struct AppState<'a> {
-    // Systems
-    window: Option<&'static Window>,
-    render_context: Option<renderer::RenderContext<'a>>,
-    chunk_manager: ChunkManager,
-    camera: Option<camera::Camera>,
-    camera_controller: camera::PlayerController,
-    ui: Option<ui::State>,
-    player: Player,
-    input: InputState,
-
-    // State
-    last_update_time: Instant,
-    last_break_time: Instant,
+// Pure game state that exists before the window opens
+#[derive(Default)]
+pub struct App {
+    state: Option<RunningState>,
     save_on_exit: bool,
 }
 
-impl AppState<'_> {
+impl App {
+    const fn new(save_on_exit: bool) -> Self {
+        Self {
+            state: None,
+            save_on_exit,
+        }
+    }
+}
+
+// Systems that ONLY exist once the GPU & Window are active
+pub struct RunningState {
+    window: Arc<Window>,
+    render_context: renderer::RenderContext, // No lifetime needed!
+    camera: camera::Camera,
+    camera_controller: camera::PlayerController,
+    ui: ui::State,
+
+    // World / Game Data
+    chunk_manager: ChunkManager,
+    player: Player,
+    input: InputState,
+
+    // Timers
+    last_update_time: Instant,
+    last_break_time: Instant,
+}
+
+impl RunningState {
     #[must_use]
-    pub fn new(save: bool) -> Self {
-        let camera_controller = camera::PlayerController::new(10.0, 0.05);
-        let player = Player::new(Vec3::new(0.0, 100.0, 0.0));
+    pub fn new(window: Arc<Window>, mut render_context: renderer::RenderContext) -> Self {
+        let size = window.inner_size();
+        let player = Player::new(PLAYER_START_POS);
         let chunk_manager = ChunkManager::default();
+        let camera_controller = camera::PlayerController::new(10.0, 0.05);
+        let camera_data = camera::CameraData::new(
+            PLAYER_START_POS.into_tuple(), // Start camera at player's head
+            -45.0_f32.to_radians(),
+            -20.0_f32.to_radians(),
+        );
+        let projection = camera::Projection::new(
+            size.width,
+            size.height,
+            90.0_f32.to_radians(),
+            0.05,
+            RENDER_DISTANCE,
+        );
+        let camera = camera::Camera {
+            data: camera_data,
+            projection,
+        };
+        render_context.uniforms.update_view_proj(&camera);
+        render_context.write_uniforms();
 
         Self {
-            window: None,
-            render_context: None,
-            ui: None,
-            camera: None,
+            window,
+            ui: ui::init_state(&render_context, size),
+            render_context,
+            camera,
 
             chunk_manager,
             player,
@@ -92,7 +128,6 @@ impl AppState<'_> {
             input: InputState::default(),
             last_update_time: Instant::now(),
             last_break_time: Instant::now(),
-            save_on_exit: save,
         }
     }
 
@@ -100,28 +135,26 @@ impl AppState<'_> {
     /// This is called by `RedrawRequested` *after* all systems
     /// are confirmed to be initialized.
     fn update(&mut self, dt: std::time::Duration) {
-        let camera = self.camera.as_mut().unwrap();
-        let render_context = self.render_context.as_mut().unwrap();
-
         // --- 1. Physics & Camera (Requires Read Lock) ---
         {
             let world_data = &self.chunk_manager.generated_data;
-            self.camera_controller.update_camera(&mut camera.data, dt);
+            self.camera_controller
+                .update_camera(&mut self.camera.data, dt);
             self.player.update_physics(
                 dt.as_secs_f32(),
                 world_data,
                 &self.camera_controller,
-                &camera.data,
+                &self.camera.data,
             );
         } // Read lock drops here automatically!
 
-        camera.data.position = self.player.get_camera_position();
-        render_context.uniforms.update_view_proj(camera);
-        render_context.write_uniforms();
+        self.camera.data.position = self.player.get_camera_position();
+        self.render_context.uniforms.update_view_proj(&self.camera);
+        self.render_context.write_uniforms();
 
         // A. Chunk Loading
         if let Some(chunk_loc) =
-            chunk::nearest_visible_unloaded(&self.chunk_manager.generated_data, camera)
+            chunk::nearest_visible_unloaded(&self.chunk_manager.generated_data, &self.camera)
         {
             let path_str = format!("{},{}.bin", chunk_loc[0], chunk_loc[1]);
 
@@ -240,7 +273,7 @@ impl AppState<'_> {
                 }
             }
         }
-        self.chunk_manager.insert_chunk(render_context);
+        self.chunk_manager.insert_chunk(&self.render_context);
     }
 
     fn save_all_chunks(&self) {
@@ -264,48 +297,28 @@ impl AppState<'_> {
 }
 
 // We make the ApplicationHandler public so main.rs can use it
-impl ApplicationHandler for AppState<'_> {
+impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        let window = Box::leak(Box::new(
-            event_loop
-                .create_window(
-                    Window::default_attributes()
-                        .with_title("Blockcraft")
-                        .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None))),
-                )
-                .unwrap(),
-        ));
-        window
-            .set_cursor_grab(winit::window::CursorGrabMode::Confined)
-            .unwrap();
-        window.set_cursor_visible(false);
-        self.window = Some(window);
+        if self.state.is_none() {
+            let window = Arc::new(
+                event_loop
+                    .create_window(
+                        Window::default_attributes()
+                            .with_title("Blockcraft")
+                            .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None))),
+                    )
+                    .unwrap(),
+            );
+            window
+                .set_cursor_grab(winit::window::CursorGrabMode::Confined)
+                .unwrap();
+            window.set_cursor_visible(false);
 
-        let size = window.inner_size();
-        let mut render_context = renderer::RenderContext::new(window, size);
+            let size = window.inner_size();
+            let render_context = renderer::RenderContext::new(window.clone(), size);
 
-        let camera_data = camera::CameraData::new(
-            self.player.position.into_tuple(), // Start camera at player's head
-            -45.0_f32.to_radians(),
-            -20.0_f32.to_radians(),
-        );
-        let projection = camera::Projection::new(
-            size.width,
-            size.height,
-            90.0_f32.to_radians(),
-            0.05,
-            RENDER_DISTANCE,
-        );
-        let camera = camera::Camera {
-            data: camera_data,
-            projection,
-        };
-
-        render_context.uniforms.update_view_proj(&camera);
-        self.ui = Some(ui::init_state(&render_context, size));
-        self.render_context = Some(render_context);
-        self.camera = Some(camera);
-        self.last_update_time = Instant::now(); // Reset update timer
+            self.state = Some(RunningState::new(window, render_context));
+        }
     }
 
     fn window_event(
@@ -325,16 +338,21 @@ impl ApplicationHandler for AppState<'_> {
                     },
                 ..
             } => {
-                if self.save_on_exit {
+                if self.save_on_exit
+                    && let Some(state) = &self.state
+                {
                     // Call the new, correct method
-                    self.save_all_chunks();
+                    state.save_all_chunks();
                 }
                 event_loop.exit();
             }
 
             WindowEvent::KeyboardInput { event, .. } => {
-                self.camera_controller
-                    .process_keyboard(event.physical_key, event.state.is_pressed());
+                if let Some(state) = &mut self.state {
+                    state
+                        .camera_controller
+                        .process_keyboard(event.physical_key, event.state.is_pressed());
+                }
             }
 
             WindowEvent::MouseWheel { delta, .. } => {
@@ -342,50 +360,63 @@ impl ApplicationHandler for AppState<'_> {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
                 };
-                self.camera_controller.process_scroll(scroll);
+                if let Some(state) = &mut self.state {
+                    state.camera_controller.process_scroll(scroll);
+                }
             }
 
-            WindowEvent::MouseInput { state, button, .. } => match button {
-                winit::event::MouseButton::Left => self.input.left_pressed = state.is_pressed(),
-                winit::event::MouseButton::Right => self.input.right_pressed = state.is_pressed(),
-                _ => {}
-            },
-
-            // --- These events DO need the app to be fully initialized ---
-            WindowEvent::Resized(new_size) => {
-                // Only resize if all systems are ready
-                if let (Some(render_context), Some(camera)) =
-                    (self.render_context.as_mut(), self.camera.as_mut())
-                {
-                    if new_size.height > 0 && new_size.width > 0 {
-                        render_context.resize(new_size);
-                        camera.projection.resize(new_size.width, new_size.height);
-                        // ui.resize(new_size, &render_context.queue); // TODO: Implement ui.resize
+            WindowEvent::MouseInput {
+                state: button_state,
+                button,
+                ..
+            } => {
+                if let Some(state) = &mut self.state {
+                    match button {
+                        winit::event::MouseButton::Left => {
+                            state.input.left_pressed = button_state.is_pressed()
+                        }
+                        winit::event::MouseButton::Right => {
+                            state.input.right_pressed = button_state.is_pressed()
+                        }
+                        _ => {}
                     }
                 }
             }
 
+            // --- These events DO need the app to be fully initialized ---
+            WindowEvent::Resized(new_size) => {
+                // Only resize if all systems are ready
+                if let Some(state) = &mut self.state
+                    && new_size.height > 0
+                    && new_size.width > 0
+                {
+                    state.render_context.resize(new_size);
+                    state
+                        .camera
+                        .projection
+                        .resize(new_size.width, new_size.height);
+                    // ui.resize(new_size, &render_context.queue); // TODO: Implement ui.resize
+                }
+            }
+
             WindowEvent::RedrawRequested => {
-                let now = std::time::Instant::now();
-                let dt = now - self.last_update_time;
-                self.last_update_time = now;
+                if let Some(state) = &mut self.state {
+                    let now = std::time::Instant::now();
+                    let dt = now - state.last_update_time;
+                    state.last_update_time = now;
 
-                // --- 1. CALL UPDATE FIRST ---
-                // Update *all* state. This will borrow `self` mutably,
-                // but the borrow ends immediately.
-                self.update(dt);
+                    state.update(dt);
 
-                // --- 2. THEN, DO THE BORROWS FOR RENDER ---
-                // This is a *new* set of borrows, which is fine.
-                if let (Some(render_context), Some(camera), Some(ui)) = (
-                    self.render_context.as_mut(),
-                    self.camera.as_mut(),
-                    self.ui.as_mut(),
-                ) {
                     // Now, we just pass the borrowed values to render
-                    match render_context.render(&self.chunk_manager, camera, ui) {
+                    match state.render_context.render(
+                        &state.chunk_manager,
+                        &state.camera,
+                        &state.ui,
+                    ) {
                         Ok(()) => {}
-                        Err(wgpu::SurfaceError::Lost) => render_context.resize(render_context.size),
+                        Err(wgpu::SurfaceError::Lost) => {
+                            state.render_context.resize(state.render_context.size)
+                        }
                         Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
                         Err(e) => eprintln!("{e:?}"),
                     }
@@ -403,14 +434,20 @@ impl ApplicationHandler for AppState<'_> {
     ) {
         if let DeviceEvent::MouseMotion { delta } = event {
             // This just updates the controller's internal state
-            self.camera_controller.process_mouse(delta.0, delta.1);
+            if let Some(state) = &mut self.state {
+                state.camera_controller.process_mouse(delta.0, delta.1);
+            }
         }
     }
 
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
-        if let Some(window) = self.window {
-            window.request_redraw();
+        if let Some(state) = &self.state {
+            state.window.request_redraw();
         }
+    }
+    fn exiting(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
+        // Forces wgpu buffers and context to drop while Wayland display is still active
+        self.state = None;
     }
 }
 
@@ -434,6 +471,6 @@ pub fn run() -> Result<(), EventLoopError> {
     }
     let event_loop = EventLoop::new().unwrap();
 
-    let mut state = AppState::new(save);
-    event_loop.run_app(&mut state)
+    let mut app = App::new(save);
+    event_loop.run_app(&mut app)
 }

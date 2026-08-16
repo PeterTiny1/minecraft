@@ -1,6 +1,6 @@
 use crate::{
     block::BlockType,
-    chunk::{Chunk, CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32},
+    chunk::{CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32, Chunk},
 };
 use noise::{NoiseFn, OpenSimplex};
 #[derive(Clone, Copy)]
