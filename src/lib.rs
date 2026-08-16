@@ -21,6 +21,7 @@ use std::{
 };
 use winit::{
     application::ApplicationHandler,
+    error::EventLoopError,
     event::{DeviceEvent, KeyEvent, MouseScrollDelta, WindowEvent},
     event_loop::EventLoop,
     keyboard::{Key, NamedKey},
@@ -426,7 +427,7 @@ impl ApplicationHandler for AppState<'_> {
 /// # Panics
 ///
 /// Will panic if there somehow isn't a first argument
-pub fn run() -> Result<(), impl std::error::Error> {
+pub fn run() -> Result<(), EventLoopError> {
     env_logger::init();
     let mut save = false;
     let mut args = env::args();

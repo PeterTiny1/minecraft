@@ -30,7 +30,7 @@ const WATER_HEIGHT: usize = 64;
 const BIOME_SCALE: f64 = 250.0;
 // const SCALING_FACTOR: f64 = 0.011;
 
-#[must_use] 
+#[must_use]
 pub fn generate(noise: &OpenSimplex, location: [i32; 2]) -> Chunk {
     let heightmap = generate_worldscale_heightmap(noise, location);
     let biomemap = generate_biomemap(noise, location);

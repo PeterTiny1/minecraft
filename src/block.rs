@@ -27,13 +27,13 @@ pub enum BlockType {
 
 impl BlockType {
     #[inline]
-    #[must_use] 
+    #[must_use]
     pub const fn is_solid(self) -> bool {
         !self.is_transparent() || matches!(self, Self::Leaf | Self::BirchLeaf | Self::DarkLeaf)
     }
 
     #[inline]
-    #[must_use] 
+    #[must_use]
     pub const fn is_transparent(self) -> bool {
         matches!(
             self,
@@ -43,13 +43,13 @@ impl BlockType {
     }
 
     #[inline]
-    #[must_use] 
+    #[must_use]
     pub const fn is_liquid(self) -> bool {
         matches!(self, Self::Water)
     }
 
     #[inline]
-    #[must_use] 
+    #[must_use]
     pub const fn is_grasslike(self) -> bool {
         matches!(
             self,

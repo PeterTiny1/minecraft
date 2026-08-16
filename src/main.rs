@@ -1,5 +1,5 @@
 use minecraft::run;
 
-fn main() -> Result<(), impl std::error::Error> {
+fn main() -> Result<(), winit::error::EventLoopError> {
     run()
 }
