@@ -13,6 +13,7 @@ mod world_gen;
 // Public API re-exports
 pub use block::BlockType;
 pub use chunk::ChunkData;
+use pollster::block_on;
 pub use renderer::RenderContext;
 
 // Imports
@@ -309,13 +310,17 @@ impl ApplicationHandler for App {
                     )
                     .unwrap(),
             );
-            window
+            if window
                 .set_cursor_grab(winit::window::CursorGrabMode::Confined)
-                .unwrap();
+                .or_else(|_| window.set_cursor_grab(winit::window::CursorGrabMode::Locked))
+                .is_err()
+            {
+                eprintln!("Warning: Failed to grab cursor");
+            }
             window.set_cursor_visible(false);
 
             let size = window.inner_size();
-            let render_context = renderer::RenderContext::new(window.clone(), size);
+            let render_context = block_on(renderer::RenderContext::new(window.clone(), size));
 
             self.state = Some(RunningState::new(window, render_context));
         }
@@ -453,7 +458,7 @@ impl ApplicationHandler for App {
 
 pub fn run() -> Result<(), EventLoopError> {
     env_logger::init();
-    
+
     let mut save = false;
 
     // Iterating properly over flags past argv[0]
