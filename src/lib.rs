@@ -1,24 +1,24 @@
-pub(crate) mod block;
-pub(crate) mod camera;
-pub(crate) mod chunk;
-pub(crate) mod mesh_gen;
-pub(crate) mod player;
-pub(crate) mod ray;
-pub(crate) mod renderer;
-pub(crate) mod texture;
-pub(crate) mod ui;
-pub(crate) mod world_gen;
+// Crate modules
+mod block;
+mod camera;
+mod chunk;
+mod mesh_gen;
+mod player;
+mod ray;
+mod renderer;
+mod texture;
+mod ui;
+mod world_gen;
 
-// --- IMPORTS ---
-use player::Player;
-use std::{
-    collections::HashMap, // HashMap is used by ChunkDataStorage
-    env,
-    fs::File, // Needed for save_all_chunks
-    path::Path,
-    sync::Arc,
-    time::Instant,
-};
+// Public API re-exports
+pub use block::BlockType;
+pub use chunk::ChunkData;
+pub use renderer::RenderContext;
+
+// Imports
+use std::{collections::HashMap, env, fs::File, path::Path, sync::Arc, time::Instant};
+
+use vek::Vec3;
 use winit::{
     application::ApplicationHandler,
     error::EventLoopError,
@@ -28,15 +28,10 @@ use winit::{
     window::Window,
 };
 
-use chunk::{ChunkManager, CHUNK_DEPTH_I32, CHUNK_WIDTH_I32};
-use vek::Vec3;
-
-// --- CRATE-LEVEL PUBLIC EXPORTS ---
-pub use block::BlockType;
-pub use chunk::ChunkData; // Exporting this to fix HashMap type
-pub use renderer::RenderContext;
-
-use crate::chunk::{CHUNK_DEPTH, CHUNK_HEIGHT, CHUNK_WIDTH};
+use chunk::{
+    ChunkManager, CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32,
+};
+use player::Player;
 
 // --- CONSTANTS ---
 pub const RENDER_DISTANCE: f32 = 768.0;
