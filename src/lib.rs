@@ -16,7 +16,7 @@ pub use chunk::ChunkData;
 pub use renderer::RenderContext;
 
 // Imports
-use std::{collections::HashMap, env, fs::File, path::Path, sync::Arc, time::Instant};
+use std::{env, fs::File, path::Path, sync::Arc, time::Instant};
 
 use vek::Vec3;
 use winit::{
@@ -36,7 +36,6 @@ use player::Player;
 // --- CONSTANTS ---
 pub const RENDER_DISTANCE: f32 = 768.0;
 pub const SEED: u32 = 0;
-pub type ChunkDataStorage = HashMap<[i32; 2], chunk::ChunkData>;
 
 pub const DIRECTION_OFFSETS: [Vec3<i32>; 6] = [
     Vec3 { x: -1, y: 0, z: 0 },
