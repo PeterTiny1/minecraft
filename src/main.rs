@@ -1,5 +1,5 @@
-use minecraft::run;
+use minecraft::{EngineError, run};
 
-fn main() -> Result<(), winit::error::EventLoopError> {
+fn main() -> Result<(), EngineError> {
     run()
 }

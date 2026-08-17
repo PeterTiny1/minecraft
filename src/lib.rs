@@ -33,6 +33,39 @@ use chunk::{
 };
 use player::Player;
 
+#[derive(Debug)]
+pub enum EngineError {
+    EventLoop(winit::error::EventLoopError),
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for EngineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EventLoop(e) => write!(f, "Event loop error: {e}"),
+            Self::Io(e) => write!(f, "I/O error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for EngineError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::EventLoop(err) => Some(err),
+            Self::Io(err) => Some(err),
+            // Variants without an underlying error return None:
+            // Self::CustomMessage(_) => None,
+        }
+    }
+}
+
+// Allows `?` to convert winit errors automatically
+impl From<winit::error::EventLoopError> for EngineError {
+    fn from(err: winit::error::EventLoopError) -> Self {
+        Self::EventLoop(err)
+    }
+}
+
 // --- CONSTANTS ---
 pub const RENDER_DISTANCE: f32 = 768.0;
 pub const SEED: u32 = 0;
@@ -468,7 +501,7 @@ impl ApplicationHandler for App {
     }
 }
 
-pub fn run() -> Result<(), EventLoopError> {
+pub fn run() -> Result<(), EngineError> {
     let _ = env_logger::try_init();
 
     let mut save = false;
@@ -483,5 +516,6 @@ pub fn run() -> Result<(), EventLoopError> {
     let event_loop = EventLoop::new()?;
     let mut app = App::new(save);
 
-    event_loop.run_app(&mut app)
+    event_loop.run_app(&mut app)?;
+    Ok(())
 }
