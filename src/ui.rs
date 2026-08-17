@@ -90,7 +90,7 @@ pub fn init_state(render_context: &RenderContext, size: PhysicalSize<u32>) -> St
             include_bytes!("textures/crosshair.png"),
             "crosshair.png",
         )
-        .unwrap(),
+        .expect("failed to parse crosshair texture"),
         Some("crosshair_bind_group"),
     );
     let crosshair = (
