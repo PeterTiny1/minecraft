@@ -7,6 +7,7 @@ use crate::{
 };
 
 pub type Index = u32;
+
 #[inline]
 const fn get_texture_indices(block_type: BlockType) -> [u8; 6] {
     match block_type {
@@ -32,6 +33,7 @@ const fn get_texture_indices(block_type: BlockType) -> [u8; 6] {
         BlockType::Air => [0; 6],
     }
 }
+
 const TOP_BRIGHTNESS: f32 = 1.0;
 const BOTTOM_BRIGHTNESS: f32 = 0.6;
 const SIDE_BRIGHTNESS: f32 = 0.8;
@@ -41,66 +43,9 @@ const AO_BRIGHTNESS: f32 = 0.5;
 
 const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
 const FAR_CORNER: f32 = 0.5 - 0.5 * FRAC_1_SQRT_2;
-#[inline]
-fn create_grass_face(
-    tex_index: u8,
-    world_position: [f32; 3],
-    diagonal: bool,
-) -> std::array::IntoIter<Vertex, 4> {
-    let [x, y, z] = world_position;
-    let (add0, add1) = if diagonal {
-        (FAR_CORNER, CLOSE_CORNER)
-    } else {
-        (CLOSE_CORNER, FAR_CORNER)
-    };
-    [
-        Vertex {
-            position: [x + CLOSE_CORNER, y + 1.0, z + add0],
-            data: [0, 0, tex_index, 255],
-        },
-        Vertex {
-            position: [x + CLOSE_CORNER, y, z + add0],
-            data: [0, 16, tex_index, 255],
-        },
-        Vertex {
-            position: [x + FAR_CORNER, y, z + add1],
-            data: [16, 16, tex_index, 255],
-        },
-        Vertex {
-            position: [x + FAR_CORNER, y + 1.0, z + add1],
-            data: [16, 0, tex_index, 255],
-        },
-    ]
-    .into_iter()
-}
+const CLOSE_FLOWER_CORNER: f32 = 0.716_506_35;
 
 const FLOWER_INDICES: [Index; 12] = [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0];
-const CLOSE_FLOWER_CORNER: f32 = 0.716_506_35;
-#[inline]
-fn generate_flower(position: [f32; 3]) -> std::array::IntoIter<Vertex, 4> {
-    let [x, y, z] = position;
-    let tex_index = 20;
-    [
-        Vertex {
-            position: [x + CLOSE_FLOWER_CORNER, y + 1.0, z + FAR_CORNER],
-            data: [0, 0, tex_index, 255],
-        },
-        Vertex {
-            position: [x + CLOSE_FLOWER_CORNER, y, z + FAR_CORNER],
-            data: [0, 7, tex_index, 255],
-        },
-        Vertex {
-            position: [x + FAR_CORNER, y, z + CLOSE_FLOWER_CORNER],
-            data: [6, 7, tex_index, 255],
-        },
-        Vertex {
-            position: [x + FAR_CORNER, y + 1.0, z + CLOSE_FLOWER_CORNER],
-            data: [6, 0, tex_index, 255],
-        },
-    ]
-    .into_iter()
-}
-
 const GRASS_INDICES: [Index; 24] = [
     0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0, 4, 5, 6, 4, 6, 7, 7, 6, 4, 6, 5, 4,
 ];
@@ -110,7 +55,6 @@ const QUAD_INDICES: [Index; 6] = [0, 1, 2, 0, 2, 3];
 pub struct MeshGenerationContext<'a> {
     pub center: &'a LocatedChunk,
     pub neighbors: &'a [LocatedChunk],
-    // Storing both local and global positions prevents recalculations later
     pub local_x: i32,
     pub local_y: i32,
     pub local_z: i32,
@@ -123,6 +67,7 @@ pub struct MeshGenerationContext<'a> {
 
 impl MeshGenerationContext<'_> {
     #[allow(clippy::cast_precision_loss)]
+    #[inline]
     pub const fn worldpos_f32(&self) -> [f32; 3] {
         [
             self.global_x as f32,
@@ -131,6 +76,7 @@ impl MeshGenerationContext<'_> {
         ]
     }
 
+    #[inline]
     pub fn extend_indices(&mut self, base_indices: &[Index]) {
         let len_index =
             Index::try_from(self.vertices.len()).expect("mesh count exceeded u32 limit");
@@ -138,11 +84,9 @@ impl MeshGenerationContext<'_> {
             .extend(base_indices.iter().map(|i| *i + len_index));
     }
 
-    /// Internal Helper: Resolves a relative block offset locally or via neighbors
     fn get_block_at_offset(&self, dx: i32, dy: i32, dz: i32) -> Option<BlockType> {
         let target_y = self.local_y + dy;
 
-        // 1. Height safety check (bedrock / sky limits)
         if target_y < 0 || target_y >= CHUNK_HEIGHT as i32 {
             return Some(BlockType::Air);
         }
@@ -150,7 +94,6 @@ impl MeshGenerationContext<'_> {
         let target_x = self.local_x + dx;
         let target_z = self.local_z + dz;
 
-        // 2. Fast Path: The block resides entirely inside the current center chunk
         if (0..CHUNK_WIDTH_I32).contains(&target_x) && (0..CHUNK_DEPTH_I32).contains(&target_z) {
             return Some(
                 self.center.data.contents
@@ -158,7 +101,6 @@ impl MeshGenerationContext<'_> {
             );
         }
 
-        // 3. Slow Path: The offset crossed a chunk boundary. Determine target chunk coordinates.
         let mut target_chunk_x = self.center.loc[0];
         let mut target_chunk_z = self.center.loc[1];
         let mut rem_x = target_x;
@@ -180,7 +122,6 @@ impl MeshGenerationContext<'_> {
             rem_z -= CHUNK_DEPTH_I32;
         }
 
-        // 4. Query the neighborhood snapshot vec passed to this job
         self.neighbors
             .iter()
             .find(|n| n.loc == [target_chunk_x, target_chunk_z])
@@ -190,17 +131,19 @@ impl MeshGenerationContext<'_> {
             })
     }
 
+    #[inline]
     pub fn should_draw_face(&self, offset_x: i32, offset_y: i32, offset_z: i32) -> bool {
-        // If the neighbor chunk isn't loaded (None), we default to drawing the face
         self.get_block_at_offset(offset_x, offset_y, offset_z)
             .is_none_or(super::block::BlockType::is_transparent)
     }
 
+    #[inline]
     pub fn is_neighbor_liquid(&self, offset_x: i32, offset_y: i32, offset_z: i32) -> bool {
         self.get_block_at_offset(offset_x, offset_y, offset_z)
             .is_some_and(super::block::BlockType::is_liquid)
     }
 
+    #[inline]
     pub fn is_neighbor_solid(&self, dx: i32, dy: i32, dz: i32) -> bool {
         self.get_block_at_offset(dx, dy, dz)
             .is_some_and(|block| !block.is_transparent())
@@ -211,18 +154,17 @@ pub fn generate_chunk_mesh(
     chunk: &LocatedChunk,
     neighbours: &[LocatedChunk],
 ) -> (Vec<Vertex>, Vec<Index>) {
-    let (mut vertices, mut indices) = (vec![], vec![]);
+    // Reserve typical chunk geometry capacity upfront to prevent re-allocations
+    let mut vertices = Vec::with_capacity(8000);
+    let mut indices = Vec::with_capacity(12000);
 
     let base_x = chunk.loc[0] * CHUNK_WIDTH_I32;
     let base_z = chunk.loc[1] * CHUNK_DEPTH_I32;
-
-    // 1. Grab direct, lightning-fast reference to our local array data
     let contents = &chunk.data.contents;
 
     for x in 0..CHUNK_WIDTH_I32 {
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH_I32 {
-                // 2. Direct indexing into the dense heap array (Incredibly cache-friendly)
                 let block_type = contents[block_index(x as usize, y, z as usize)];
                 if block_type == BlockType::Air {
                     continue;
@@ -232,8 +174,6 @@ pub fn generate_chunk_mesh(
                 let global_y = y as i32;
                 let global_z = base_z + z;
 
-                // 3. Create a lightweight structure to pass down your local/neighbor context
-                // (You can modify your MeshGenerationContext to own local pointers instead of a world trait)
                 let mut context = MeshGenerationContext {
                     center: chunk,
                     neighbors: neighbours,
@@ -251,25 +191,13 @@ pub fn generate_chunk_mesh(
 
                 match block_type {
                     BlockType::Flower0 => {
-                        context.extend_indices(&FLOWER_INDICES);
-                        let world_pos = context.worldpos_f32();
-                        context.vertices.extend(generate_flower(world_pos));
+                        generate_flower(&mut context);
                     }
                     _ if block_type.is_liquid() => {
                         generate_liquid(&mut context, tex_indices);
                     }
                     _ if block_type.is_grasslike() => {
-                        let tex_index = tex_indices[0];
-                        let world_position = context.worldpos_f32();
-                        context.extend_indices(&GRASS_INDICES);
-                        context.vertices.extend(create_grass_face(
-                            tex_index,
-                            world_position,
-                            false,
-                        ));
-                        context
-                            .vertices
-                            .extend(create_grass_face(tex_index, world_position, true));
+                        generate_grass(&mut context, tex_indices[0]);
                     }
                     _ => {
                         generate_solid(&mut context, tex_indices);
@@ -281,64 +209,6 @@ pub fn generate_chunk_mesh(
     (vertices, indices)
 }
 
-fn generate_solid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
-    // --- North Face (Positive X) ---
-    // The "should_draw_face" handles the edge check AND the neighbor check automatically.
-    if context.should_draw_face(1, 0, 0) {
-        let tex_index = tex_indices[2];
-        context.extend_indices(&QUAD_INDICES);
-        context
-            .vertices
-            .append(&mut gen_face_pos_x(context, tex_index));
-    }
-
-    // --- South Face (Negative X) ---
-    if context.should_draw_face(-1, 0, 0) {
-        let tex_offset = tex_indices[4];
-        context.extend_indices(&QUAD_INDICES);
-        context
-            .vertices
-            .append(&mut gen_face_neg_x(context, tex_offset));
-    }
-
-    // --- Top Face (Positive Y) ---
-    if context.should_draw_face(0, 1, 0) {
-        let tex_offset = tex_indices[0];
-        context.extend_indices(&QUAD_INDICES);
-        context
-            .vertices
-            .append(&mut gen_face_pos_y(context, tex_offset));
-    }
-
-    // --- Bottom Face (Negative Y) ---
-    if context.should_draw_face(0, -1, 0) {
-        let tex_offset = tex_indices[5];
-        context.extend_indices(&QUAD_INDICES);
-        context
-            .vertices
-            .append(&mut gen_face_neg_y(context, tex_offset));
-    }
-
-    // --- East Face (Positive Z) ---
-    if context.should_draw_face(0, 0, 1) {
-        let tex_offset = tex_indices[1];
-        context.extend_indices(&QUAD_INDICES);
-        context
-            .vertices
-            .append(&mut gen_face_pos_z(context, tex_offset));
-    }
-
-    // --- West Face (Negative Z) ---
-    if context.should_draw_face(0, 0, -1) {
-        let tex_offset = tex_indices[3];
-        context.extend_indices(&QUAD_INDICES);
-        context
-            .vertices
-            .append(&mut gen_face_neg_z(context, tex_offset));
-    }
-}
-
-/// Calculates the AO brightness for a vertex based on its three neighbors.
 #[inline]
 const fn calculate_ao_light(
     side1_solid: bool,
@@ -346,522 +216,482 @@ const fn calculate_ao_light(
     corner_solid: bool,
     default_brightness: f32,
 ) -> f32 {
-    // This is the Minecraft-style AO logic you're using:
-    // If any of the 3 neighbors are solid, apply AO.
     if side1_solid || side2_solid || corner_solid {
         AO_BRIGHTNESS
     } else {
         default_brightness
     }
-
-    // ---
-    // Note for later: A more advanced (but slower) AO model
-    // would be:
-    // let mut occlusion = 0;
-    // if side1_solid { occlusion += 1; }
-    // if side2_solid { occlusion += 1; }
-    // if corner_solid && side1_solid && side2_solid { occlusion += 1; }
-    // return default_brightness / (1.0 + occlusion * AO_FACTOR);
-    // ---
-    // But for now, we'll stick to previous logic.
 }
-fn gen_face_pos_x(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let [xplusone, y_f32, rel_z] = [
-        context.worldpos_f32()[0] + 1.0,
-        context.worldpos_f32()[1],
-        context.worldpos_f32()[2],
-    ];
-    // Sides
+
+#[inline]
+fn generate_grass(context: &mut MeshGenerationContext, tex_index: u8) {
+    let [x, y, z] = context.worldpos_f32();
+    context.extend_indices(&GRASS_INDICES);
+
+    context.vertices.extend_from_slice(&[
+        // Face 1 (First diagonal)
+        Vertex {
+            position: [x + CLOSE_CORNER, y + 1.0, z + FAR_CORNER],
+            data: [0, 0, tex_index, 255],
+        },
+        Vertex {
+            position: [x + CLOSE_CORNER, y, z + FAR_CORNER],
+            data: [0, 16, tex_index, 255],
+        },
+        Vertex {
+            position: [x + FAR_CORNER, y, z + CLOSE_CORNER],
+            data: [16, 16, tex_index, 255],
+        },
+        Vertex {
+            position: [x + FAR_CORNER, y + 1.0, z + CLOSE_CORNER],
+            data: [16, 0, tex_index, 255],
+        },
+        // Face 2 (Second diagonal)
+        Vertex {
+            position: [x + CLOSE_CORNER, y + 1.0, z + CLOSE_CORNER],
+            data: [0, 0, tex_index, 255],
+        },
+        Vertex {
+            position: [x + CLOSE_CORNER, y, z + CLOSE_CORNER],
+            data: [0, 16, tex_index, 255],
+        },
+        Vertex {
+            position: [x + FAR_CORNER, y, z + FAR_CORNER],
+            data: [16, 16, tex_index, 255],
+        },
+        Vertex {
+            position: [x + FAR_CORNER, y + 1.0, z + FAR_CORNER],
+            data: [16, 0, tex_index, 255],
+        },
+    ]);
+}
+
+#[inline]
+fn generate_flower(context: &mut MeshGenerationContext) {
+    let [x, y, z] = context.worldpos_f32();
+    let tex_index = 20;
+    context.extend_indices(&FLOWER_INDICES);
+
+    context.vertices.extend_from_slice(&[
+        Vertex {
+            position: [x + CLOSE_FLOWER_CORNER, y + 1.0, z + FAR_CORNER],
+            data: [0, 0, tex_index, 255],
+        },
+        Vertex {
+            position: [x + CLOSE_FLOWER_CORNER, y, z + FAR_CORNER],
+            data: [0, 7, tex_index, 255],
+        },
+        Vertex {
+            position: [x + FAR_CORNER, y, z + CLOSE_FLOWER_CORNER],
+            data: [6, 7, tex_index, 255],
+        },
+        Vertex {
+            position: [x + FAR_CORNER, y + 1.0, z + CLOSE_FLOWER_CORNER],
+            data: [6, 0, tex_index, 255],
+        },
+    ]);
+}
+
+fn generate_solid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
+    if context.should_draw_face(1, 0, 0) {
+        gen_face_pos_x(context, tex_indices[2]);
+    }
+    if context.should_draw_face(-1, 0, 0) {
+        gen_face_neg_x(context, tex_indices[4]);
+    }
+    if context.should_draw_face(0, 1, 0) {
+        gen_face_pos_y(context, tex_indices[0]);
+    }
+    if context.should_draw_face(0, -1, 0) {
+        gen_face_neg_y(context, tex_indices[5]);
+    }
+    if context.should_draw_face(0, 0, 1) {
+        gen_face_pos_z(context, tex_indices[1]);
+    }
+    if context.should_draw_face(0, 0, -1) {
+        gen_face_neg_z(context, tex_indices[3]);
+    }
+}
+
+fn gen_face_pos_x(context: &mut MeshGenerationContext, tex_index: u8) {
+    let [x, y, z] = context.worldpos_f32();
+    let xplusone = x + 1.0;
+
     let s_y_plus = context.is_neighbor_solid(1, 1, 0);
     let s_y_minus = context.is_neighbor_solid(1, -1, 0);
     let s_z_plus = context.is_neighbor_solid(1, 0, 1);
     let s_z_minus = context.is_neighbor_solid(1, 0, -1);
-    // Corners
+
     let c_y_plus_z_plus = context.is_neighbor_solid(1, 1, 1);
     let c_y_plus_z_minus = context.is_neighbor_solid(1, 1, -1);
     let c_y_minus_z_plus = context.is_neighbor_solid(1, -1, 1);
     let c_y_minus_z_minus = context.is_neighbor_solid(1, -1, -1);
-    // Calculate AO for each vertex
-    let light_0 = calculate_ao_light(s_y_plus, s_z_minus, c_y_plus_z_minus, SIDE_BRIGHTNESS);
-    let light_1 = calculate_ao_light(s_y_minus, s_z_minus, c_y_minus_z_minus, SIDE_BRIGHTNESS);
-    let light_2 = calculate_ao_light(s_y_minus, s_z_plus, c_y_minus_z_plus, SIDE_BRIGHTNESS);
-    let light_3 = calculate_ao_light(s_y_plus, s_z_plus, c_y_plus_z_plus, SIDE_BRIGHTNESS);
-    vec![
-        Vertex {
-            position: [xplusone, 1.0 + y_f32, 1.0 + rel_z],
-            data: [0, 0, tex_index, (light_0 * 255.0) as u8],
-        },
-        Vertex {
-            position: [xplusone, y_f32, 1.0 + rel_z],
-            data: [0, 16, tex_index, (light_1 * 255.0) as u8],
-        },
-        Vertex {
-            position: [xplusone, y_f32, rel_z],
-            data: [16, 16, tex_index, (light_2 * 255.0) as u8],
-        },
-        Vertex {
-            position: [xplusone, 1.0 + y_f32, rel_z],
-            data: [16, 0, tex_index, (light_3 * 255.0) as u8],
-        },
-    ]
-}
-fn gen_face_neg_x(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    // --- 1. Get Coordinates ---
-    let [rel_x, y_f32, rel_z] = [
-        context.worldpos_f32()[0],
-        context.worldpos_f32()[1],
-        context.worldpos_f32()[2],
-    ];
 
-    // --- 2. Pre-calculate Neighbors (Naming Scheme for -X Face) ---
-    // All neighbors have an x_offset of -1
-    // "Sides"
+    let l0 =
+        (calculate_ao_light(s_y_plus, s_z_minus, c_y_plus_z_minus, SIDE_BRIGHTNESS) * 255.0) as u8;
+    let l1 = (calculate_ao_light(s_y_minus, s_z_minus, c_y_minus_z_minus, SIDE_BRIGHTNESS) * 255.0)
+        as u8;
+    let l2 =
+        (calculate_ao_light(s_y_minus, s_z_plus, c_y_minus_z_plus, SIDE_BRIGHTNESS) * 255.0) as u8;
+    let l3 =
+        (calculate_ao_light(s_y_plus, s_z_plus, c_y_plus_z_plus, SIDE_BRIGHTNESS) * 255.0) as u8;
+
+    context.extend_indices(&QUAD_INDICES);
+    context.vertices.extend_from_slice(&[
+        Vertex {
+            position: [xplusone, 1.0 + y, 1.0 + z],
+            data: [0, 0, tex_index, l0],
+        },
+        Vertex {
+            position: [xplusone, y, 1.0 + z],
+            data: [0, 16, tex_index, l1],
+        },
+        Vertex {
+            position: [xplusone, y, z],
+            data: [16, 16, tex_index, l2],
+        },
+        Vertex {
+            position: [xplusone, 1.0 + y, z],
+            data: [16, 0, tex_index, l3],
+        },
+    ]);
+}
+
+fn gen_face_neg_x(context: &mut MeshGenerationContext, tex_index: u8) {
+    let [x, y, z] = context.worldpos_f32();
+
     let s_y_plus = context.is_neighbor_solid(-1, 1, 0);
     let s_y_minus = context.is_neighbor_solid(-1, -1, 0);
     let s_z_plus = context.is_neighbor_solid(-1, 0, 1);
     let s_z_minus = context.is_neighbor_solid(-1, 0, -1);
 
-    // "Corners"
     let c_y_plus_z_minus = context.is_neighbor_solid(-1, 1, -1);
     let c_y_plus_z_plus = context.is_neighbor_solid(-1, 1, 1);
     let c_y_minus_z_minus = context.is_neighbor_solid(-1, -1, -1);
     let c_y_minus_z_plus = context.is_neighbor_solid(-1, -1, 1);
 
-    // --- 3. Calculate AO for each vertex ---
-    let light_0 = calculate_ao_light(s_y_plus, s_z_minus, c_y_plus_z_minus, SIDE_BRIGHTNESS); // Top-Left
-    let light_1 = calculate_ao_light(s_y_minus, s_z_minus, c_y_minus_z_minus, SIDE_BRIGHTNESS); // Bottom-Left
-    let light_2 = calculate_ao_light(s_y_minus, s_z_plus, c_y_minus_z_plus, SIDE_BRIGHTNESS); // Bottom-Right
-    let light_3 = calculate_ao_light(s_y_plus, s_z_plus, c_y_plus_z_plus, SIDE_BRIGHTNESS); // Top-Right
+    let l0 =
+        (calculate_ao_light(s_y_plus, s_z_minus, c_y_plus_z_minus, SIDE_BRIGHTNESS) * 255.0) as u8;
+    let l1 = (calculate_ao_light(s_y_minus, s_z_minus, c_y_minus_z_minus, SIDE_BRIGHTNESS) * 255.0)
+        as u8;
+    let l2 =
+        (calculate_ao_light(s_y_minus, s_z_plus, c_y_minus_z_plus, SIDE_BRIGHTNESS) * 255.0) as u8;
+    let l3 =
+        (calculate_ao_light(s_y_plus, s_z_plus, c_y_plus_z_plus, SIDE_BRIGHTNESS) * 255.0) as u8;
 
-    // --- 4. Build the Vec ---
-    vec![
+    context.extend_indices(&QUAD_INDICES);
+    context.vertices.extend_from_slice(&[
         Vertex {
-            position: [rel_x, 1.0 + y_f32, rel_z],
-            data: [0, 0, tex_index, (light_0 * 255.0) as u8],
+            position: [x, 1.0 + y, z],
+            data: [0, 0, tex_index, l0],
         },
         Vertex {
-            position: [rel_x, y_f32, rel_z],
-            data: [0, 16, tex_index, (light_1 * 255.0) as u8],
+            position: [x, y, z],
+            data: [0, 16, tex_index, l1],
         },
         Vertex {
-            position: [rel_x, y_f32, 1.0 + rel_z],
-            data: [16, 16, tex_index, (light_2 * 255.0) as u8],
+            position: [x, y, 1.0 + z],
+            data: [16, 16, tex_index, l2],
         },
         Vertex {
-            position: [rel_x, 1.0 + y_f32, 1.0 + rel_z],
-            data: [16, 0, tex_index, (light_3 * 255.0) as u8],
+            position: [x, 1.0 + y, 1.0 + z],
+            data: [16, 0, tex_index, l3],
         },
-    ]
+    ]);
 }
 
-fn gen_face_pos_y(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let [rel_x, yplusone, rel_z] = [
-        context.worldpos_f32()[0],
-        context.worldpos_f32()[1] + 1.0,
-        context.worldpos_f32()[2],
-    ];
+fn gen_face_pos_y(context: &mut MeshGenerationContext, tex_index: u8) {
+    let [x, y, z] = context.worldpos_f32();
+    let yplusone = y + 1.0;
 
-    // --- 1. Pre-calculate all 8 neighbor solid states (0 repeats!) ---
-    // "Sides"
     let s_x_minus = context.is_neighbor_solid(-1, 1, 0);
     let s_x_plus = context.is_neighbor_solid(1, 1, 0);
     let s_z_minus = context.is_neighbor_solid(0, 1, -1);
     let s_z_plus = context.is_neighbor_solid(0, 1, 1);
 
-    // "Corners"
     let c_x_minus_z_minus = context.is_neighbor_solid(-1, 1, -1);
     let c_x_plus_z_minus = context.is_neighbor_solid(1, 1, -1);
     let c_x_minus_z_plus = context.is_neighbor_solid(-1, 1, 1);
     let c_x_plus_z_plus = context.is_neighbor_solid(1, 1, 1);
 
-    // --- 2. Calculate AO light for each vertex ---
-    let light_0 = calculate_ao_light(s_x_minus, s_z_minus, c_x_minus_z_minus, TOP_BRIGHTNESS); // Top-Left
-    let light_1 = calculate_ao_light(s_x_minus, s_z_plus, c_x_minus_z_plus, TOP_BRIGHTNESS); // Bottom-Left
-    let light_2 = calculate_ao_light(s_x_plus, s_z_plus, c_x_plus_z_plus, TOP_BRIGHTNESS); // Bottom-Right
-    let light_3 = calculate_ao_light(s_x_plus, s_z_minus, c_x_plus_z_minus, TOP_BRIGHTNESS); // Top-Right
+    let l0 =
+        (calculate_ao_light(s_x_minus, s_z_minus, c_x_minus_z_minus, TOP_BRIGHTNESS) * 255.0) as u8;
+    let l1 =
+        (calculate_ao_light(s_x_minus, s_z_plus, c_x_minus_z_plus, TOP_BRIGHTNESS) * 255.0) as u8;
+    let l2 =
+        (calculate_ao_light(s_x_plus, s_z_plus, c_x_plus_z_plus, TOP_BRIGHTNESS) * 255.0) as u8;
+    let l3 =
+        (calculate_ao_light(s_x_plus, s_z_minus, c_x_plus_z_minus, TOP_BRIGHTNESS) * 255.0) as u8;
 
-    // --- 3. Build the vec! ---
-    vec![
+    context.extend_indices(&QUAD_INDICES);
+    context.vertices.extend_from_slice(&[
         Vertex {
-            position: [rel_x, yplusone, rel_z],
-            data: [0, 0, tex_index, (light_0 * 255.0) as u8],
+            position: [x, yplusone, z],
+            data: [0, 0, tex_index, l0],
         },
         Vertex {
-            position: [rel_x, yplusone, 1.0 + rel_z],
-            data: [0, 16, tex_index, (light_1 * 255.0) as u8],
+            position: [x, yplusone, 1.0 + z],
+            data: [0, 16, tex_index, l1],
         },
         Vertex {
-            position: [1.0 + rel_x, yplusone, 1.0 + rel_z],
-            data: [16, 16, tex_index, (light_2 * 255.0) as u8],
+            position: [1.0 + x, yplusone, 1.0 + z],
+            data: [16, 16, tex_index, l2],
         },
         Vertex {
-            position: [1.0 + rel_x, yplusone, rel_z],
-            data: [16, 0, tex_index, (light_3 * 255.0) as u8],
+            position: [1.0 + x, yplusone, z],
+            data: [16, 0, tex_index, l3],
         },
-    ]
+    ]);
 }
 
-fn gen_face_neg_y(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    let [rel_x, y_f32, rel_z] = [
-        context.worldpos_f32()[0],
-        context.worldpos_f32()[1],
-        context.worldpos_f32()[2],
-    ];
-    // --- 1. Pre-calculate all 8 neighbor solid states (0 repeats!) ---
-    // "Sides"
+fn gen_face_neg_y(context: &mut MeshGenerationContext, tex_index: u8) {
+    let [x, y, z] = context.worldpos_f32();
+
     let s_x_minus = context.is_neighbor_solid(-1, -1, 0);
     let s_x_plus = context.is_neighbor_solid(1, -1, 0);
     let s_z_minus = context.is_neighbor_solid(0, -1, -1);
     let s_z_plus = context.is_neighbor_solid(0, -1, 1);
 
-    // "Corners"
     let c_x_minus_z_minus = context.is_neighbor_solid(-1, -1, -1);
     let c_x_plus_z_minus = context.is_neighbor_solid(1, -1, -1);
     let c_x_minus_z_plus = context.is_neighbor_solid(-1, -1, 1);
     let c_x_plus_z_plus = context.is_neighbor_solid(1, -1, 1);
 
-    // --- 2. Calculate AO light for each vertex ---
-    let light_0 = calculate_ao_light(s_x_minus, s_z_minus, c_x_minus_z_minus, BOTTOM_BRIGHTNESS); // Top-Left
-    let light_1 = calculate_ao_light(s_x_minus, s_z_plus, c_x_minus_z_plus, BOTTOM_BRIGHTNESS); // Bottom-Left
-    let light_2 = calculate_ao_light(s_x_plus, s_z_plus, c_x_plus_z_plus, BOTTOM_BRIGHTNESS); // Bottom-Right
-    let light_3 = calculate_ao_light(s_x_plus, s_z_minus, c_x_plus_z_minus, BOTTOM_BRIGHTNESS); // Top-Right
-    vec![
+    let l0 = (calculate_ao_light(s_x_minus, s_z_minus, c_x_minus_z_minus, BOTTOM_BRIGHTNESS)
+        * 255.0) as u8;
+    let l1 = (calculate_ao_light(s_x_minus, s_z_plus, c_x_minus_z_plus, BOTTOM_BRIGHTNESS) * 255.0)
+        as u8;
+    let l2 =
+        (calculate_ao_light(s_x_plus, s_z_plus, c_x_plus_z_plus, BOTTOM_BRIGHTNESS) * 255.0) as u8;
+    let l3 = (calculate_ao_light(s_x_plus, s_z_minus, c_x_plus_z_minus, BOTTOM_BRIGHTNESS) * 255.0)
+        as u8;
+
+    context.extend_indices(&QUAD_INDICES);
+    context.vertices.extend_from_slice(&[
         Vertex {
-            position: [1.0 + rel_x, y_f32, rel_z],
-            data: [0, 0, tex_index, (light_0 * 255.0) as u8],
+            position: [1.0 + x, y, z],
+            data: [0, 0, tex_index, l0],
         },
         Vertex {
-            position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-            data: [0, 16, tex_index, (light_1 * 255.0) as u8],
+            position: [1.0 + x, y, 1.0 + z],
+            data: [0, 16, tex_index, l1],
         },
         Vertex {
-            position: [rel_x, y_f32, 1.0 + rel_z],
-            data: [16, 16, tex_index, (light_2 * 255.0) as u8],
+            position: [x, y, 1.0 + z],
+            data: [16, 16, tex_index, l2],
         },
         Vertex {
-            position: [rel_x, y_f32, rel_z],
-            data: [16, 0, tex_index, (light_3 * 255.0) as u8],
+            position: [x, y, z],
+            data: [16, 0, tex_index, l3],
         },
-    ]
+    ]);
 }
 
-fn gen_face_pos_z(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    // --- 1. Get Coordinates ---
-    let [rel_x, y_f32, rel_z] = [
-        context.worldpos_f32()[0],
-        context.worldpos_f32()[1],
-        context.worldpos_f32()[2],
-    ];
-    let zplusone = rel_z + 1.0;
+fn gen_face_pos_z(context: &mut MeshGenerationContext, tex_index: u8) {
+    let [x, y, z] = context.worldpos_f32();
+    let zplusone = z + 1.0;
 
-    // --- 2. Pre-calculate Neighbors (Naming Scheme for +Z Face) ---
-    // All neighbors have a z_offset of +1
-    // "Sides"
     let s_y_plus = context.is_neighbor_solid(0, 1, 1);
     let s_y_minus = context.is_neighbor_solid(0, -1, 1);
     let s_x_plus = context.is_neighbor_solid(1, 0, 1);
     let s_x_minus = context.is_neighbor_solid(-1, 0, 1);
 
-    // "Corners"
     let c_y_plus_x_plus = context.is_neighbor_solid(1, 1, 1);
     let c_y_plus_x_minus = context.is_neighbor_solid(-1, 1, 1);
     let c_y_minus_x_plus = context.is_neighbor_solid(1, -1, 1);
     let c_y_minus_x_minus = context.is_neighbor_solid(-1, -1, 1);
 
-    // --- 3. Calculate AO for each vertex ---
-    let light_0 = calculate_ao_light(s_y_plus, s_x_minus, c_y_plus_x_minus, FRONT_BRIGHTNESS); // Top-Left
-    let light_1 = calculate_ao_light(s_y_minus, s_x_minus, c_y_minus_x_minus, FRONT_BRIGHTNESS); // Bottom-Left
-    let light_2 = calculate_ao_light(s_y_minus, s_x_plus, c_y_minus_x_plus, FRONT_BRIGHTNESS); // Bottom-Right
-    let light_3 = calculate_ao_light(s_y_plus, s_x_plus, c_y_plus_x_plus, FRONT_BRIGHTNESS); // Top-Right
+    let l0 =
+        (calculate_ao_light(s_y_plus, s_x_minus, c_y_plus_x_minus, FRONT_BRIGHTNESS) * 255.0) as u8;
+    let l1 = (calculate_ao_light(s_y_minus, s_x_minus, c_y_minus_x_minus, FRONT_BRIGHTNESS) * 255.0)
+        as u8;
+    let l2 =
+        (calculate_ao_light(s_y_minus, s_x_plus, c_y_minus_x_plus, FRONT_BRIGHTNESS) * 255.0) as u8;
+    let l3 =
+        (calculate_ao_light(s_y_plus, s_x_plus, c_y_plus_x_plus, FRONT_BRIGHTNESS) * 255.0) as u8;
 
-    // --- 4. Build the Vec ---
-    vec![
+    context.extend_indices(&QUAD_INDICES);
+    context.vertices.extend_from_slice(&[
         Vertex {
-            position: [rel_x, 1.0 + y_f32, zplusone],
-            data: [0, 0, tex_index, (light_0 * 255.0) as u8],
+            position: [x, 1.0 + y, zplusone],
+            data: [0, 0, tex_index, l0],
         },
         Vertex {
-            position: [rel_x, y_f32, zplusone],
-            data: [0, 16, tex_index, (light_1 * 255.0) as u8],
+            position: [x, y, zplusone],
+            data: [0, 16, tex_index, l1],
         },
         Vertex {
-            position: [1.0 + rel_x, y_f32, zplusone],
-            data: [16, 16, tex_index, (light_2 * 255.0) as u8],
+            position: [1.0 + x, y, zplusone],
+            data: [16, 16, tex_index, l2],
         },
         Vertex {
-            position: [1.0 + rel_x, 1.0 + y_f32, zplusone],
-            data: [16, 0, tex_index, (light_3 * 255.0) as u8],
+            position: [1.0 + x, 1.0 + y, zplusone],
+            data: [16, 0, tex_index, l3],
         },
-    ]
+    ]);
 }
 
-fn gen_face_neg_z(context: &MeshGenerationContext, tex_index: u8) -> Vec<Vertex> {
-    // --- 1. Get Coordinates ---
-    let [rel_x, y_f32, rel_z] = [
-        context.worldpos_f32()[0],
-        context.worldpos_f32()[1],
-        context.worldpos_f32()[2],
-    ];
+fn gen_face_neg_z(context: &mut MeshGenerationContext, tex_index: u8) {
+    let [x, y, z] = context.worldpos_f32();
 
-    // --- 2. Pre-calculate Neighbors (Naming Scheme for -Z Face) ---
-    // All neighbors have a z_offset of -1
-    // "Sides"
     let s_y_plus = context.is_neighbor_solid(0, 1, -1);
     let s_y_minus = context.is_neighbor_solid(0, -1, -1);
     let s_x_plus = context.is_neighbor_solid(1, 0, -1);
     let s_x_minus = context.is_neighbor_solid(-1, 0, -1);
 
-    // "Corners"
     let c_y_plus_x_plus = context.is_neighbor_solid(1, 1, -1);
     let c_y_plus_x_minus = context.is_neighbor_solid(-1, 1, -1);
     let c_y_minus_x_plus = context.is_neighbor_solid(1, -1, -1);
     let c_y_minus_x_minus = context.is_neighbor_solid(-1, -1, -1);
 
-    // --- 3. Calculate AO for each vertex ---
-    let light_0 = calculate_ao_light(s_y_plus, s_x_plus, c_y_plus_x_plus, BACK_BRIGHTNESS); // Top-Left
-    let light_1 = calculate_ao_light(s_y_minus, s_x_plus, c_y_minus_x_plus, BACK_BRIGHTNESS); // Bottom-Left
-    let light_2 = calculate_ao_light(s_y_minus, s_x_minus, c_y_minus_x_minus, BACK_BRIGHTNESS); // Bottom-Right
-    let light_3 = calculate_ao_light(s_y_plus, s_x_minus, c_y_plus_x_minus, BACK_BRIGHTNESS); // Top-Right
+    let l0 =
+        (calculate_ao_light(s_y_plus, s_x_plus, c_y_plus_x_plus, BACK_BRIGHTNESS) * 255.0) as u8;
+    let l1 =
+        (calculate_ao_light(s_y_minus, s_x_plus, c_y_minus_x_plus, BACK_BRIGHTNESS) * 255.0) as u8;
+    let l2 = (calculate_ao_light(s_y_minus, s_x_minus, c_y_minus_x_minus, BACK_BRIGHTNESS) * 255.0)
+        as u8;
+    let l3 =
+        (calculate_ao_light(s_y_plus, s_x_minus, c_y_plus_x_minus, BACK_BRIGHTNESS) * 255.0) as u8;
 
-    // --- 4. Build the Vec ---
-    vec![
+    context.extend_indices(&QUAD_INDICES);
+    context.vertices.extend_from_slice(&[
         Vertex {
-            position: [1.0 + rel_x, 1.0 + y_f32, rel_z],
-            data: [0, 0, tex_index, (light_0 * 255.0) as u8],
+            position: [1.0 + x, 1.0 + y, z],
+            data: [0, 0, tex_index, l0],
         },
         Vertex {
-            position: [1.0 + rel_x, y_f32, rel_z],
-            data: [0, 16, tex_index, (light_1 * 255.0) as u8],
+            position: [1.0 + x, y, z],
+            data: [0, 16, tex_index, l1],
         },
         Vertex {
-            position: [rel_x, y_f32, rel_z],
-            data: [16, 16, tex_index, (light_2 * 255.0) as u8],
+            position: [x, y, z],
+            data: [16, 16, tex_index, l2],
         },
         Vertex {
-            position: [rel_x, 1.0 + y_f32, rel_z],
-            data: [16, 0, tex_index, (light_3 * 255.0) as u8],
+            position: [x, 1.0 + y, z],
+            data: [16, 0, tex_index, l3],
         },
-    ]
+    ]);
 }
 
 const BLOCK_WATER_HEIGHT: f32 = 0.5;
+const WATER_V_TOP_OFF: u8 = (16.0 - BLOCK_WATER_HEIGHT * 16.0) as u8;
+
+struct SideFace {
+    dir: (i32, i32, i32),
+    tex_idx: usize,
+    p0: (f32, f32),
+    p1: (f32, f32),
+}
+
+const SIDE_FACES: [SideFace; 4] = [
+    SideFace {
+        dir: (0, 0, 1),
+        tex_idx: 1,
+        p0: (0.0, 1.0),
+        p1: (1.0, 1.0),
+    }, // +Z
+    SideFace {
+        dir: (1, 0, 0),
+        tex_idx: 2,
+        p0: (1.0, 0.0),
+        p1: (1.0, 1.0),
+    }, // +X
+    SideFace {
+        dir: (0, 0, -1),
+        tex_idx: 1,
+        p0: (0.0, 0.0),
+        p1: (1.0, 0.0),
+    }, // -Z
+    SideFace {
+        dir: (-1, 0, 0),
+        tex_idx: 2,
+        p0: (0.0, 0.0),
+        p1: (0.0, 1.0),
+    }, // -X
+];
 
 #[inline]
 fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
-    let [rel_x, y_f32, rel_z] = context.worldpos_f32();
-    let yplusoff = y_f32 + BLOCK_WATER_HEIGHT;
-    if !context.is_neighbor_liquid(0, 1, 0) {
-        let tex_index = tex_indices[0];
+    let [x, y, z] = context.worldpos_f32();
+    let is_submerged = context.is_neighbor_liquid(0, 1, 0);
+
+    let (top_y, side_v_top) = if is_submerged {
+        (y + 1.0, 0)
+    } else {
+        (y + BLOCK_WATER_HEIGHT, WATER_V_TOP_OFF)
+    };
+
+    if !is_submerged {
+        let tex = tex_indices[0];
         context.extend_indices(&BIDIR_INDICES);
-        context.vertices.append(&mut vec![
+        context.vertices.extend_from_slice(&[
             Vertex {
-                position: [rel_x, yplusoff, rel_z],
-                data: [0, 0, tex_index, 255],
+                position: [x, top_y, z],
+                data: [0, 0, tex, 255],
             },
             Vertex {
-                position: [rel_x, yplusoff, 1.0 + rel_z],
-                data: [0, 16, tex_index, 255],
+                position: [x, top_y, 1.0 + z],
+                data: [0, 16, tex, 255],
             },
             Vertex {
-                position: [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                data: [16, 16, tex_index, 255],
+                position: [1.0 + x, top_y, 1.0 + z],
+                data: [16, 16, tex, 255],
             },
             Vertex {
-                position: [1.0 + rel_x, yplusoff, rel_z],
-                data: [16, 0, tex_index, 255],
+                position: [1.0 + x, top_y, z],
+                data: [16, 0, tex, 255],
             },
         ]);
     }
+
     if !context.is_neighbor_liquid(0, -1, 0) && context.should_draw_face(0, -1, 0) {
-        let tex_index = tex_indices[5];
+        let tex = tex_indices[5];
         context.extend_indices(&BIDIR_INDICES);
-        context.vertices.append(&mut vec![
+        context.vertices.extend_from_slice(&[
             Vertex {
-                position: [rel_x, y_f32, rel_z],
-                data: [0, 0, tex_index, 255],
+                position: [x, y, z],
+                data: [0, 0, tex, 255],
             },
             Vertex {
-                position: [rel_x, y_f32, 1.0 + rel_z],
-                data: [0, 16, tex_index, 255],
+                position: [x, y, 1.0 + z],
+                data: [0, 16, tex, 255],
             },
             Vertex {
-                position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                data: [16, 16, tex_index, 255],
+                position: [1.0 + x, y, 1.0 + z],
+                data: [16, 16, tex, 255],
             },
             Vertex {
-                position: [1.0 + rel_x, y_f32, rel_z],
-                data: [16, 0, tex_index, 255],
+                position: [1.0 + x, y, z],
+                data: [16, 0, tex, 255],
             },
         ]);
     }
-    if !context.is_neighbor_liquid(0, 0, 1) && context.should_draw_face(0, 0, 1) {
-        let tex_index = tex_indices[1];
-        context.extend_indices(&BIDIR_INDICES);
-        if context.is_neighbor_liquid(0, 1, 0) {
-            context.vertices.append(&mut vec![
+
+    for face in &SIDE_FACES {
+        let (dx, dy, dz) = face.dir;
+        if !context.is_neighbor_liquid(dx, dy, dz) && context.should_draw_face(dx, dy, dz) {
+            let tex = tex_indices[face.tex_idx];
+            let (x0, z0) = (x + face.p0.0, z + face.p0.1);
+            let (x1, z1) = (x + face.p1.0, z + face.p1.1);
+
+            context.extend_indices(&BIDIR_INDICES);
+            context.vertices.extend_from_slice(&[
                 Vertex {
-                    position: [rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    data: [0, 0, tex_index, 255],
+                    position: [x0, top_y, z0],
+                    data: [0, side_v_top, tex, 255],
                 },
                 Vertex {
-                    position: [rel_x, y_f32, 1.0 + rel_z],
-                    data: [0, 16, tex_index, 255],
+                    position: [x0, y, z0],
+                    data: [0, 16, tex, 255],
                 },
                 Vertex {
-                    position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    data: [16, 16, tex_index, 255],
+                    position: [x1, y, z1],
+                    data: [16, 16, tex, 255],
                 },
                 Vertex {
-                    position: [1.0 + rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    data: [16, 0, tex_index, 255],
-                },
-            ]);
-        } else {
-            context.vertices.append(&mut vec![
-                Vertex {
-                    position: [rel_x, yplusoff, 1.0 + rel_z],
-                    data: [0, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
-                },
-                Vertex {
-                    position: [rel_x, y_f32, 1.0 + rel_z],
-                    data: [0, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    data: [16, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                    data: [16, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
-                },
-            ]);
-        }
-    }
-    if !context.is_neighbor_liquid(1, 0, 0) && context.should_draw_face(1, 0, 0) {
-        let tex_index = tex_indices[2];
-        context.extend_indices(&BIDIR_INDICES);
-        if context.is_neighbor_liquid(0, 1, 0) {
-            context.vertices.append(&mut vec![
-                Vertex {
-                    position: [1.0 + rel_x, y_f32 + 1.0, rel_z],
-                    data: [0, 0, tex_index, 255],
-                },
-                Vertex {
-                    position: [1.0 + rel_x, y_f32, rel_z],
-                    data: [0, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    data: [16, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [1.0 + rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    data: [16, 0, tex_index, 255],
-                },
-            ]);
-        } else {
-            context.vertices.append(&mut vec![
-                Vertex {
-                    position: [1.0 + rel_x, yplusoff, rel_z],
-                    data: [0, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
-                },
-                Vertex {
-                    position: [1.0 + rel_x, y_f32, rel_z],
-                    data: [0, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [1.0 + rel_x, y_f32, 1.0 + rel_z],
-                    data: [16, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [1.0 + rel_x, yplusoff, 1.0 + rel_z],
-                    data: [16, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
-                },
-            ]);
-        }
-    }
-    if !context.is_neighbor_liquid(0, 0, -1) && context.should_draw_face(0, 0, -1) {
-        let tex_index = tex_indices[1];
-        context.extend_indices(&BIDIR_INDICES);
-        if context.is_neighbor_liquid(0, 1, 0) {
-            context.vertices.append(&mut vec![
-                Vertex {
-                    position: [rel_x, y_f32 + 1.0, rel_z],
-                    data: [0, 0, tex_index, 255],
-                },
-                Vertex {
-                    position: [rel_x, y_f32, rel_z],
-                    data: [0, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [1.0 + rel_x, y_f32, rel_z],
-                    data: [16, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [1.0 + rel_x, y_f32 + 1.0, rel_z],
-                    data: [16, 0, tex_index, 255],
-                },
-            ]);
-        } else {
-            context.vertices.append(&mut vec![
-                Vertex {
-                    position: [rel_x, yplusoff, rel_z],
-                    data: [0, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
-                },
-                Vertex {
-                    position: [rel_x, y_f32, rel_z],
-                    data: [0, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [1.0 + rel_x, y_f32, rel_z],
-                    data: [16, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [1.0 + rel_x, yplusoff, rel_z],
-                    data: [16, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
-                },
-            ]);
-        }
-    }
-    if !context.is_neighbor_liquid(-1, 0, 0) && context.should_draw_face(-1, 0, 0) {
-        let tex_index = tex_indices[2];
-        context.extend_indices(&BIDIR_INDICES);
-        if context.is_neighbor_liquid(0, 1, 0) {
-            context.vertices.append(&mut vec![
-                Vertex {
-                    position: [rel_x, y_f32 + 1.0, rel_z],
-                    data: [0, 0, tex_index, 255],
-                },
-                Vertex {
-                    position: [rel_x, y_f32, rel_z],
-                    data: [0, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [rel_x, y_f32, 1.0 + rel_z],
-                    data: [16, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [rel_x, y_f32 + 1.0, 1.0 + rel_z],
-                    data: [16, 0, tex_index, 255],
-                },
-            ]);
-        } else {
-            context.vertices.append(&mut vec![
-                Vertex {
-                    position: [rel_x, yplusoff, rel_z],
-                    data: [0, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
-                },
-                Vertex {
-                    position: [rel_x, y_f32, rel_z],
-                    data: [0, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [rel_x, y_f32, 1.0 + rel_z],
-                    data: [16, 16, tex_index, 255],
-                },
-                Vertex {
-                    position: [rel_x, yplusoff, 1.0 + rel_z],
-                    data: [16, 16 - (BLOCK_WATER_HEIGHT * 16.0) as u8, tex_index, 255],
+                    position: [x1, top_y, z1],
+                    data: [16, side_v_top, tex, 255],
                 },
             ]);
         }
