@@ -231,6 +231,11 @@ impl Default for ChunkManager {
 
 const MAX_DISTANCE_X: i32 = RENDER_DISTANCE as i32 / CHUNK_WIDTH_I32 + 1;
 const MAX_DISTANCE_Y: i32 = RENDER_DISTANCE as i32 / CHUNK_DEPTH_I32 + 1;
+const RENDER_DISTANCE_CHUNKS: i32 = if MAX_DISTANCE_X > MAX_DISTANCE_Y {
+    MAX_DISTANCE_X
+} else {
+    MAX_DISTANCE_Y
+};
 
 #[allow(clippy::cast_precision_loss)]
 #[must_use]
@@ -256,7 +261,7 @@ pub fn nearest_visible_unloaded(
     let chunk_x = (cam_pos.x as i32).div_euclid(CHUNK_WIDTH_I32);
     let chunk_z = (cam_pos.z as i32).div_euclid(CHUNK_DEPTH_I32);
 
-    let r_squared = (RENDER_DISTANCE * RENDER_DISTANCE) as i32;
+    let r_squared = (RENDER_DISTANCE_CHUNKS * RENDER_DISTANCE_CHUNKS) as i32;
 
     let mut nearest_chunk = None;
     let mut shortest_distance = i32::MAX;
@@ -299,33 +304,39 @@ fn manage_meshgen(
     recv_generate: &mpsc::Receiver<MeshJob>,
     send_chunk: &mpsc::SyncSender<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
 ) {
-    let mut waiting = vec![];
+    let mut waiting: Vec<(Vec<Vertex>, Vec<Index>, [i32; 2])> = Vec::new();
+
     loop {
-        let mut new_waiting = vec![];
-        for item in waiting {
-            match send_chunk.try_send(item) {
-                Ok(()) => {}
-                Err(mpsc::TrySendError::Full(v)) => new_waiting.push(v),
-                Err(mpsc::TrySendError::Disconnected(_)) => break,
+        // 1. Drain pending waiting items first without blocking
+        waiting.retain(|item| match send_chunk.try_send(item.clone()) {
+            Ok(()) => false,                          // Sent successfully, remove from waiting
+            Err(mpsc::TrySendError::Full(_)) => true, // Keep in waiting
+            Err(mpsc::TrySendError::Disconnected(_)) => false,
+        });
+
+        // 2. Fetch next job: block if waiting is empty, poll if waiting has items
+        let job = if waiting.is_empty() {
+            match recv_generate.recv() {
+                Ok(j) => j,
+                Err(_) => break, // Channel closed
             }
-        }
-        waiting = new_waiting;
-
-        // 1. Receive the self-contained MeshJob.
-        // We can destructure it right here in the match arm.
-        if let Ok(MeshJob { chunk, neighbours }) = recv_generate.recv() {
-            // 2. Compute the mesh using only the isolated data given to this job.
-            // No global HashMap, no RwLock reading, zero lock contention!
-            let (mesh, indices) = generate_chunk_mesh(&chunk, &neighbours);
-
-            // 3. Try to push the completed mesh data up to the main thread
-            match send_chunk.try_send((mesh, indices, chunk.loc)) {
-                Ok(()) => {}
-                Err(mpsc::TrySendError::Disconnected(_)) => {
-                    break;
+        } else {
+            match recv_generate.try_recv() {
+                Ok(j) => j,
+                Err(mpsc::TryRecvError::Empty) => {
+                    thread::sleep(std::time::Duration::from_millis(1));
+                    continue;
                 }
-                Err(mpsc::TrySendError::Full(v)) => waiting.push(v),
+                Err(mpsc::TryRecvError::Disconnected) => break,
             }
+        };
+
+        // 3. Process mesh job
+        let (mesh, indices) = generate_chunk_mesh(&job.chunk, &job.neighbours);
+        let result = (mesh, indices, job.chunk.loc);
+
+        if let Err(mpsc::TrySendError::Full(item)) = send_chunk.try_send(result) {
+            waiting.push(item);
         }
     }
 }

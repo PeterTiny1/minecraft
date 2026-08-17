@@ -202,12 +202,6 @@ impl MeshGenerationContext<'_> {
         self.get_block_at_offset(dx, dy, dz)
             .is_some_and(|block| !block.is_transparent())
     }
-    fn extend_indicies(&mut self, base_indices: &[Index]) {
-        let len_index = Index::try_from(self.vertices.len()).unwrap();
-
-        self.indices
-            .extend(base_indices.iter().map(|i| *i + len_index));
-    }
 }
 
 pub fn generate_chunk_mesh(
@@ -289,7 +283,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     // The "should_draw_face" handles the edge check AND the neighbor check automatically.
     if context.should_draw_face(1, 0, 0) {
         let tex_index = tex_indices[2];
-        context.extend_indicies(&QUAD_INDICES);
+        context.extend_indices(&QUAD_INDICES);
         context
             .vertices
             .append(&mut gen_face_pos_x(context, tex_index));
@@ -298,7 +292,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     // --- South Face (Negative X) ---
     if context.should_draw_face(-1, 0, 0) {
         let tex_offset = tex_indices[4];
-        context.extend_indicies(&QUAD_INDICES);
+        context.extend_indices(&QUAD_INDICES);
         context
             .vertices
             .append(&mut gen_face_neg_x(context, tex_offset));
@@ -307,7 +301,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     // --- Top Face (Positive Y) ---
     if context.should_draw_face(0, 1, 0) {
         let tex_offset = tex_indices[0];
-        context.extend_indicies(&QUAD_INDICES);
+        context.extend_indices(&QUAD_INDICES);
         context
             .vertices
             .append(&mut gen_face_pos_y(context, tex_offset));
@@ -316,7 +310,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     // --- Bottom Face (Negative Y) ---
     if context.should_draw_face(0, -1, 0) {
         let tex_offset = tex_indices[5];
-        context.extend_indicies(&QUAD_INDICES);
+        context.extend_indices(&QUAD_INDICES);
         context
             .vertices
             .append(&mut gen_face_neg_y(context, tex_offset));
@@ -325,7 +319,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     // --- East Face (Positive Z) ---
     if context.should_draw_face(0, 0, 1) {
         let tex_offset = tex_indices[1];
-        context.extend_indicies(&QUAD_INDICES);
+        context.extend_indices(&QUAD_INDICES);
         context
             .vertices
             .append(&mut gen_face_pos_z(context, tex_offset));
@@ -334,7 +328,7 @@ fn generate_solid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     // --- West Face (Negative Z) ---
     if context.should_draw_face(0, 0, -1) {
         let tex_offset = tex_indices[3];
-        context.extend_indicies(&QUAD_INDICES);
+        context.extend_indices(&QUAD_INDICES);
         context
             .vertices
             .append(&mut gen_face_neg_z(context, tex_offset));
@@ -655,7 +649,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     let yplusoff = y_f32 + BLOCK_WATER_HEIGHT;
     if !context.is_neighbor_liquid(0, 1, 0) {
         let tex_index = tex_indices[0];
-        context.extend_indicies(&BIDIR_INDICES);
+        context.extend_indices(&BIDIR_INDICES);
         context.vertices.append(&mut vec![
             Vertex {
                 position: [rel_x, yplusoff, rel_z],
@@ -677,7 +671,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     }
     if !context.is_neighbor_liquid(0, -1, 0) && context.should_draw_face(0, -1, 0) {
         let tex_index = tex_indices[5];
-        context.extend_indicies(&BIDIR_INDICES);
+        context.extend_indices(&BIDIR_INDICES);
         context.vertices.append(&mut vec![
             Vertex {
                 position: [rel_x, y_f32, rel_z],
@@ -699,7 +693,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     }
     if !context.is_neighbor_liquid(0, 0, 1) && context.should_draw_face(0, 0, 1) {
         let tex_index = tex_indices[1];
-        context.extend_indicies(&BIDIR_INDICES);
+        context.extend_indices(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
@@ -742,7 +736,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     }
     if !context.is_neighbor_liquid(1, 0, 0) && context.should_draw_face(1, 0, 0) {
         let tex_index = tex_indices[2];
-        context.extend_indicies(&BIDIR_INDICES);
+        context.extend_indices(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
@@ -785,7 +779,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     }
     if !context.is_neighbor_liquid(0, 0, -1) && context.should_draw_face(0, 0, -1) {
         let tex_index = tex_indices[1];
-        context.extend_indicies(&BIDIR_INDICES);
+        context.extend_indices(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
@@ -828,7 +822,7 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
     }
     if !context.is_neighbor_liquid(-1, 0, 0) && context.should_draw_face(-1, 0, 0) {
         let tex_index = tex_indices[2];
-        context.extend_indicies(&BIDIR_INDICES);
+        context.extend_indices(&BIDIR_INDICES);
         if context.is_neighbor_liquid(0, 1, 0) {
             context.vertices.append(&mut vec![
                 Vertex {
