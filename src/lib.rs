@@ -27,12 +27,13 @@ use winit::{
     window::Window,
 };
 
-use chunk::{
-    CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32, ChunkManager,
-};
+use chunk::{CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_WIDTH, CHUNK_WIDTH_I32, ChunkManager};
 use player::Player;
 
-use crate::{chunk::block_index, renderer::RenderOutcome};
+use crate::{
+    chunk::{CHUNK_HEIGHT_I32, block_index},
+    renderer::RenderOutcome,
+};
 
 #[derive(Debug)]
 pub enum EngineError {
@@ -227,7 +228,7 @@ impl RunningState {
                     location
                 };
 
-                if target_pos.y >= 0 && target_pos.y < CHUNK_HEIGHT as i32 {
+                if target_pos.y >= 0 && target_pos.y < CHUNK_HEIGHT_I32 {
                     let chunk_x = target_pos.x.div_euclid(CHUNK_WIDTH_I32);
                     let chunk_z = target_pos.z.div_euclid(CHUNK_DEPTH_I32);
                     let chunk_loc = [chunk_x, chunk_z];
@@ -235,6 +236,7 @@ impl RunningState {
                     if let Some(chunk_arc) = self.chunk_manager.generated_data.get_mut(&chunk_loc) {
                         let local_x = target_pos.x.rem_euclid(CHUNK_WIDTH_I32) as usize;
                         let local_z = target_pos.z.rem_euclid(CHUNK_DEPTH_I32) as usize;
+                        #[allow(clippy::cast_sign_loss)]
                         let local_y = target_pos.y as usize;
 
                         let chunk = Arc::make_mut(chunk_arc);
@@ -419,7 +421,11 @@ impl ApplicationHandler for App {
             WindowEvent::MouseWheel { delta, .. } => {
                 let scroll = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
+                    MouseScrollDelta::PixelDelta(pos) => {
+                        #[allow(clippy::cast_possible_truncation)]
+                        let delta = pos.y as f32;
+                        delta
+                    }
                 };
                 if let Some(state) = &mut self.state {
                     state.camera_controller.process_scroll(scroll);

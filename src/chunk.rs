@@ -21,6 +21,7 @@ use crate::{
 pub const CHUNK_WIDTH: usize = 32;
 pub const CHUNK_WIDTH_I32: i32 = CHUNK_WIDTH as i32;
 pub const CHUNK_HEIGHT: usize = 256;
+pub const CHUNK_HEIGHT_I32: i32 = CHUNK_HEIGHT as i32;
 pub const CHUNK_DEPTH: usize = 32;
 pub const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
 
@@ -71,7 +72,7 @@ impl BlockProvider for ChunkDataStorage {
             let local_x = x.rem_euclid(CHUNK_WIDTH_I32) as usize;
             let local_y = y as usize;
             let local_z = z.rem_euclid(CHUNK_DEPTH_I32) as usize;
-            
+
             let idx = block_index(local_x, local_y, local_z);
             Some(chunk.contents[idx])
         } else {
