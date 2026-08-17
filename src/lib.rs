@@ -32,6 +32,8 @@ use chunk::{
 };
 use player::Player;
 
+use crate::renderer::RenderOutcome;
+
 #[derive(Debug)]
 pub enum EngineError {
     EventLoop(winit::error::EventLoopError),
@@ -468,12 +470,10 @@ impl ApplicationHandler for App {
                         &state.camera,
                         &state.ui,
                     ) {
-                        Ok(()) => {}
-                        Err(wgpu::SurfaceError::Lost) => {
+                        RenderOutcome::Success => {}
+                        RenderOutcome::NeedsResize => {
                             state.render_context.resize(state.render_context.size);
                         }
-                        Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
-                        Err(e) => tracing::error!(error = ?e, "Surface render error"),
                     }
                 }
             }

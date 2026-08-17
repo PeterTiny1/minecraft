@@ -1,4 +1,3 @@
-enable f16;
 struct Uniforms {
     view_proj: mat4x4<f32>,
 };
@@ -14,7 +13,7 @@ struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) tex_coords: vec2<f32>,
     @location(1) brightness: f32,
-    @location(2) tex_index: u32,
+    @location(2) @interpolate(flat) tex_index: u32,
 };
 
 @vertex

@@ -112,8 +112,8 @@ pub fn init_state(render_context: &RenderContext, size: PhysicalSize<u32>) -> St
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
                     bind_group_layouts: &[
-                        &ui_bind_group_layout,
-                        &render_context.device.create_bind_group_layout(
+                        Some(&ui_bind_group_layout),
+                        Some(&render_context.device.create_bind_group_layout(
                             &wgpu::BindGroupLayoutDescriptor {
                                 entries: &[wgpu::BindGroupLayoutEntry {
                                     binding: 0,
@@ -128,13 +128,13 @@ pub fn init_state(render_context: &RenderContext, size: PhysicalSize<u32>) -> St
                                 }],
                                 label: Some("ui_uniform_bind_group_layout"),
                             },
-                        ),
+                        )),
                     ],
-                    push_constant_ranges: &[],
+                    immediate_size: 0,
                 }),
             render_context.config.format,
             Some(texture::Texture::DEPTH_FORMAT),
-            &[Vertex::desc()],
+            &[Some(Vertex::desc())],
             wgpu::ShaderModuleDescriptor {
                 label: Some("Shader"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),

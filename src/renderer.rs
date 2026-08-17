@@ -137,7 +137,7 @@ pub fn create_render_pipeline(
     layout: &wgpu::PipelineLayout,
     color_format: wgpu::TextureFormat,
     depth_format: Option<wgpu::TextureFormat>,
-    vertex_layouts: &[wgpu::VertexBufferLayout],
+    vertex_layouts: &[Option<wgpu::VertexBufferLayout>],
     shader: wgpu::ShaderModuleDescriptor,
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(shader);
@@ -171,8 +171,8 @@ pub fn create_render_pipeline(
         },
         depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
             format,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),
         }),
@@ -181,8 +181,8 @@ pub fn create_render_pipeline(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
         cache: None,
+        multiview_mask: None,
     })
 }
 
@@ -260,6 +260,11 @@ impl From<image::ImageError> for RenderContextError {
     }
 }
 
+pub enum RenderOutcome {
+    Success,
+    NeedsResize,
+}
+
 pub struct RenderContext {
     surface: wgpu::Surface<'static>,
     pub device: wgpu::Device,
@@ -279,13 +284,23 @@ impl RenderContext {
         window: Arc<Window>,
         size: PhysicalSize<u32>,
     ) -> Result<Self, RenderContextError> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            #[cfg(not(target_arch = "wasm32"))]
+            backends: wgpu::Backends::PRIMARY,
+            #[cfg(target_arch = "wasm32")]
+            backends: wgpu::Backends::GL,
+            flags: Default::default(),
+            memory_budget_thresholds: Default::default(),
+            backend_options: Default::default(),
+            display: None,
+        });
         let surface = instance.create_surface(window)?;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
+                apply_limit_buckets: true,
             })
             .await?;
         let (device, queue) = adapter
@@ -335,6 +350,7 @@ impl RenderContext {
             alpha_mode,
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
+            color_space: wgpu::SurfaceColorSpace::Auto,
         };
         surface.configure(&device, &config);
         let diffuse_bind_group_layout =
@@ -401,12 +417,12 @@ impl RenderContext {
             &device,
             &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&diffuse_bind_group_layout, &uniform_bind_group_layout],
-                push_constant_ranges: &[],
+                bind_group_layouts: &[Some(&diffuse_bind_group_layout), Some(&uniform_bind_group_layout)],
+                immediate_size: 0
             }),
             config.format,
             Some(texture::Texture::DEPTH_FORMAT),
-            &[Vertex::desc()],
+            &[Some(Vertex::desc())],
             wgpu::ShaderModuleDescriptor {
                 label: Some("Shader"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
@@ -443,16 +459,31 @@ impl RenderContext {
         chunk_manager: &ChunkManager,
         camera: &camera::Camera,
         ui: &ui::State,
-    ) -> Result<(), wgpu::SurfaceError> {
-        let output = self.surface.get_current_texture()?;
+    ) -> RenderOutcome {
+        let output = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(frame) => frame,
+            wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                return RenderOutcome::NeedsResize;
+            }
+            wgpu::CurrentSurfaceTexture::Timeout
+            | wgpu::CurrentSurfaceTexture::Occluded
+            | wgpu::CurrentSurfaceTexture::Validation => {
+                // Frame cannot or should not be presented right now
+                return RenderOutcome::Success;
+            }
+        };
+
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
+
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -480,11 +511,14 @@ impl RenderContext {
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
+                multiview_mask: None,
             });
+
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
             chunk_manager.render_chunks(&mut render_pass, camera);
+
             render_pass.set_pipeline(&ui.pipeline);
             render_pass.set_bind_group(0, &ui.crosshair_bind_group, &[]);
             render_pass.set_bind_group(1, &ui.uniform_bind_group, &[]);
@@ -492,9 +526,11 @@ impl RenderContext {
             render_pass.set_index_buffer(ui.crosshair.1.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.draw_indexed(0..6, 0, 0..1);
         }
+
         self.queue.submit(std::iter::once(encoder.finish()));
-        output.present();
-        Ok(())
+        self.queue.present(output);
+
+        RenderOutcome::Success
     }
     pub fn write_uniforms(&self) {
         self.queue.write_buffer(
