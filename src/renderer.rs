@@ -116,18 +116,18 @@ impl Vertex {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Uniforms {
-    view_proj: [[f32; 4]; 4],
+    view_proj: Mat4<f32>,
 }
 
 impl Uniforms {
     fn new() -> Self {
         Self {
-            view_proj: Mat4::<f32>::identity().into_col_arrays(),
+            view_proj: Mat4::<f32>::identity(),
         }
     }
 
     pub fn update_view_proj(&mut self, camera: &camera::Camera) {
-        self.view_proj = (camera.get_transformation()).into_col_arrays();
+        self.view_proj = camera.get_transformation();
     }
 }
 

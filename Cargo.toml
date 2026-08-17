@@ -7,19 +7,17 @@ authors = ["PeterTiny1 <56882034+PeterTiny1@users.noreply.github.com>"]
 [dependencies]
 wgpu = "30.0"
 bytemuck = { version = "1.24", features = ["derive"] }
-vek = { version = "0.17", default-features = false }
+vek = { version = "0.17", default-features = false, features = ["bytemuck"] }
 noise = { version = "0.9", default-features = false }
-winit = { version = "0.30", default-features = false, features = [
-    "x11",             # Linux: X11 support
-    "wayland",         # Linux: Wayland support (without CSD/ttf-parser)
-    "wayland-dlopen",  # Linux: Dynamically loads Wayland libs instead of hard-linking
-    "rwh_06",          # Raw Window Handle v0.6 (required by modern wgpu/renderers)
-] }
 pollster = "1.0.1"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "ansi", "env-filter", "tracing-log"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
-rkyv = "0.8.18"
+rkyv = { version = "0.8.18", features = ["bytecheck"] }
+winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+winit = { version = "0.30", features = ["x11", "wayland", "wayland-dlopen"] }
 
 [lints.rust]
 unexpected_cfgs = "warn"
@@ -32,12 +30,16 @@ cloned_instead_of_copied = "warn"
 inefficient_to_string = "warn"
 large_types_passed_by_value = "warn"
 unwrap_used = "warn" # Encourages robust error propagation over game crashes
+cast_possible_truncation = "warn"
+cast_precision_loss = "warn"
+cast_sign_loss = "warn"
 
 [profile.dev]
 opt-level = 1 # Keeps project code fast to compile while remaining playable
 
 [profile.dev.package."*"]
 opt-level = 3 # Max performance for heavy math, noise, and rendering dependencies
+debug = false
 
 [profile.release]
 opt-level = 3
