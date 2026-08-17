@@ -10,7 +10,18 @@ use crate::{
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Uniform {
     pub aspect: f32,
+    _padding: [f32; 3], // Padded to 16 bytes for WGSL uniform alignment rules
 }
+
+impl Uniform {
+    pub fn new(aspect: f32) -> Self {
+        Self {
+            aspect,
+            _padding: [0.0; 3],
+        }
+    }
+}
+
 pub struct State {
     pub pipeline: wgpu::RenderPipeline,
     pub crosshair: (wgpu::Buffer, wgpu::Buffer),
@@ -20,7 +31,6 @@ pub struct State {
     pub uniform_buffer: wgpu::Buffer,
 }
 
-// location, uv
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex([f32; 2], [f32; 2]);
@@ -81,6 +91,24 @@ pub fn init_state(render_context: &RenderContext, size: PhysicalSize<u32>) -> St
                 ],
                 label: Some("ui_bind_group_layout"),
             });
+
+    let uniform_bind_group_layout =
+        render_context
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("ui_uniform_bind_group_layout"),
+            });
+
     let crosshair_bind_group = load_texture(
         &render_context.device,
         &ui_bind_group_layout,
@@ -93,6 +121,7 @@ pub fn init_state(render_context: &RenderContext, size: PhysicalSize<u32>) -> St
         .expect("failed to parse crosshair texture"),
         Some("crosshair_bind_group"),
     );
+
     let crosshair = (
         render_context
             .device
@@ -103,83 +132,58 @@ pub fn init_state(render_context: &RenderContext, size: PhysicalSize<u32>) -> St
             }),
         create_index_buffer(&render_context.device, &[0, 1, 2, 0, 2, 3]),
     );
+
+    #[allow(clippy::cast_precision_loss)]
     let aspect = size.width as f32 / size.height as f32;
+    let uniform = Uniform::new(aspect);
+
+    let uniform_buffer =
+        render_context
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Uniform Buffer"),
+                contents: bytemuck::cast_slice(&[uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+
+    let uniform_bind_group = render_context
+        .device
+        .create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &uniform_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+            label: Some("ui_uniform_bind_group"),
+        });
+
+    let pipeline = create_render_pipeline(
+        &render_context.device,
+        &render_context
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[
+                    Some(&ui_bind_group_layout),
+                    Some(&uniform_bind_group_layout),
+                ],
+                immediate_size: 0,
+            }),
+        render_context.config.format,
+        Some(texture::Texture::DEPTH_FORMAT),
+        &[Some(Vertex::desc())],
+        wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
+        },
+    );
+
     State {
-        pipeline: create_render_pipeline(
-            &render_context.device,
-            &render_context
-                .device
-                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[
-                        Some(&ui_bind_group_layout),
-                        Some(&render_context.device.create_bind_group_layout(
-                            &wgpu::BindGroupLayoutDescriptor {
-                                entries: &[wgpu::BindGroupLayoutEntry {
-                                    binding: 0,
-                                    visibility: wgpu::ShaderStages::VERTEX
-                                        | wgpu::ShaderStages::FRAGMENT,
-                                    ty: wgpu::BindingType::Buffer {
-                                        ty: wgpu::BufferBindingType::Uniform,
-                                        has_dynamic_offset: false,
-                                        min_binding_size: None,
-                                    },
-                                    count: None,
-                                }],
-                                label: Some("ui_uniform_bind_group_layout"),
-                            },
-                        )),
-                    ],
-                    immediate_size: 0,
-                }),
-            render_context.config.format,
-            Some(texture::Texture::DEPTH_FORMAT),
-            &[Some(Vertex::desc())],
-            wgpu::ShaderModuleDescriptor {
-                label: Some("Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
-            },
-        ),
-        uniform: Uniform { aspect },
+        pipeline,
         crosshair,
         crosshair_bind_group,
-        uniform_bind_group: render_context
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &render_context.device.create_bind_group_layout(
-                    &wgpu::BindGroupLayoutDescriptor {
-                        entries: &[wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        }],
-                        label: Some("ui_uniform_bind_group_layout"),
-                    },
-                ),
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: render_context
-                        .device
-                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Uniform Buffer"),
-                            contents: bytemuck::cast_slice(&[Uniform { aspect }]),
-                            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                        })
-                        .as_entire_binding(),
-                }],
-                label: Some("ui_uniform_bind_group"),
-            }),
-        uniform_buffer: render_context.device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Uniform Buffer"),
-                contents: bytemuck::cast_slice(&[Uniform { aspect }]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            },
-        ),
+        uniform_bind_group,
+        uniform,
+        uniform_buffer,
     }
 }
