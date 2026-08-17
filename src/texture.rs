@@ -7,16 +7,14 @@ pub struct Texture {
     pub sampler: wgpu::Sampler,
 }
 
+#[allow(clippy::cast_possible_truncation)]
 fn halve_image_weighted(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let (width, height) = img.dimensions();
-    let new_width = width / 2;
-    let new_height = height / 2;
 
-    ImageBuffer::from_fn(new_width, new_height, |x, y| {
+    ImageBuffer::from_fn(width / 2, height / 2, |x, y| {
         let mut weighted_sum_r = 0u32;
         let mut weighted_sum_g = 0u32;
         let mut weighted_sum_b = 0u32;
-        let mut sum_a = 0u32;
         let mut total_weight = 0u32;
 
         let base_x = x * 2;
@@ -24,26 +22,22 @@ fn halve_image_weighted(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgb
 
         for dy in 0..2 {
             for dx in 0..2 {
-                let pixel = img.get_pixel(base_x + dx, base_y + dy);
-                let [r, g, b, a] = pixel.0;
-
+                let [r, g, b, a] = img.get_pixel(base_x + dx, base_y + dy).0;
                 let weight = u32::from(a);
+
                 weighted_sum_r += u32::from(r) * weight;
                 weighted_sum_g += u32::from(g) * weight;
                 weighted_sum_b += u32::from(b) * weight;
-
                 total_weight += weight;
-                sum_a += u32::from(a);
             }
         }
 
-        let avg_a = (sum_a / 4) as u8;
-
         if let Some(weight) = NonZeroU32::new(total_weight) {
-            let weight = weight.get();
-            let avg_r = (weighted_sum_r / weight) as u8;
-            let avg_g = (weighted_sum_g / weight) as u8;
-            let avg_b = (weighted_sum_b / weight) as u8;
+            let w = weight.get();
+            let avg_r = (weighted_sum_r / w) as u8;
+            let avg_g = (weighted_sum_g / w) as u8;
+            let avg_b = (weighted_sum_b / w) as u8;
+            let avg_a = (w / 4) as u8; // total_weight / 4 == average alpha
 
             Rgba([avg_r, avg_g, avg_b, avg_a])
         } else {
@@ -173,6 +167,7 @@ impl Texture {
     }
 
     #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
     pub fn from_images_mip_array(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -184,15 +179,21 @@ impl Texture {
             "Cannot create a texture array from zero images!"
         );
 
-        // 1. Get base dimensions from the first image
+        // 1. Get base dimensions and assert all images match
         let (base_width, base_height) = imgs[0].dimensions();
+        assert!(
+            imgs.iter()
+                .all(|img| img.dimensions() == (base_width, base_height)),
+            "All images in a texture array must have identical dimensions!"
+        );
+
         let num_layers = imgs.len() as u32;
-        let mip_level_count = 4; // Keeping your 4 levels, but we'll use a loop now
+        let mip_level_count = 4;
 
         let texture_size = wgpu::Extent3d {
             width: base_width,
             height: base_height,
-            depth_or_array_layers: num_layers, // Look at us go, actual layers!
+            depth_or_array_layers: num_layers,
         };
 
         // 2. Allocate the 2D Texture Array
@@ -207,17 +208,15 @@ impl Texture {
             view_formats: &[],
         });
 
-        // 3. Keep track of the current mip's image data buffers for all layers
-        // Start with the raw RGBA8 buffers of your base images
+        // 3. Extract raw RGBA8 buffers
         let mut current_mip_buffers: Vec<image::RgbaImage> =
             imgs.iter().map(image::DynamicImage::to_rgba8).collect();
 
         let mut current_width = base_width;
         let mut current_height = base_height;
 
-        // 4. Loop through the mip levels dynamically
+        // 4. Upload mip levels dynamically
         for mip in 0..mip_level_count {
-            // Upload each layer's data for the current mip level
             for (layer_idx, rgba_buffer) in current_mip_buffers.iter().enumerate() {
                 queue.write_texture(
                     wgpu::TexelCopyTextureInfoBase {
@@ -226,7 +225,7 @@ impl Texture {
                         origin: wgpu::Origin3d {
                             x: 0,
                             y: 0,
-                            z: layer_idx as u32, // Selects the specific array slice
+                            z: layer_idx as u32,
                         },
                         aspect: wgpu::TextureAspect::All,
                     },
@@ -239,15 +238,15 @@ impl Texture {
                     wgpu::Extent3d {
                         width: current_width,
                         height: current_height,
-                        depth_or_array_layers: 1, // Writing 1 layer at a time
+                        depth_or_array_layers: 1,
                     },
                 );
             }
 
             // Downsample all layers for the NEXT mip level loop
             if mip < mip_level_count - 1 {
-                current_width /= 2;
-                current_height /= 2;
+                current_width = (current_width / 2).max(1);
+                current_height = (current_height / 2).max(1);
                 current_mip_buffers = current_mip_buffers
                     .iter()
                     .map(halve_image_weighted)
@@ -258,11 +257,11 @@ impl Texture {
         // 5. Create the View explicitly as a D2Array
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("texture_array_view"),
-            dimension: Some(wgpu::TextureViewDimension::D2Array), // Say goodbye to 2D flat view
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
             ..Default::default()
         });
 
-        // 6. Hook up the sampler (Keeping your setup)
+        // 6. Hook up the sampler
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
