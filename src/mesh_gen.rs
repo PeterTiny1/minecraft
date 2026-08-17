@@ -2,7 +2,7 @@ use std::f32::consts::FRAC_1_SQRT_2;
 
 use crate::{
     block::BlockType,
-    chunk::{CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32, LocatedChunk},
+    chunk::{CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32, LocatedChunk, block_index},
     renderer::Vertex,
 };
 
@@ -153,7 +153,8 @@ impl MeshGenerationContext<'_> {
         // 2. Fast Path: The block resides entirely inside the current center chunk
         if (0..CHUNK_WIDTH_I32).contains(&target_x) && (0..CHUNK_DEPTH_I32).contains(&target_z) {
             return Some(
-                self.center.data.contents[target_x as usize][target_y as usize][target_z as usize],
+                self.center.data.contents
+                    [block_index(target_x as usize, target_y as usize, target_z as usize)],
             );
         }
 
@@ -184,7 +185,8 @@ impl MeshGenerationContext<'_> {
             .iter()
             .find(|n| n.loc == [target_chunk_x, target_chunk_z])
             .map(|neighbor| {
-                neighbor.data.contents[rem_x as usize][target_y as usize][rem_z as usize]
+                neighbor.data.contents
+                    [block_index(rem_x as usize, target_y as usize, rem_z as usize)]
             })
     }
 
@@ -221,7 +223,7 @@ pub fn generate_chunk_mesh(
         for y in 0..CHUNK_HEIGHT {
             for z in 0..CHUNK_DEPTH_I32 {
                 // 2. Direct indexing into the dense heap array (Incredibly cache-friendly)
-                let block_type = contents[x as usize][y][z as usize];
+                let block_type = contents[block_index(x as usize, y, z as usize)];
                 if block_type == BlockType::Air {
                     continue;
                 }

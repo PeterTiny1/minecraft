@@ -24,7 +24,8 @@ pub const CHUNK_HEIGHT: usize = 256;
 pub const CHUNK_DEPTH: usize = 32;
 pub const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
 
-pub type Chunk = Box<[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH]>;
+pub const CHUNK_SIZE: usize = CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH;
+pub type Chunk = Box<[BlockType; CHUNK_SIZE]>;
 #[derive(Debug, Clone, Deserialize, Serialize, Archive)]
 pub struct ChunkData {
     pub contents: Chunk,
@@ -49,19 +50,30 @@ const NEIGHBOUR_OFFSETS: [[i32; 2]; 8] = [
     [0, -1],  // 6: [x, y - 1]
     [1, -1],  // 7: [x + 1, y - 1]
 ];
+
+#[inline(always)]
+pub const fn block_index(x: usize, y: usize, z: usize) -> usize {
+    // Y-first indexing optimizes vertical terrain column iteration
+    y + CHUNK_HEIGHT * (x + CHUNK_WIDTH * z)
+}
+
 pub trait BlockProvider {
     fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType>;
 }
+
 impl BlockProvider for ChunkDataStorage {
     fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType> {
         let chunk_x = x.div_euclid(CHUNK_WIDTH_I32);
         let chunk_z = z.div_euclid(CHUNK_DEPTH_I32);
         let chunk = self.get(&[chunk_x, chunk_z])?;
-        let x = x.rem_euclid(CHUNK_WIDTH_I32) as usize;
-        let z = z.rem_euclid(CHUNK_DEPTH_I32) as usize;
-        #[allow(clippy::cast_sign_loss)]
+
         if y >= 0 && (y as usize) < CHUNK_HEIGHT {
-            Some(chunk.contents[x][y as usize][z])
+            let local_x = x.rem_euclid(CHUNK_WIDTH_I32) as usize;
+            let local_y = y as usize;
+            let local_z = z.rem_euclid(CHUNK_DEPTH_I32) as usize;
+            
+            let idx = block_index(local_x, local_y, local_z);
+            Some(chunk.contents[idx])
         } else {
             None
         }

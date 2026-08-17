@@ -32,7 +32,7 @@ use chunk::{
 };
 use player::Player;
 
-use crate::renderer::RenderOutcome;
+use crate::{chunk::block_index, renderer::RenderOutcome};
 
 #[derive(Debug)]
 pub enum EngineError {
@@ -238,7 +238,7 @@ impl RunningState {
                         let local_y = target_pos.y as usize;
 
                         let chunk = Arc::make_mut(chunk_arc);
-                        let current_block = chunk.contents[local_x][local_y][local_z];
+                        let current_block = chunk.contents[block_index(local_x, local_y, local_z)];
 
                         let new_block = if is_place && current_block == block::BlockType::Air {
                             Some(block::BlockType::Stone)
@@ -249,7 +249,7 @@ impl RunningState {
                         };
 
                         if let Some(block) = new_block {
-                            chunk.contents[local_x][local_y][local_z] = block;
+                            chunk.contents[block_index(local_x, local_y, local_z)] = block;
 
                             let world_data = &self.chunk_manager.generated_data;
                             self.chunk_manager.queue_mesh_job(world_data, chunk_loc);

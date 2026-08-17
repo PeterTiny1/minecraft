@@ -1,6 +1,9 @@
 use crate::{
     block::BlockType,
-    chunk::{CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32, Chunk},
+    chunk::{
+        CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_SIZE, CHUNK_WIDTH, CHUNK_WIDTH_I32,
+        Chunk, block_index,
+    },
 };
 use noise::{NoiseFn, OpenSimplex};
 #[derive(Clone, Copy)]
@@ -34,14 +37,18 @@ const BIOME_SCALE: f64 = 250.0;
 pub fn generate(noise: &OpenSimplex, location: [i32; 2]) -> Chunk {
     let heightmap = generate_worldscale_heightmap(noise, location);
     let biomemap = generate_biomemap(noise, location);
-    let mut contents = Box::new([[[BlockType::Air; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH]);
+    let mut contents: Chunk = vec![BlockType::Air; CHUNK_SIZE]
+        .into_boxed_slice()
+        .try_into()
+        .expect("chunk size mismatch");
 
     for x in 0..CHUNK_WIDTH {
         for y in (0..CHUNK_HEIGHT).rev() {
             for z in 0..CHUNK_DEPTH {
                 let terrain_height = heightmap[x][z];
                 let biome = biomemap[x][z];
-                contents[x][y][z] = determine_type(terrain_height, x, y, z, biome, noise);
+                contents[block_index(x, y, z)] =
+                    determine_type(terrain_height, x, y, z, biome, noise);
             }
         }
     }
@@ -68,11 +75,11 @@ const fn place_tree(biome: Biome, contents: &mut Chunk, x: usize, height: usize,
         Biome::GreenGrove => BlockType::Leaf,
         Biome::DarklogForest => BlockType::DarkLeaf,
     };
-    contents[x][height + 1][z] = wood_type;
-    contents[x][height + 2][z] = wood_type;
-    contents[x][height + 3][z] = wood_type;
-    contents[x][height + 4][z] = wood_type;
-    contents[x][height + 5][z] = leaf_type;
+    contents[block_index(x, height + 1, z)] = wood_type;
+    contents[block_index(x, height + 2, z)] = wood_type;
+    contents[block_index(x, height + 3, z)] = wood_type;
+    contents[block_index(x, height + 4, z)] = wood_type;
+    contents[block_index(x, height + 5, z)] = leaf_type;
 }
 
 fn generate_biomemap(
