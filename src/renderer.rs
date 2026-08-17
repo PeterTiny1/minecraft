@@ -57,14 +57,10 @@ pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) ->
     let extents = cuboid.max - center;
 
     for plane in planes {
-        let radius = extents.x * plane.x.abs() 
-                   + extents.y * plane.y.abs() 
-                   + extents.z * plane.z.abs();
+        let radius =
+            extents.x * plane.x.abs() + extents.y * plane.y.abs() + extents.z * plane.z.abs();
 
-        let distance = center.x * plane.x 
-                     + center.y * plane.y 
-                     + center.z * plane.z 
-                     + plane.w;
+        let distance = center.x * plane.x + center.y * plane.y + center.z * plane.z + plane.w;
 
         if distance < -radius {
             return false;

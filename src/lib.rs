@@ -187,7 +187,7 @@ impl RunningState {
 
             let _center_arc = self
                 .chunk_manager
-                .load_and_insert_chunk(Path::new(&path_str), chunk_loc);
+                .load_or_generate_chunk_arc(Path::new(&path_str), chunk_loc);
 
             let world_data = &self.chunk_manager.generated_data;
             let [chunk_x, chunk_z] = chunk_loc;

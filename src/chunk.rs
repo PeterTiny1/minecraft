@@ -98,27 +98,21 @@ impl ChunkManager {
         })
     }
 
-    pub fn load_chunk(
-        &self,
-        path: &Path,
-        e: std::collections::hash_map::VacantEntry<'_, [i32; 2], Arc<ChunkData>>,
-        chunk_location: [i32; 2],
-    ) -> Arc<ChunkData> {
-        let center_arc = Arc::new(self.get_or_generate_chunk(path, chunk_location));
-        e.insert(center_arc.clone());
-        center_arc
-    }
-
-    pub fn load_and_insert_chunk(
+    pub fn load_or_generate_chunk_arc(
         &mut self,
         path: &Path,
         chunk_location: [i32; 2],
     ) -> Arc<ChunkData> {
-        let center_arc = Arc::new(self.get_or_generate_chunk(path, chunk_location));
+        if let Some(existing) = self.generated_data.get(&chunk_location) {
+            return existing.clone();
+        }
+
+        let new_chunk = Arc::new(self.get_or_generate_chunk(path, chunk_location));
         self.generated_data
-            .insert(chunk_location, center_arc.clone());
-        center_arc
+            .insert(chunk_location, new_chunk.clone());
+        new_chunk
     }
+
     /// Panics
     ///
     /// If the number of indices exceeds the 32 bit integer limit
@@ -172,7 +166,7 @@ impl ChunkManager {
     }
     pub fn queue_mesh_job(&self, world_map: &HashMap<[i32; 2], Arc<ChunkData>>, loc: [i32; 2]) {
         if let Some(center_arc) = world_map.get(&loc) {
-            let mut neighbours = Vec::new();
+            let mut neighbours = Vec::with_capacity(8);
             for offset in NEIGHBOUR_OFFSETS {
                 let n_loc = [loc[0] + offset[0], loc[1] + offset[1]];
                 if let Some(neighbor_arc) = world_map.get(&n_loc) {
@@ -291,14 +285,16 @@ fn manage_meshgen(
     let mut waiting: Vec<(Vec<Vertex>, Vec<Index>, [i32; 2])> = Vec::new();
 
     loop {
-        // 1. Drain pending waiting items first without blocking
-        waiting.retain(|item| match send_chunk.try_send(item.clone()) {
-            Ok(()) => false,                          // Sent successfully, remove from waiting
-            Err(mpsc::TrySendError::Full(_)) => true, // Keep in waiting
-            Err(mpsc::TrySendError::Disconnected(_)) => false,
-        });
+        // 1. Drain pending waiting items without cloning heavy vertex arrays
+        let mut still_waiting = Vec::new();
+        for item in waiting.drain(..) {
+            if let Err(mpsc::TrySendError::Full(rejected)) = send_chunk.try_send(item) {
+                still_waiting.push(rejected);
+            }
+        }
+        waiting = still_waiting;
 
-        // 2. Fetch next job: block if waiting is empty, poll if waiting has items
+        // 2. Fetch next job
         let job = if waiting.is_empty() {
             match recv_generate.recv() {
                 Ok(j) => j,
