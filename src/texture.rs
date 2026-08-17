@@ -1,5 +1,3 @@
-use std::num::NonZeroU32;
-
 use image::{DynamicImage, GenericImageView, ImageBuffer, ImageError, Rgba};
 
 pub struct Texture {
@@ -7,44 +5,98 @@ pub struct Texture {
     pub sampler: wgpu::Sampler,
 }
 
+// =========================================================================
+// Color Space & Linear Downsampling Helpers
+// =========================================================================
+
+fn srgb_to_linear(c: f32) -> f32 {
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn linear_to_srgb(c: f32) -> f32 {
+    let clamped = c.clamp(0.0, 1.0);
+    if clamped <= 0.0031308 {
+        clamped * 12.92
+    } else {
+        1.055 * clamped.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+fn rgba8_to_linear_f32(img: &image::RgbaImage) -> ImageBuffer<Rgba<f32>, Vec<f32>> {
+    let (w, h) = img.dimensions();
+    ImageBuffer::from_fn(w, h, |x, y| {
+        let [r, g, b, a] = img.get_pixel(x, y).0;
+        Rgba([
+            srgb_to_linear(f32::from(r) / 255.0),
+            srgb_to_linear(f32::from(g) / 255.0),
+            srgb_to_linear(f32::from(b) / 255.0),
+            f32::from(a) / 255.0, // Alpha is already linear
+        ])
+    })
+}
+
 #[allow(clippy::cast_possible_truncation)]
-fn halve_image_weighted(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
-    let (width, height) = img.dimensions();
+fn linear_f32_to_rgba8(src: &ImageBuffer<Rgba<f32>, Vec<f32>>) -> image::RgbaImage {
+    let (w, h) = src.dimensions();
+    ImageBuffer::from_fn(w, h, |x, y| {
+        let Rgba([r, g, b, a]) = *src.get_pixel(x, y);
+        let s_r = (linear_to_srgb(r) * 255.0).round() as u8;
+        let s_g = (linear_to_srgb(g) * 255.0).round() as u8;
+        let s_b = (linear_to_srgb(b) * 255.0).round() as u8;
+        let s_a = (a.clamp(0.0, 1.0) * 255.0).round() as u8;
+        Rgba([s_r, s_g, s_b, s_a])
+    })
+}
 
-    ImageBuffer::from_fn(width / 2, height / 2, |x, y| {
-        let mut weighted_sum_r = 0u32;
-        let mut weighted_sum_g = 0u32;
-        let mut weighted_sum_b = 0u32;
-        let mut total_weight = 0u32;
+/// Downsamples an f32 linear buffer by 2x in linear color space with alpha-weighting.
+fn halve_linear_image(
+    src: &ImageBuffer<Rgba<f32>, Vec<f32>>,
+) -> ImageBuffer<Rgba<f32>, Vec<f32>> {
+    let (width, height) = src.dimensions();
+    let new_w = (width / 2).max(1);
+    let new_h = (height / 2).max(1);
 
+    ImageBuffer::from_fn(new_w, new_h, |x, y| {
         let base_x = x * 2;
         let base_y = y * 2;
 
+        let mut weighted_r = 0.0f32;
+        let mut weighted_g = 0.0f32;
+        let mut weighted_b = 0.0f32;
+        let mut total_alpha = 0.0f32;
+
         for dy in 0..2 {
             for dx in 0..2 {
-                let [r, g, b, a] = img.get_pixel(base_x + dx, base_y + dy).0;
-                let weight = u32::from(a);
+                let px_x = (base_x + dx).min(width - 1);
+                let px_y = (base_y + dy).min(height - 1);
+                let Rgba([r, g, b, a]) = *src.get_pixel(px_x, px_y);
 
-                weighted_sum_r += u32::from(r) * weight;
-                weighted_sum_g += u32::from(g) * weight;
-                weighted_sum_b += u32::from(b) * weight;
-                total_weight += weight;
+                weighted_r += r * a;
+                weighted_g += g * a;
+                weighted_b += b * a;
+                total_alpha += a;
             }
         }
 
-        if let Some(weight) = NonZeroU32::new(total_weight) {
-            let w = weight.get();
-            let avg_r = (weighted_sum_r / w) as u8;
-            let avg_g = (weighted_sum_g / w) as u8;
-            let avg_b = (weighted_sum_b / w) as u8;
-            let avg_a = (w / 4) as u8; // total_weight / 4 == average alpha
-
+        if total_alpha > 0.0 {
+            let avg_r = weighted_r / total_alpha;
+            let avg_g = weighted_g / total_alpha;
+            let avg_b = weighted_b / total_alpha;
+            let avg_a = total_alpha / 4.0;
             Rgba([avg_r, avg_g, avg_b, avg_a])
         } else {
-            Rgba([0, 0, 0, 0])
+            Rgba([0.0, 0.0, 0.0, 0.0])
         }
     })
 }
+
+// =========================================================================
+// Texture Implementation
+// =========================================================================
 
 impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -208,16 +260,22 @@ impl Texture {
             view_formats: &[],
         });
 
-        // 3. Extract raw RGBA8 buffers
-        let mut current_mip_buffers: Vec<image::RgbaImage> =
-            imgs.iter().map(image::DynamicImage::to_rgba8).collect();
+        // 3. Convert all base images to linear f32 buffers once to avoid precision degradation
+        let mut current_linear_buffers: Vec<ImageBuffer<Rgba<f32>, Vec<f32>>> = imgs
+            .iter()
+            .map(image::DynamicImage::to_rgba8)
+            .map(|rgba| rgba8_to_linear_f32(&rgba))
+            .collect();
 
         let mut current_width = base_width;
         let mut current_height = base_height;
 
         // 4. Upload mip levels dynamically
         for mip in 0..mip_level_count {
-            for (layer_idx, rgba_buffer) in current_mip_buffers.iter().enumerate() {
+            for (layer_idx, linear_buffer) in current_linear_buffers.iter().enumerate() {
+                // Convert back to u8 sRGB solely for GPU upload
+                let rgba_u8 = linear_f32_to_rgba8(linear_buffer);
+
                 queue.write_texture(
                     wgpu::TexelCopyTextureInfoBase {
                         texture: &texture,
@@ -229,7 +287,7 @@ impl Texture {
                         },
                         aspect: wgpu::TextureAspect::All,
                     },
-                    rgba_buffer,
+                    &rgba_u8,
                     wgpu::TexelCopyBufferLayout {
                         offset: 0,
                         bytes_per_row: Some(4 * current_width),
@@ -243,18 +301,18 @@ impl Texture {
                 );
             }
 
-            // Downsample all layers for the NEXT mip level loop
+            // Downsample linear f32 buffers for the NEXT mip level loop
             if mip < mip_level_count - 1 {
                 current_width = (current_width / 2).max(1);
                 current_height = (current_height / 2).max(1);
-                current_mip_buffers = current_mip_buffers
+                current_linear_buffers = current_linear_buffers
                     .iter()
-                    .map(halve_image_weighted)
+                    .map(halve_linear_image)
                     .collect();
             }
         }
 
-        // 5. Create the View explicitly as a D2Array
+        // 5. Create View explicitly as a D2Array
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
             label: Some("texture_array_view"),
             dimension: Some(wgpu::TextureViewDimension::D2Array),
