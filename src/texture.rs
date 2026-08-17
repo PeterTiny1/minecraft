@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use image::{DynamicImage, GenericImageView, ImageBuffer, ImageError, Rgba};
 
 pub struct Texture {
@@ -37,11 +39,11 @@ fn halve_image_weighted(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgb
 
         let avg_a = (sum_a / 4) as u8;
 
-        if total_weight > 0 {
-            // Mathematically guaranteed to fit in u8 since color channels are <= 255
-            let avg_r = (weighted_sum_r / total_weight) as u8;
-            let avg_g = (weighted_sum_g / total_weight) as u8;
-            let avg_b = (weighted_sum_b / total_weight) as u8;
+        if let Some(weight) = NonZeroU32::new(total_weight) {
+            let weight = weight.get();
+            let avg_r = (weighted_sum_r / weight) as u8;
+            let avg_g = (weighted_sum_g / weight) as u8;
+            let avg_b = (weighted_sum_b / weight) as u8;
 
             Rgba([avg_r, avg_g, avg_b, avg_a])
         } else {
