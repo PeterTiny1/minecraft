@@ -36,46 +36,36 @@ const BLOCK_TEXTURES: &[&[u8]] = &[
 ];
 #[must_use]
 pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) -> bool {
-    // 1. Get the combined View-Projection matrix
-    let transform_matrix = camera.get_transformation();
+    let m = camera.get_transformation();
 
-    // 2. Extract the matrix rows using vek's native API
-    let rows: [Vec4<f32>; 4] = transform_matrix.into_row_arrays().map(Vec4::from);
-    let r0 = rows[0]; // Row 0 controls X clip coordinates
-    let r1 = rows[1]; // Row 1 controls Y clip coordinates
-    let r2 = rows[2]; // Row 2 controls Z clip coordinates
-    let r3 = rows[3]; // Row 3 controls W clip coordinates
+    // Extract rows directly from column-major matrix (m.cols[col][row])
+    let r0 = Vec4::new(m.cols[0].x, m.cols[1].x, m.cols[2].x, m.cols[3].x);
+    let r1 = Vec4::new(m.cols[0].y, m.cols[1].y, m.cols[2].y, m.cols[3].y);
+    let r2 = Vec4::new(m.cols[0].z, m.cols[1].z, m.cols[2].z, m.cols[3].z);
+    let r3 = Vec4::new(m.cols[0].w, m.cols[1].w, m.cols[2].w, m.cols[3].w);
 
-    // 3. Construct the 6 frustum planes explicitly mapped to WebGPU's clip space:
-    // X: [-w, w], Y: [-w, w], Z: [0, w]
     let planes = [
-        r3 + r0, // Left plane   (w + x >= 0)
-        r3 - r0, // Right plane  (w - x >= 0)
-        r3 + r1, // Bottom plane (w + y >= 0)
-        r3 - r1, // Top plane    (w - y >= 0)
-        r2,      // Near plane   (z >= 0)      <-- Specific to WebGPU / DX
-        r3 - r2, // Far plane    (w - z >= 0)  <-- Specific to WebGPU / DX
+        r3 + r0, // Left
+        r3 - r0, // Right
+        r3 + r1, // Bottom
+        r3 - r1, // Top
+        r2,      // Near
+        r3 - r2, // Far
     ];
 
-    // 4. Calculate the center and extents (half-sizes) of the AABB
     let center = (cuboid.min + cuboid.max) * 0.5;
     let extents = cuboid.max - center;
 
-    // 5. Test the AABB against each plane using the "Effective Radius" method
     for plane in planes {
-        // Project the AABB's half-sizes onto the plane's normal vector
-        let radius = extents.z.mul_add(
-            plane.z.abs(),
-            extents.y.mul_add(plane.y.abs(), extents.x * plane.x.abs()),
-        );
+        let radius = extents.x * plane.x.abs() 
+                   + extents.y * plane.y.abs() 
+                   + extents.z * plane.z.abs();
 
-        // Calculate the signed distance from the AABB center to the plane
-        let distance = center
-            .z
-            .mul_add(plane.z, center.y.mul_add(plane.y, center.x * plane.x))
-            + plane.w;
+        let distance = center.x * plane.x 
+                     + center.y * plane.y 
+                     + center.z * plane.z 
+                     + plane.w;
 
-        // If the box is entirely on the outside ("behind") any single plane, it's culled
         if distance < -radius {
             return false;
         }
@@ -113,7 +103,7 @@ impl Vertex {
     }
 }
 
-#[repr(C)]
+#[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Uniforms {
     view_proj: Mat4<f32>,
@@ -417,8 +407,11 @@ impl RenderContext {
             &device,
             &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[Some(&diffuse_bind_group_layout), Some(&uniform_bind_group_layout)],
-                immediate_size: 0
+                bind_group_layouts: &[
+                    Some(&diffuse_bind_group_layout),
+                    Some(&uniform_bind_group_layout),
+                ],
+                immediate_size: 0,
             }),
             config.format,
             Some(texture::Texture::DEPTH_FORMAT),
@@ -442,7 +435,11 @@ impl RenderContext {
             depth_texture,
         })
     }
+
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        if new_size.width == 0 || new_size.height == 0 {
+            return;
+        }
         self.size = new_size;
         self.config.width = new_size.width;
         self.config.height = new_size.height;
@@ -567,7 +564,7 @@ pub fn load_texture(
 #[must_use]
 pub fn create_index_buffer(device: &wgpu::Device, chunk_indices: &[u32]) -> wgpu::Buffer {
     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Vertex Buffer"),
+        label: Some("Index Buffer"),
         contents: bytemuck::cast_slice(chunk_indices),
         usage: wgpu::BufferUsages::INDEX,
     })
