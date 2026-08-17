@@ -324,8 +324,14 @@ impl ApplicationHandler for App {
 
             let size = window.inner_size();
             let render_context =
-                pollster::block_on(renderer::RenderContext::new(window.clone(), size));
-
+                match pollster::block_on(renderer::RenderContext::new(window.clone(), size)) {
+                    Ok(ctx) => ctx,
+                    Err(e) => {
+                        log::error!("Failed to initialize render context: {e}");
+                        event_loop.exit();
+                        return;
+                    }
+                };
             self.state = Some(RunningState::new(window, render_context));
         }
     }

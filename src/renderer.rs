@@ -1,3 +1,4 @@
+use core::fmt;
 use std::sync::Arc;
 
 use crate::{camera, chunk::ChunkManager, texture, ui};
@@ -5,6 +6,34 @@ use vek::{Aabb, Mat4, Vec4};
 use wgpu::{PipelineCompilationOptions, util::DeviceExt};
 use winit::{dpi::PhysicalSize, window::Window};
 
+const BLOCK_TEXTURES: &[&[u8]] = &[
+    include_bytes!("textures/stone.png"),
+    include_bytes!("textures/dirt.png"),
+    include_bytes!("textures/grass_top0.png"),
+    include_bytes!("textures/grass_side0.png"),
+    include_bytes!("textures/grass_top1.png"),
+    include_bytes!("textures/grass_side1.png"),
+    include_bytes!("textures/grass_top2.png"),
+    include_bytes!("textures/grass_side2.png"),
+    include_bytes!("textures/birch_top.png"),
+    include_bytes!("textures/birch_side.png"),
+    include_bytes!("textures/wood_top.png"),
+    include_bytes!("textures/wood_side.png"),
+    include_bytes!("textures/dark_wood_top.png"),
+    include_bytes!("textures/dark_wood_side.png"),
+    include_bytes!("textures/birch_leaves.png"),
+    include_bytes!("textures/leaves.png"),
+    include_bytes!("textures/dark_leaves.png"),
+    include_bytes!("textures/grass0.png"),
+    include_bytes!("textures/grass1.png"),
+    include_bytes!("textures/grass2.png"),
+    include_bytes!("textures/flower0.png"),
+    include_bytes!("textures/flower1.png"),
+    include_bytes!("textures/flower2.png"),
+    include_bytes!("textures/sand.png"),
+    include_bytes!("textures/water_top.png"),
+    include_bytes!("textures/water_side.png"),
+];
 #[must_use]
 pub fn cuboid_intersects_frustum(cuboid: &Aabb<f32>, camera: &camera::Camera) -> bool {
     // 1. Get the combined View-Projection matrix
@@ -157,6 +186,80 @@ pub fn create_render_pipeline(
     })
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum SurfaceCapabilityKind {
+    Format,
+    PresentMode,
+    AlphaMode,
+}
+
+impl fmt::Display for SurfaceCapabilityKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Format => write!(f, "texture format"),
+            Self::PresentMode => write!(f, "present mode"),
+            Self::AlphaMode => write!(f, "alpha mode"),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum RenderContextError {
+    CreateSurface(wgpu::CreateSurfaceError),
+    RequestAdapter(wgpu::RequestAdapterError),
+    RequestDevice(wgpu::RequestDeviceError),
+    MissingCapability(SurfaceCapabilityKind),
+    TextureLoad(image::ImageError),
+}
+
+impl fmt::Display for RenderContextError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CreateSurface(e) => write!(f, "Failed to create surface: {e}"),
+            Self::RequestAdapter(e) => write!(f, "Failed to find suitable GPU adapter: {e}"),
+            Self::RequestDevice(e) => write!(f, "Failed to request graphics device: {e}"),
+            Self::MissingCapability(kind) => write!(f, "Surface supports no compatible {kind}!"),
+            Self::TextureLoad(e) => write!(f, "Failed to load image: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for RenderContextError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::CreateSurface(e) => Some(e),
+            Self::RequestAdapter(e) => Some(e),
+            Self::RequestDevice(e) => Some(e),
+            Self::TextureLoad(e) => Some(e),
+            Self::MissingCapability(_) => None,
+        }
+    }
+}
+
+impl From<wgpu::CreateSurfaceError> for RenderContextError {
+    fn from(e: wgpu::CreateSurfaceError) -> Self {
+        Self::CreateSurface(e)
+    }
+}
+
+impl From<wgpu::RequestDeviceError> for RenderContextError {
+    fn from(e: wgpu::RequestDeviceError) -> Self {
+        Self::RequestDevice(e)
+    }
+}
+
+impl From<wgpu::RequestAdapterError> for RenderContextError {
+    fn from(e: wgpu::RequestAdapterError) -> Self {
+        Self::RequestAdapter(e)
+    }
+}
+
+impl From<image::ImageError> for RenderContextError {
+    fn from(e: image::ImageError) -> Self {
+        Self::TextureLoad(e)
+    }
+}
+
 pub struct RenderContext {
     surface: wgpu::Surface<'static>,
     pub device: wgpu::Device,
@@ -172,18 +275,19 @@ pub struct RenderContext {
 }
 
 impl RenderContext {
-    #[must_use]
-    pub async fn new(window: Arc<Window>, size: PhysicalSize<u32>) -> Self {
+    pub async fn new(
+        window: Arc<Window>,
+        size: PhysicalSize<u32>,
+    ) -> Result<Self, RenderContextError> {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let surface = instance.create_surface(window).unwrap();
+        let surface = instance.create_surface(window)?;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             })
-            .await
-            .expect("Failed to find an appropriate graphics adapter");
+            .await?;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
@@ -197,23 +301,38 @@ impl RenderContext {
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 trace: wgpu::Trace::Off,
             })
-            .await
-            .expect("Failed to create WGPU device");
+            .await?;
         let surface_caps = surface.get_capabilities(&adapter);
         let texture_format = surface_caps
             .formats
             .iter()
             .copied()
             .find(|f| f.is_srgb())
-            .unwrap_or(surface_caps.formats[0]);
+            .or_else(|| surface_caps.formats.first().copied())
+            .ok_or(RenderContextError::MissingCapability(
+                SurfaceCapabilityKind::Format,
+            ))?;
+        let present_mode = surface_caps
+            .present_modes
+            .iter()
+            .copied()
+            .find(|&mode| mode == wgpu::PresentMode::Fifo)
+            .or_else(|| surface_caps.present_modes.first().copied())
+            .ok_or(RenderContextError::MissingCapability(
+                SurfaceCapabilityKind::PresentMode,
+            ))?;
+
+        let alpha_mode = surface_caps.alpha_modes.first().copied().ok_or(
+            RenderContextError::MissingCapability(SurfaceCapabilityKind::AlphaMode),
+        )?;
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: texture_format,
             width: size.width.max(1),
             height: size.height.max(1),
-            present_mode: surface_caps.present_modes[0],
-            alpha_mode: surface_caps.alpha_modes[0],
+            present_mode,
+            alpha_mode,
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
@@ -240,43 +359,12 @@ impl RenderContext {
                 ],
                 label: Some("diffuse_bind_group_layout"),
             });
+        let texture_atlas =
+            texture::Texture::from_bytes_mip_array(&device, &queue, BLOCK_TEXTURES, "atlas")?;
         let diffuse_bind_group = load_texture(
             &device,
             &diffuse_bind_group_layout,
-            &texture::Texture::from_bytes_mip_array(
-                &device,
-                &queue,
-                &[
-                    include_bytes!("textures/stone.png"),
-                    include_bytes!("textures/dirt.png"),
-                    include_bytes!("textures/grass_top0.png"),
-                    include_bytes!("textures/grass_side0.png"),
-                    include_bytes!("textures/grass_top1.png"),
-                    include_bytes!("textures/grass_side1.png"),
-                    include_bytes!("textures/grass_top2.png"),
-                    include_bytes!("textures/grass_side2.png"),
-                    include_bytes!("textures/birch_top.png"),
-                    include_bytes!("textures/birch_side.png"),
-                    include_bytes!("textures/wood_top.png"),
-                    include_bytes!("textures/wood_side.png"),
-                    include_bytes!("textures/dark_wood_top.png"),
-                    include_bytes!("textures/dark_wood_side.png"),
-                    include_bytes!("textures/birch_leaves.png"),
-                    include_bytes!("textures/leaves.png"),
-                    include_bytes!("textures/dark_leaves.png"),
-                    include_bytes!("textures/grass0.png"),
-                    include_bytes!("textures/grass1.png"),
-                    include_bytes!("textures/grass2.png"),
-                    include_bytes!("textures/flower0.png"),
-                    include_bytes!("textures/flower1.png"),
-                    include_bytes!("textures/flower2.png"),
-                    include_bytes!("textures/sand.png"),
-                    include_bytes!("textures/water_top.png"),
-                    include_bytes!("textures/water_side.png"),
-                ],
-                "atlas",
-            )
-            .unwrap(),
+            &texture_atlas,
             Some("diffuse_bind_group"),
         );
         let uniforms = Uniforms::new();
@@ -324,7 +412,7 @@ impl RenderContext {
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
             },
         );
-        Self {
+        Ok(Self {
             surface,
             device,
             queue,
@@ -336,7 +424,7 @@ impl RenderContext {
             uniform_buffer,
             uniform_bind_group,
             depth_texture,
-        }
+        })
     }
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         self.size = new_size;
