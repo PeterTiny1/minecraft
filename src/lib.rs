@@ -13,7 +13,6 @@ mod world_gen;
 // Public API re-exports
 pub use block::BlockType;
 pub use chunk::ChunkData;
-use pollster::block_on;
 pub use renderer::RenderContext;
 
 // Imports
@@ -301,26 +300,31 @@ impl RunningState {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.state.is_none() {
-            let window = Arc::new(
-                event_loop
-                    .create_window(
-                        Window::default_attributes()
-                            .with_title("Blockcraft")
-                            .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None))),
-                    )
-                    .unwrap(),
-            );
+            let attrs = Window::default_attributes()
+                .with_title("Blockcraft")
+                .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+
+            let window = match event_loop.create_window(attrs) {
+                Ok(w) => Arc::new(w),
+                Err(e) => {
+                    log::error!("Failed to create window: {e:?}");
+                    event_loop.exit();
+                    return;
+                }
+            };
+
             if window
                 .set_cursor_grab(winit::window::CursorGrabMode::Confined)
                 .or_else(|_| window.set_cursor_grab(winit::window::CursorGrabMode::Locked))
                 .is_err()
             {
-                eprintln!("Warning: Failed to grab cursor");
+                log::warn!("Failed to grab cursor");
             }
             window.set_cursor_visible(false);
 
             let size = window.inner_size();
-            let render_context = block_on(renderer::RenderContext::new(window.clone(), size));
+            let render_context =
+                pollster::block_on(renderer::RenderContext::new(window.clone(), size));
 
             self.state = Some(RunningState::new(window, render_context));
         }
@@ -470,6 +474,6 @@ pub fn run() -> Result<(), EventLoopError> {
 
     let event_loop = EventLoop::new()?;
     let mut app = App::new(save);
-    
+
     event_loop.run_app(&mut app)
 }
