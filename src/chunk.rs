@@ -261,7 +261,7 @@ pub fn nearest_visible_unloaded(
     let chunk_x = (cam_pos.x as i32).div_euclid(CHUNK_WIDTH_I32);
     let chunk_z = (cam_pos.z as i32).div_euclid(CHUNK_DEPTH_I32);
 
-    let r_squared = (RENDER_DISTANCE_CHUNKS * RENDER_DISTANCE_CHUNKS) as i32;
+    let r_squared = RENDER_DISTANCE_CHUNKS * RENDER_DISTANCE_CHUNKS;
 
     let mut nearest_chunk = None;
     let mut shortest_distance = i32::MAX;

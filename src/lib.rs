@@ -21,7 +21,6 @@ use std::{env, fs::File, path::Path, sync::Arc, time::Instant};
 use vek::Vec3;
 use winit::{
     application::ApplicationHandler,
-    error::EventLoopError,
     event::{DeviceEvent, KeyEvent, MouseScrollDelta, WindowEvent},
     event_loop::EventLoop,
     keyboard::{Key, NamedKey},
@@ -53,13 +52,10 @@ impl std::error::Error for EngineError {
         match self {
             Self::EventLoop(err) => Some(err),
             Self::Io(err) => Some(err),
-            // Variants without an underlying error return None:
-            // Self::CustomMessage(_) => None,
         }
     }
 }
 
-// Allows `?` to convert winit errors automatically
 impl From<winit::error::EventLoopError> for EngineError {
     fn from(err: winit::error::EventLoopError) -> Self {
         Self::EventLoop(err)
@@ -88,7 +84,6 @@ struct InputState {
     right_pressed: bool,
 }
 
-// Pure game state that exists before the window opens
 #[derive(Default)]
 pub struct App {
     state: Option<RunningState>,
@@ -104,20 +99,17 @@ impl App {
     }
 }
 
-// Systems that ONLY exist once the GPU & Window are active
 pub struct RunningState {
     window: Arc<Window>,
-    render_context: renderer::RenderContext, // No lifetime needed!
+    render_context: renderer::RenderContext,
     camera: camera::Camera,
     camera_controller: camera::PlayerController,
     ui: ui::State,
 
-    // World / Game Data
     chunk_manager: ChunkManager,
     player: Player,
     input: InputState,
 
-    // Timers
     last_update_time: Instant,
     last_break_time: Instant,
 }
@@ -130,7 +122,7 @@ impl RunningState {
         let chunk_manager = ChunkManager::default();
         let camera_controller = camera::PlayerController::new(10.0, 0.05);
         let camera_data = camera::CameraData::new(
-            PLAYER_START_POS.into_tuple(), // Start camera at player's head
+            PLAYER_START_POS.into_tuple(),
             -45.0_f32.to_radians(),
             -20.0_f32.to_radians(),
         );
@@ -165,11 +157,9 @@ impl RunningState {
     }
 
     /// The main game logic update tick.
-    /// This is called by `RedrawRequested` *after* all systems
-    /// are confirmed to be initialized.
+    #[tracing::instrument(skip(self))]
     fn update(&mut self, dt: std::time::Duration) {
         let dt_secs = dt.as_secs_f32().min(0.1);
-        // --- 1. Physics & Camera (Requires Read Lock) ---
         {
             let world_data = &self.chunk_manager.generated_data;
             self.camera_controller
@@ -180,7 +170,7 @@ impl RunningState {
                 &self.camera_controller,
                 &self.camera.data,
             );
-        } // Read lock drops here automatically!
+        }
 
         self.camera.data.position = self.player.get_camera_position();
         self.render_context.uniforms.update_view_proj(&self.camera);
@@ -191,16 +181,15 @@ impl RunningState {
             chunk::nearest_visible_unloaded(&self.chunk_manager.generated_data, &self.camera)
         {
             let path_str = format!("{},{}.bin", chunk_loc[0], chunk_loc[1]);
+            tracing::trace!(chunk_loc = ?chunk_loc, "Queueing visible chunk");
 
-            // 1. Kick off generation/loading internally
             let _center_arc = self
                 .chunk_manager
                 .load_and_insert_chunk(Path::new(&path_str), chunk_loc);
 
             let world_data = &self.chunk_manager.generated_data;
             let [chunk_x, chunk_z] = chunk_loc;
-            // 2. Queue up the mesh job using our fresh Arc handle
-            // and the now-unlocked map reference
+
             self.chunk_manager.queue_mesh_job(world_data, chunk_loc);
             self.chunk_manager
                 .queue_mesh_job(world_data, [chunk_x - 1, chunk_z]);
@@ -211,7 +200,6 @@ impl RunningState {
             self.chunk_manager
                 .queue_mesh_job(world_data, [chunk_x, chunk_z + 1]);
 
-            // Diagonal corner seams
             self.chunk_manager
                 .queue_mesh_job(world_data, [chunk_x - 1, chunk_z - 1]);
             self.chunk_manager
@@ -230,7 +218,6 @@ impl RunningState {
                 self.input.left_pressed && (now - self.last_break_time).as_millis() > 250;
 
             if is_place || is_break {
-                // Calculate target block position
                 let target_pos = if is_place {
                     location - DIRECTION_OFFSETS[previous_step]
                 } else {
@@ -248,7 +235,6 @@ impl RunningState {
                         let local_z = target_pos.z.rem_euclid(CHUNK_DEPTH_I32) as usize;
                         let local_y = target_pos.y as usize;
 
-                        // Safely modify using Copy-On-Write via Arc::make_mut
                         let chunk = Arc::make_mut(chunk_arc);
                         let current_block = chunk.contents[local_x][local_y][local_z];
 
@@ -264,10 +250,8 @@ impl RunningState {
                             chunk.contents[local_x][local_y][local_z] = block;
 
                             let world_data = &self.chunk_manager.generated_data;
-                            // Remesh the modified center chunk
                             self.chunk_manager.queue_mesh_job(world_data, chunk_loc);
 
-                            // Remesh adjacent neighbor chunks if the block was on a boundary seam
                             if local_x == 0 {
                                 self.chunk_manager
                                     .queue_mesh_job(world_data, [chunk_x - 1, chunk_z]);
@@ -285,7 +269,6 @@ impl RunningState {
                                     .queue_mesh_job(world_data, [chunk_x, chunk_z + 1]);
                             }
 
-                            // Diagonal corner seams
                             if local_x == 0 && local_z == 0 {
                                 self.chunk_manager
                                     .queue_mesh_job(world_data, [chunk_x - 1, chunk_z - 1]);
@@ -310,10 +293,11 @@ impl RunningState {
         self.chunk_manager.insert_chunk(&self.render_context);
     }
 
+    #[tracing::instrument(skip(self))]
     fn save_all_chunks(&self) {
         let save_dir = Path::new("saves");
         if let Err(e) = std::fs::create_dir_all(save_dir) {
-            log::error!("Failed to create saves directory: {e}");
+            tracing::error!(error = %e, "Failed to create saves directory");
             return;
         }
 
@@ -321,18 +305,23 @@ impl RunningState {
         for (chunk_location, data) in generated_chunkdata {
             let file_path =
                 save_dir.join(format!("{},{}.bin", chunk_location[0], chunk_location[1]));
-            if let Ok(mut file) = File::create(file_path)
+            if let Ok(mut file) = File::create(&file_path)
                 && let Err(e) =
                     bincode::encode_into_std_write(data, &mut file, bincode::config::standard())
             {
-                log::error!("Failed to write chunk {chunk_location:?}: {e}");
+                tracing::error!(
+                    chunk_location = ?chunk_location,
+                    path = %file_path.display(),
+                    error = %e,
+                    "Failed to write chunk file"
+                );
             }
         }
     }
 }
 
-// We make the ApplicationHandler public so main.rs can use it
 impl ApplicationHandler for App {
+    #[tracing::instrument(skip(self, event_loop))]
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.state.is_none() {
             let attrs = Window::default_attributes()
@@ -342,7 +331,7 @@ impl ApplicationHandler for App {
             let window = match event_loop.create_window(attrs) {
                 Ok(w) => Arc::new(w),
                 Err(e) => {
-                    log::error!("Failed to create window: {e:?}");
+                    tracing::error!(error = ?e, "Failed to create window");
                     event_loop.exit();
                     return;
                 }
@@ -353,7 +342,7 @@ impl ApplicationHandler for App {
                 .or_else(|_| window.set_cursor_grab(winit::window::CursorGrabMode::Locked))
                 .is_err()
             {
-                log::warn!("Failed to grab cursor");
+                tracing::warn!("Failed to grab cursor");
             }
             window.set_cursor_visible(false);
 
@@ -362,7 +351,7 @@ impl ApplicationHandler for App {
                 match pollster::block_on(renderer::RenderContext::new(window.clone(), size)) {
                     Ok(ctx) => ctx,
                     Err(e) => {
-                        log::error!("Failed to initialize render context: {e}");
+                        tracing::error!(error = %e, "Failed to initialize render context");
                         event_loop.exit();
                         return;
                     }
@@ -377,7 +366,6 @@ impl ApplicationHandler for App {
         _window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
-        // --- These events DON'T need the app to be fully initialized ---
         match event {
             WindowEvent::CloseRequested
             | WindowEvent::KeyboardInput {
@@ -391,7 +379,6 @@ impl ApplicationHandler for App {
                 if self.save_on_exit
                     && let Some(state) = &self.state
                 {
-                    // Call the new, correct method
                     state.save_all_chunks();
                 }
                 event_loop.exit();
@@ -433,9 +420,7 @@ impl ApplicationHandler for App {
                 }
             }
 
-            // --- These events DO need the app to be fully initialized ---
             WindowEvent::Resized(new_size) => {
-                // Only resize if all systems are ready
                 if let Some(state) = &mut self.state
                     && new_size.height > 0
                     && new_size.width > 0
@@ -445,7 +430,6 @@ impl ApplicationHandler for App {
                         .camera
                         .projection
                         .resize(new_size.width, new_size.height);
-                    // ui.resize(new_size, &render_context.queue); // TODO: Implement ui.resize
                 }
             }
 
@@ -457,7 +441,6 @@ impl ApplicationHandler for App {
 
                     state.update(dt);
 
-                    // Now, we just pass the borrowed values to render
                     match state.render_context.render(
                         &state.chunk_manager,
                         &state.camera,
@@ -468,7 +451,7 @@ impl ApplicationHandler for App {
                             state.render_context.resize(state.render_context.size);
                         }
                         Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
-                        Err(e) => eprintln!("{e:?}"),
+                        Err(e) => tracing::error!(error = ?e, "Surface render error"),
                     }
                 }
             }
@@ -482,11 +465,10 @@ impl ApplicationHandler for App {
         _device_id: winit::event::DeviceId,
         event: winit::event::DeviceEvent,
     ) {
-        if let DeviceEvent::MouseMotion { delta } = event {
-            // This just updates the controller's internal state
-            if let Some(state) = &mut self.state {
-                state.camera_controller.process_mouse(delta.0, delta.1);
-            }
+        if let DeviceEvent::MouseMotion { delta } = event
+            && let Some(state) = &mut self.state
+        {
+            state.camera_controller.process_mouse(delta.0, delta.1);
         }
     }
 
@@ -495,21 +477,19 @@ impl ApplicationHandler for App {
             state.window.request_redraw();
         }
     }
+
     fn exiting(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
-        // Forces wgpu buffers and context to drop while Wayland display is still active
         self.state = None;
     }
 }
 
 pub fn run() -> Result<(), EngineError> {
-    let _ = env_logger::try_init();
-
     let mut save = false;
 
     for arg in env::args().skip(1) {
         match arg.as_str() {
             "-save" | "-s" => save = true,
-            _ => log::warn!("Unrecognized argument '{arg}'"),
+            _ => tracing::warn!(arg = %arg, "Unrecognized command-line argument"),
         }
     }
 
