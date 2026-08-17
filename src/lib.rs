@@ -305,9 +305,9 @@ impl RunningState {
         for (chunk_location, data) in generated_chunkdata {
             let file_path =
                 save_dir.join(format!("{},{}.bin", chunk_location[0], chunk_location[1]));
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(data).unwrap();
             if let Ok(mut file) = File::create(&file_path)
-                && let Err(e) =
-                    bincode_next::encode_into_std_write(data, &mut file, bincode_next::config::standard())
+                && let Err(e) = std::io::Write::write_all(&mut file, &bytes)
             {
                 tracing::error!(
                     chunk_location = ?chunk_location,

@@ -1,30 +1,42 @@
 [package]
 name = "minecraft"
 version = "0.1.0"
-authors = ["PeterTiny1 <56882034+PeterTiny1@users.noreply.github.com>"]
 edition = "2024"
+authors = ["PeterTiny1 <56882034+PeterTiny1@users.noreply.github.com>"]
 
 [dependencies]
 wgpu = "27.0"
 bytemuck = { version = "1.24", features = ["derive"] }
 vek = { version = "0.17", default-features = false }
 noise = { version = "0.9", default-features = false }
-bincode-next = { version = "3.1.1", features = ["serde"] } # Pin exact version and features
 winit = "0.30"
 pollster = "0.4.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "ansi", "env-filter", "tracing-log"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
+rkyv = "0.8.18"
+
+[lints.rust]
+unexpected_cfgs = "warn"
+
+[lints.clippy]
+# Performance and correctness enforcement
+perf = { level = "deny", priority = -1 }
+style = { level = "warn", priority = -1 }
+cloned_instead_of_copied = "warn"
+inefficient_to_string = "warn"
+large_types_passed_by_value = "warn"
+unwrap_used = "warn" # Encourages robust error propagation over game crashes
 
 [profile.dev]
-opt-level = 1 # Keeps your game code fast to compile while remaining playable
+opt-level = 1 # Keeps project code fast to compile while remaining playable
 
 [profile.dev.package."*"]
-opt-level = 2 # Fast compile times for external heavy math/rendering crates with high FPS
+opt-level = 3 # Max performance for heavy math, noise, and rendering dependencies
 
 [profile.release]
 opt-level = 3
-lto = "thin"
+lto = "fat"      # Maximum cross-crate inlining for high frame rates
 codegen-units = 1
-panic = "abort" # Prevents unwinding overhead in game releases
-strip = true    # Strips debug symbols for smaller binaries
+panic = "abort"  # Eliminates unwinding landing pads and reduces binary size
+strip = true     # Removes symbols and debug info

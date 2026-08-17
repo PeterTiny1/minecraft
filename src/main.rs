@@ -22,12 +22,18 @@ fn init_telemetry() -> impl Drop {
             .payload()
             .downcast_ref::<&str>()
             .copied()
-            .or_else(|| panic_info.payload().downcast_ref::<String>().map(|s| s.as_str()))
+            .or_else(|| {
+                panic_info
+                    .payload()
+                    .downcast_ref::<String>()
+                    .map(|s| s.as_str())
+            })
             .unwrap_or("Box<Any>");
 
-        let location = panic_info
-            .location()
-            .map_or_else(|| "unknown location".to_string(), |l| format!("{}:{}:{}", l.file(), l.line(), l.column()));
+        let location = panic_info.location().map_or_else(
+            || "unknown location".to_string(),
+            |l| format!("{}:{}:{}", l.file(), l.line(), l.column()),
+        );
 
         eprintln!("[FATAL ENGINE PANIC] '{payload}' at {location}");
 

@@ -1,6 +1,6 @@
-use bincode_next::{Decode, Encode};
+use rkyv::{Archive, Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Encode, Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, Archive)]
 pub enum BlockType {
     #[default]
     Air,

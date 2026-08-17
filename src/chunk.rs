@@ -5,8 +5,8 @@ use std::{
     thread,
 };
 
-use bincode_next::{Decode, Encode};
 use noise::OpenSimplex;
+use rkyv::{Archive, Deserialize, Serialize, access, deserialize};
 use vek::{Aabb, Vec3};
 use wgpu::util::DeviceExt;
 
@@ -25,7 +25,7 @@ pub const CHUNK_DEPTH: usize = 32;
 pub const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
 
 pub type Chunk = Box<[[[BlockType; CHUNK_DEPTH]; CHUNK_HEIGHT]; CHUNK_WIDTH]>;
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone, Deserialize, Serialize, Archive)]
 pub struct ChunkData {
     pub contents: Chunk,
 }
@@ -94,18 +94,15 @@ impl ChunkManager {
         e: std::collections::hash_map::VacantEntry<'_, [i32; 2], Arc<ChunkData>>,
         chunk_location: [i32; 2],
     ) -> Arc<ChunkData> {
-        let chunk_contents = if path.exists() {
+        let chunkdata = if path.exists() {
             let buffer = std::fs::read(path).unwrap();
-            bincode_next::decode_from_slice(&buffer, bincode_next::config::standard())
-                .unwrap()
-                .0
+            let archived = access::<ArchivedChunkData, rkyv::rancor::Error>(&buffer).unwrap();
+            deserialize::<ChunkData, rkyv::rancor::Error>(archived).unwrap()
         } else {
-            generate(&self.noise, chunk_location)
+            ChunkData { contents: generate(&self.noise, chunk_location) }
         };
 
-        let center_arc = Arc::new(ChunkData {
-            contents: chunk_contents,
-        });
+        let center_arc = Arc::new(chunkdata);
 
         // Insert and return a clone of the Arc
         e.insert(center_arc.clone());
@@ -117,18 +114,15 @@ impl ChunkManager {
         path: &Path,
         chunk_location: [i32; 2],
     ) -> Arc<ChunkData> {
-        let chunk_contents = if path.exists() {
+        let chunkdata = if path.exists() {
             let buffer = std::fs::read(path).unwrap();
-            bincode_next::decode_from_slice(&buffer, bincode_next::config::standard())
-                .unwrap()
-                .0
+            let archived = access::<ArchivedChunkData, rkyv::rancor::Error>(&buffer).unwrap();
+            deserialize::<ChunkData, rkyv::rancor::Error>(archived).unwrap()
         } else {
-            generate(&self.noise, chunk_location)
+            ChunkData { contents: generate(&self.noise, chunk_location) }
         };
 
-        let center_arc = Arc::new(ChunkData {
-            contents: chunk_contents,
-        });
+        let center_arc = Arc::new(chunkdata);
 
         // Grab the entry and insert it completely internally where it won't conflict
         self.generated_data
