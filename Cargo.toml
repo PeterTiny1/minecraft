@@ -9,8 +9,13 @@ wgpu = "27.0"
 bytemuck = { version = "1.24", features = ["derive"] }
 vek = { version = "0.17", default-features = false }
 noise = { version = "0.9", default-features = false }
-winit = "0.30"
-pollster = "0.4.0"
+winit = { version = "0.30", default-features = false, features = [
+    "x11",             # Linux: X11 support
+    "wayland",         # Linux: Wayland support (without CSD/ttf-parser)
+    "wayland-dlopen",  # Linux: Dynamically loads Wayland libs instead of hard-linking
+    "rwh_06",          # Raw Window Handle v0.6 (required by modern wgpu/renderers)
+] }
+pollster = "1.0.1"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "ansi", "env-filter", "tracing-log"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
