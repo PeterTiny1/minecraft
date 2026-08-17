@@ -1,4 +1,4 @@
-use bincode::{Decode, Encode};
+use bincode_next::{Decode, Encode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Encode, Decode)]
 pub enum BlockType {

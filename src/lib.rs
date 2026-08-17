@@ -307,7 +307,7 @@ impl RunningState {
                 save_dir.join(format!("{},{}.bin", chunk_location[0], chunk_location[1]));
             if let Ok(mut file) = File::create(&file_path)
                 && let Err(e) =
-                    bincode::encode_into_std_write(data, &mut file, bincode::config::standard())
+                    bincode_next::encode_into_std_write(data, &mut file, bincode_next::config::standard())
             {
                 tracing::error!(
                     chunk_location = ?chunk_location,

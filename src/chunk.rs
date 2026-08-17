@@ -5,7 +5,7 @@ use std::{
     thread,
 };
 
-use bincode::{Decode, Encode};
+use bincode_next::{Decode, Encode};
 use noise::OpenSimplex;
 use vek::{Aabb, Vec3};
 use wgpu::util::DeviceExt;
@@ -96,7 +96,7 @@ impl ChunkManager {
     ) -> Arc<ChunkData> {
         let chunk_contents = if path.exists() {
             let buffer = std::fs::read(path).unwrap();
-            bincode::decode_from_slice(&buffer, bincode::config::standard())
+            bincode_next::decode_from_slice(&buffer, bincode_next::config::standard())
                 .unwrap()
                 .0
         } else {
@@ -119,7 +119,7 @@ impl ChunkManager {
     ) -> Arc<ChunkData> {
         let chunk_contents = if path.exists() {
             let buffer = std::fs::read(path).unwrap();
-            bincode::decode_from_slice(&buffer, bincode::config::standard())
+            bincode_next::decode_from_slice(&buffer, bincode_next::config::standard())
                 .unwrap()
                 .0
         } else {
