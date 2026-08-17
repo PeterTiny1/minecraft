@@ -80,7 +80,7 @@ impl Iterator for Ray {
                     acc
                 }
             })
-            .unwrap();
+            .expect("array is non-empty");
         self.position += real_change;
         let direction =
             direction * 2 + usize::from([positive_x, positive_y, positive_z][direction]);
