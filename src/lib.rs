@@ -16,7 +16,7 @@ pub use chunk::ChunkData;
 pub use renderer::RenderContext;
 
 // Imports
-use std::{env, fs::File, path::Path, sync::Arc, time::Instant};
+use std::{env, path::Path, sync::Arc, time::Instant};
 
 use vek::Vec3;
 use winit::{
@@ -302,21 +302,43 @@ impl RunningState {
         }
 
         let generated_chunkdata = &self.chunk_manager.generated_data;
+        let mut saved_count = 0;
+
         for (chunk_location, data) in generated_chunkdata {
             let file_path =
                 save_dir.join(format!("{},{}.bin", chunk_location[0], chunk_location[1]));
-            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(data).unwrap();
-            if let Ok(mut file) = File::create(&file_path)
-                && let Err(e) = std::io::Write::write_all(&mut file, &bytes)
-            {
+
+            // Handle serialization errors without crashing
+            let bytes = match rkyv::to_bytes::<rkyv::rancor::Error>(data) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    tracing::error!(
+                        chunk_location = ?chunk_location,
+                        error = %e,
+                        "Failed to serialize chunk"
+                    );
+                    continue;
+                }
+            };
+
+            // std::fs::write creates/truncates and writes in one step
+            if let Err(e) = std::fs::write(&file_path, &bytes) {
                 tracing::error!(
                     chunk_location = ?chunk_location,
                     path = %file_path.display(),
                     error = %e,
                     "Failed to write chunk file"
                 );
+            } else {
+                saved_count += 1;
             }
         }
+
+        tracing::info!(
+            saved_count,
+            total = generated_chunkdata.len(),
+            "Finished saving chunks"
+        );
     }
 }
 
