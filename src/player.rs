@@ -143,6 +143,7 @@ impl Player {
         );
     }
 
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     fn resolve_collisions_on_axis(&mut self, world: &ChunkDataStorage, axis: Axis) {
         let skin = 0.001;
         let player_aabb = self.aabb();
