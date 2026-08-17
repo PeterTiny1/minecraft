@@ -84,50 +84,39 @@ pub struct ChunkManager {
 }
 
 impl ChunkManager {
-    /// # Panics
-    ///
-    /// If the file at the path cannot be read
-    /// If bincode cannot decode the data
+    /// Attempts to read and deserialize a chunk from disk; falls back to procedural generation.
+    fn get_or_generate_chunk(&self, path: &Path, chunk_location: [i32; 2]) -> ChunkData {
+        let loaded = std::fs::read(path).ok().and_then(|buffer| {
+            // buffer lives inside this entire block
+            let archived = access::<ArchivedChunkData, rkyv::rancor::Error>(&buffer).ok()?;
+            deserialize::<ChunkData, rkyv::rancor::Error>(archived).ok()
+            // ChunkData is owned, so buffer can be safely dropped here
+        });
+
+        loaded.unwrap_or_else(|| ChunkData {
+            contents: generate(&self.noise, chunk_location),
+        })
+    }
+
     pub fn load_chunk(
         &self,
         path: &Path,
         e: std::collections::hash_map::VacantEntry<'_, [i32; 2], Arc<ChunkData>>,
         chunk_location: [i32; 2],
     ) -> Arc<ChunkData> {
-        let chunkdata = if path.exists() {
-            let buffer = std::fs::read(path).unwrap();
-            let archived = access::<ArchivedChunkData, rkyv::rancor::Error>(&buffer).unwrap();
-            deserialize::<ChunkData, rkyv::rancor::Error>(archived).unwrap()
-        } else {
-            ChunkData { contents: generate(&self.noise, chunk_location) }
-        };
-
-        let center_arc = Arc::new(chunkdata);
-
-        // Insert and return a clone of the Arc
+        let center_arc = Arc::new(self.get_or_generate_chunk(path, chunk_location));
         e.insert(center_arc.clone());
-
         center_arc
     }
+
     pub fn load_and_insert_chunk(
         &mut self,
         path: &Path,
         chunk_location: [i32; 2],
     ) -> Arc<ChunkData> {
-        let chunkdata = if path.exists() {
-            let buffer = std::fs::read(path).unwrap();
-            let archived = access::<ArchivedChunkData, rkyv::rancor::Error>(&buffer).unwrap();
-            deserialize::<ChunkData, rkyv::rancor::Error>(archived).unwrap()
-        } else {
-            ChunkData { contents: generate(&self.noise, chunk_location) }
-        };
-
-        let center_arc = Arc::new(chunkdata);
-
-        // Grab the entry and insert it completely internally where it won't conflict
+        let center_arc = Arc::new(self.get_or_generate_chunk(path, chunk_location));
         self.generated_data
             .insert(chunk_location, center_arc.clone());
-
         center_arc
     }
     /// Panics
