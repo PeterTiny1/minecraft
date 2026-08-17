@@ -31,6 +31,16 @@ enum Axis {
     Z,
 }
 
+fn get_axis_overlap(a: Aabb<f32>, b: Aabb<f32>, axis: Axis) -> f32 {
+    let (a_min, a_max, b_min, b_max) = match axis {
+        Axis::X => (a.min.x, a.max.x, b.min.x, b.max.x),
+        Axis::Y => (a.min.y, a.max.y, b.min.y, b.max.y),
+        Axis::Z => (a.min.z, a.max.z, b.min.z, b.max.z),
+    };
+
+    (a_max.min(b_max) - a_min.max(b_min)).max(0.0)
+}
+
 impl Player {
     #[must_use]
     pub fn new(position: Vec3<f32>) -> Self {
@@ -135,49 +145,45 @@ impl Player {
 
     fn resolve_collisions_on_axis(&mut self, world: &ChunkDataStorage, axis: Axis) {
         let skin = 0.001;
+        let player_aabb = self.aabb();
 
-        for _ in 0..5 {
-            let player_aabb_current = self.aabb();
+        // Query tight voxel bounds without skin distortion on min bounds
+        let min_x = player_aabb.min.x.floor() as i32;
+        let max_x = player_aabb.max.x.floor() as i32;
+        let min_y = player_aabb.min.y.floor() as i32;
+        let max_y = player_aabb.max.y.floor() as i32;
+        let min_z = player_aabb.min.z.floor() as i32;
+        let max_z = player_aabb.max.z.floor() as i32;
 
-            let min_x = (player_aabb_current.min.x - skin).floor() as i32;
-            let max_x = (player_aabb_current.max.x + skin).floor() as i32;
-            let min_y = (player_aabb_current.min.y - skin).floor() as i32;
-            let max_y = (player_aabb_current.max.y + skin).floor() as i32;
-            let min_z = (player_aabb_current.min.z - skin).floor() as i32;
-            let max_z = (player_aabb_current.max.z + skin).floor() as i32;
+        let mut max_penetration = 0.0f32;
+        let mut target_block: Option<Aabb<f32>> = None;
 
-            let mut collision_found = false;
+        // Collect candidates and resolve the largest overlap on this axis
+        for x in min_x..=max_x {
+            for y in min_y..=max_y {
+                for z in min_z..=max_z {
+                    if let Some(block) = world.get_block(x, y, z)
+                        && block.is_solid()
+                    {
+                        let block_aabb = Aabb {
+                            min: Vec3::new(x as f32, y as f32, z as f32),
+                            max: Vec3::new((x + 1) as f32, (y + 1) as f32, (z + 1) as f32),
+                        };
 
-            for x in min_x..=max_x {
-                for y in min_y..=max_y {
-                    for z in min_z..=max_z {
-                        if let Some(block_type) = world.get_block(x, y, z)
-                            && block_type.is_solid()
-                        {
-                            let block_aabb = Aabb {
-                                min: Vec3::new(x as f32, y as f32, z as f32),
-                                max: Vec3::new((x + 1) as f32, (y + 1) as f32, (z + 1) as f32),
-                            };
-
-                            if player_aabb_current.collides_with_aabb(block_aabb) {
-                                collision_found = true;
-                                self.handle_collision(axis, block_aabb, skin);
-                                break;
+                        if player_aabb.collides_with_aabb(block_aabb) {
+                            let penetration = get_axis_overlap(player_aabb, block_aabb, axis);
+                            if penetration > max_penetration {
+                                max_penetration = penetration;
+                                target_block = Some(block_aabb);
                             }
                         }
                     }
-                    if collision_found {
-                        break;
-                    }
-                }
-                if collision_found {
-                    break;
                 }
             }
+        }
 
-            if !collision_found {
-                break;
-            }
+        if let Some(block_aabb) = target_block {
+            self.handle_collision(axis, block_aabb, skin);
         }
     }
 
