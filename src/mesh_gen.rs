@@ -132,7 +132,8 @@ impl MeshGenerationContext<'_> {
     }
 
     pub fn extend_indices(&mut self, base_indices: &[Index]) {
-        let len_index = Index::try_from(self.vertices.len()).unwrap();
+        let len_index =
+            Index::try_from(self.vertices.len()).expect("mesh count exceeded u32 limit");
         self.indices
             .extend(base_indices.iter().map(|i| *i + len_index));
     }

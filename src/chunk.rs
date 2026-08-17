@@ -141,7 +141,8 @@ impl ChunkManager {
                             usage: wgpu::BufferUsages::INDEX,
                         },
                     ),
-                    num_indices: u32::try_from(indices.len()).expect("mesh index count exceeded u32 limit"),
+                    num_indices: u32::try_from(indices.len())
+                        .expect("mesh index count exceeded u32 limit"),
                 },
             );
             // let (vertsize, indexsize) = self
