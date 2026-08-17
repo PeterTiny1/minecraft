@@ -7,67 +7,47 @@ pub struct Texture {
 
 fn halve_image_weighted(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
     let (width, height) = img.dimensions();
-
-    // New dimensions after halving
     let new_width = width / 2;
     let new_height = height / 2;
 
-    // Create a new ImageBuffer to store the halved size image
-    let mut new_img = ImageBuffer::new(new_width, new_height);
+    ImageBuffer::from_fn(new_width, new_height, |x, y| {
+        let mut weighted_sum_r = 0u32;
+        let mut weighted_sum_g = 0u32;
+        let mut weighted_sum_b = 0u32;
+        let mut sum_a = 0u32;
+        let mut total_weight = 0u32;
 
-    // Process each 2x2 block
-    for x in 0..new_width {
-        for y in 0..new_height {
-            // Use u32 for sums to prevent overflow
-            let mut weighted_sum_r = 0;
-            let mut weighted_sum_g = 0;
-            let mut weighted_sum_b = 0;
-            let mut sum_a = 0;
-            let mut total_weight = 0;
+        let base_x = x * 2;
+        let base_y = y * 2;
 
+        for dy in 0..2 {
             for dx in 0..2 {
-                for dy in 0..2 {
-                    let pixel = img.get_pixel(2 * x + dx, 2 * y + dy);
-                    let r = pixel[0];
-                    let g = pixel[1];
-                    let b = pixel[2];
-                    let a = pixel[3];
+                let pixel = img.get_pixel(base_x + dx, base_y + dy);
+                let [r, g, b, a] = pixel.0;
 
-                    // The weight for each pixel's color is its own alpha value
-                    let weight = u32::from(a);
+                let weight = u32::from(a);
+                weighted_sum_r += u32::from(r) * weight;
+                weighted_sum_g += u32::from(g) * weight;
+                weighted_sum_b += u32::from(b) * weight;
 
-                    // Add the weighted color values to the sums
-                    weighted_sum_r += u32::from(r) * weight;
-                    weighted_sum_g += u32::from(g) * weight;
-                    weighted_sum_b += u32::from(b) * weight;
-
-                    // The total weight is the sum of all alpha values
-                    total_weight += weight;
-
-                    // The new alpha will be a simple average of the source alphas
-                    sum_a += u32::from(a);
-                }
-            }
-
-            if let Some(div_r) = weighted_sum_r.checked_div(total_weight) {
-                // Calculate the weighted average for the color channels
-                let avg_r = u8::try_from(div_r).unwrap();
-                let avg_g = u8::try_from(weighted_sum_g / total_weight).unwrap();
-                let avg_b = u8::try_from(weighted_sum_b / total_weight).unwrap();
-
-                // The new alpha is the simple average of the four pixels' alphas
-                let avg_a = u8::try_from(sum_a / 4).unwrap();
-
-                // Set the pixel in the new ImageBuffer
-                new_img.put_pixel(x, y, Rgba([avg_r, avg_g, avg_b, avg_a]));
-            } else {
-                // If total_weight was 0, the new pixel is transparent black
-                new_img.put_pixel(x, y, Rgba([0, 0, 0, 0]));
+                total_weight += weight;
+                sum_a += u32::from(a);
             }
         }
-    }
 
-    new_img
+        let avg_a = (sum_a / 4) as u8;
+
+        if total_weight > 0 {
+            // Mathematically guaranteed to fit in u8 since color channels are <= 255
+            let avg_r = (weighted_sum_r / total_weight) as u8;
+            let avg_g = (weighted_sum_g / total_weight) as u8;
+            let avg_b = (weighted_sum_b / total_weight) as u8;
+
+            Rgba([avg_r, avg_g, avg_b, avg_a])
+        } else {
+            Rgba([0, 0, 0, 0])
+        }
+    })
 }
 
 impl Texture {
