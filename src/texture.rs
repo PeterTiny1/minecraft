@@ -39,7 +39,7 @@ fn rgba8_to_linear_f32(img: &image::RgbaImage) -> ImageBuffer<Rgba<f32>, Vec<f32
     })
 }
 
-#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn linear_f32_to_rgba8(src: &ImageBuffer<Rgba<f32>, Vec<f32>>) -> image::RgbaImage {
     let (w, h) = src.dimensions();
     ImageBuffer::from_fn(w, h, |x, y| {
@@ -53,9 +53,7 @@ fn linear_f32_to_rgba8(src: &ImageBuffer<Rgba<f32>, Vec<f32>>) -> image::RgbaIma
 }
 
 /// Downsamples an f32 linear buffer by 2x in linear color space with alpha-weighting.
-fn halve_linear_image(
-    src: &ImageBuffer<Rgba<f32>, Vec<f32>>,
-) -> ImageBuffer<Rgba<f32>, Vec<f32>> {
+fn halve_linear_image(src: &ImageBuffer<Rgba<f32>, Vec<f32>>) -> ImageBuffer<Rgba<f32>, Vec<f32>> {
     let (width, height) = src.dimensions();
     let new_w = (width / 2).max(1);
     let new_h = (height / 2).max(1);
