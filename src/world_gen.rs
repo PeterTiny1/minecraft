@@ -15,6 +15,7 @@ enum Biome {
     // SnowDesert,
 }
 
+#[allow(clippy::cast_possible_truncation)]
 fn noise_at(
     noise: &OpenSimplex,
     x: i32,
@@ -82,21 +83,17 @@ const fn place_tree(biome: Biome, contents: &mut Chunk, x: usize, height: usize,
     contents[block_index(x, height + 5, z)] = leaf_type;
 }
 
+#[allow(clippy::cast_possible_truncation)]
 fn generate_biomemap(
     noise: &OpenSimplex,
     chunk_location: [i32; 2],
 ) -> [[Biome; CHUNK_DEPTH]; CHUNK_WIDTH] {
-    let mut biomemap = [[Biome::BirchFalls; CHUNK_DEPTH]; CHUNK_WIDTH];
-
-    for (x, row) in biomemap.iter_mut().enumerate() {
-        for (z, item) in row.iter_mut().enumerate() {
+    std::array::from_fn(|x| {
+        std::array::from_fn(|z| {
             let v = noise_at(noise, x as i32, z as i32, chunk_location, BIOME_SCALE, 18.9);
-            let biome = determine_biome(v);
-            *item = biome;
-        }
-    }
-
-    biomemap
+            determine_biome(v)
+        })
+    })
 }
 
 fn determine_biome(v: f64) -> Biome {
@@ -127,11 +124,15 @@ fn generate_heightmap(
     const PERSISTENCE: f64 = 0.5;
     const LACUNARITY: f64 = 2.0;
 
-    let mut heightmap = [[0.0; CHUNK_DEPTH]; CHUNK_WIDTH];
-    // let mut effect = [[0.0; CHUNK_DEPTH]; CHUNK_WIDTH];
+    let world_x_base = f64::from(location[0] * CHUNK_WIDTH_I32);
+    let world_z_base = f64::from(location[1] * CHUNK_DEPTH_I32);
 
-    for (x, column) in heightmap.iter_mut().enumerate() {
-        for (z, tile) in column.iter_mut().enumerate() {
+    std::array::from_fn(|x| {
+        let wx = world_x_base + x as f64;
+
+        std::array::from_fn(|z| {
+            let wz = world_z_base + z as f64;
+
             let mut amplitude = 1.0;
             let mut frequency = 0.007;
             let mut noise_height = 0.8;
@@ -139,35 +140,33 @@ fn generate_heightmap(
             let mut gradient_z = 0.0;
 
             for octave in 0..OCTAVES {
-                let octave = octave * 5;
-                let sample_x = f64::from(location[0] * CHUNK_WIDTH_I32 + x as i32) * frequency;
-                let sample_z = f64::from(location[1] * CHUNK_DEPTH_I32 + z as i32) * frequency;
-                gradient_x += {
-                    let a = (f64::from(location[0] * CHUNK_WIDTH_I32 + x as i32) - 0.1) * frequency;
-                    let sample_a = noise.get([a, sample_z, octave as f64]);
-                    let b = (f64::from(location[0] * CHUNK_WIDTH_I32 + x as i32) + 0.1) * frequency;
-                    let sample_b = noise.get([b, sample_z, octave as f64]);
-                    (sample_a - sample_b) * amplitude
-                };
-                gradient_z += {
-                    let c = (f64::from(location[1] * CHUNK_DEPTH_I32 + z as i32) - 0.1) * frequency;
-                    let sample_c = noise.get([sample_x, c, octave as f64]);
-                    let d = (f64::from(location[1] * CHUNK_DEPTH_I32 + z as i32) + 0.1) * frequency;
-                    let sample_d = noise.get([sample_x, d, octave as f64]);
-                    (sample_c - sample_d) * amplitude
-                };
+                let octave_z = (octave * 5) as f64;
+                let sample_x = wx * frequency;
+                let sample_z = wz * frequency;
+                let offset = 0.1 * frequency;
+
+                // X-axis gradient (finite differences)
+                let sample_a = noise.get([sample_x - offset, sample_z, octave_z]);
+                let sample_b = noise.get([sample_x + offset, sample_z, octave_z]);
+                gradient_x += (sample_a - sample_b) * amplitude;
+
+                // Z-axis gradient (finite differences)
+                let sample_c = noise.get([sample_x, sample_z - offset, octave_z]);
+                let sample_d = noise.get([sample_x, sample_z + offset, octave_z]);
+                gradient_z += (sample_c - sample_d) * amplitude;
+
                 let effect = 1.0 / (1.0 + gradient_x.hypot(gradient_z));
-                let octave_noise = noise.get([sample_x, sample_z, octave as f64]);
+                let octave_noise = noise.get([sample_x, sample_z, octave_z]);
+
                 noise_height = (octave_noise * amplitude).mul_add(effect, noise_height);
+
                 amplitude *= PERSISTENCE;
                 frequency *= LACUNARITY;
             }
 
-            *tile = noise_height * HEIGHT_SCALE;
-        }
-    }
-
-    heightmap
+            noise_height * HEIGHT_SCALE
+        })
+    })
 }
 
 #[allow(clippy::cast_precision_loss)]
