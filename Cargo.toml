@@ -4,8 +4,6 @@ version = "0.1.0"
 authors = ["PeterTiny1 <56882034+PeterTiny1@users.noreply.github.com>"]
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 wgpu = "27.0"
 bytemuck = { version = "1.24", features = ["derive"] }
@@ -15,9 +13,14 @@ bincode = "2.0"
 winit = "0.30"
 pollster = "0.4.0"
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "ansi", "env-filter"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 
-[dependencies.image]
-version = "0.25"
-default-features = false
-features = ["png"]
+# Compile heavy game dependencies with optimizations even in debug builds
+[profile.dev.package."*"]
+opt-level = 3
+
+# High performance & smaller executable size for release
+[profile.release]
+lto = "thin"
+codegen-units = 1
