@@ -135,13 +135,14 @@ impl RunningState {
     /// This is called by `RedrawRequested` *after* all systems
     /// are confirmed to be initialized.
     fn update(&mut self, dt: std::time::Duration) {
+        let dt_secs = dt.as_secs_f32().min(0.1);
         // --- 1. Physics & Camera (Requires Read Lock) ---
         {
             let world_data = &self.chunk_manager.generated_data;
             self.camera_controller
                 .update_camera(&mut self.camera.data, dt);
             self.player.update_physics(
-                dt.as_secs_f32(),
+                dt_secs,
                 world_data,
                 &self.camera_controller,
                 &self.camera.data,
@@ -277,20 +278,21 @@ impl RunningState {
     }
 
     fn save_all_chunks(&self) {
+        let save_dir = Path::new("saves");
+        if let Err(e) = std::fs::create_dir_all(save_dir) {
+            log::error!("Failed to create saves directory: {e}");
+            return;
+        }
+
         let generated_chunkdata = &self.chunk_manager.generated_data;
         for (chunk_location, data) in generated_chunkdata {
-            let location = format!(
-                "{}.bin",
-                chunk_location
-                    .iter()
-                    .map(i32::to_string)
-                    .collect::<Vec<_>>()
-                    .join(",")
-            );
-            let path = Path::new(&location);
-            if let Ok(mut file) = File::create(path) {
-                bincode::encode_into_std_write(data, &mut file, bincode::config::standard())
-                    .unwrap();
+            let file_path =
+                save_dir.join(format!("{},{}.bin", chunk_location[0], chunk_location[1]));
+            if let Ok(mut file) = File::create(file_path)
+                && let Err(e) =
+                    bincode::encode_into_std_write(data, &mut file, bincode::config::standard())
+            {
+                log::error!("Failed to write chunk {chunk_location:?}: {e}");
             }
         }
     }
@@ -388,10 +390,10 @@ impl ApplicationHandler for App {
                 if let Some(state) = &mut self.state {
                     match button {
                         winit::event::MouseButton::Left => {
-                            state.input.left_pressed = button_state.is_pressed()
+                            state.input.left_pressed = button_state.is_pressed();
                         }
                         winit::event::MouseButton::Right => {
-                            state.input.right_pressed = button_state.is_pressed()
+                            state.input.right_pressed = button_state.is_pressed();
                         }
                         _ => {}
                     }
@@ -430,7 +432,7 @@ impl ApplicationHandler for App {
                     ) {
                         Ok(()) => {}
                         Err(wgpu::SurfaceError::Lost) => {
-                            state.render_context.resize(state.render_context.size)
+                            state.render_context.resize(state.render_context.size);
                         }
                         Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
                         Err(e) => eprintln!("{e:?}"),
