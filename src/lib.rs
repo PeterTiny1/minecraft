@@ -457,21 +457,19 @@ impl ApplicationHandler for App {
 }
 
 pub fn run() -> Result<(), EventLoopError> {
-    env_logger::init();
+    let _ = env_logger::try_init();
 
     let mut save = false;
 
-    // Iterating properly over flags past argv[0]
     for arg in env::args().skip(1) {
         match arg.as_str() {
             "-save" | "-s" => save = true,
-            _ => eprintln!("Warning: Unrecognized argument '{arg}'"),
+            _ => log::warn!("Unrecognized argument '{arg}'"),
         }
     }
 
-    // Propagate EventLoop creation errors with `?` instead of unwrap()
     let event_loop = EventLoop::new()?;
-
     let mut app = App::new(save);
+    
     event_loop.run_app(&mut app)
 }
