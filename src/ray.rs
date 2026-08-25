@@ -1,11 +1,9 @@
-use vek::{Vec3, num_traits::Zero};
-
-use crate::DIRECTION_OFFSETS;
+use vek::Vec3;
 
 pub struct Ray {
-    origin: Vec3<f32>,
-    direction: Vec3<f32>,
-    position: Vec3<f32>,
+    step: Vec3<i32>,
+    t_max: Vec3<f32>,
+    t_delta: Vec3<f32>,
     block_position: Vec3<i32>,
     max_len: f32,
 }
@@ -13,82 +11,62 @@ pub struct Ray {
 impl Ray {
     #[must_use]
     pub fn new(origin: Vec3<f32>, direction: Vec3<f32>, max_len: f32) -> Self {
-        #[allow(clippy::cast_possible_truncation)]
+        // 1. Calculate step per axis: +1 if dir > 0, -1 if dir < 0, 0 if dir == 0
+        let step = direction.map(|d| d.signum() as i32);
+
+        // 2. Target plane calculation: floor() + 1.0 for positive, floor() for negative
+        let target_plane = origin.map2(direction, |o, d| {
+            if d > 0.0 {
+                o.floor() + 1.0
+            } else if d < 0.0 {
+                o.ceil() - 1.0
+            } else {
+                f32::INFINITY
+            }
+        });
+
+        // 3. Distance t to first plane: (target - origin) / direction
+        let t_max = (target_plane - origin) / direction;
+
+        // 4. Distance t to cross 1 full voxel along ray
+        let t_delta = direction.map(|d| (1.0 / d).abs());
+
         Self {
-            origin,
-            direction,
-            position: origin,
+            step,
+            t_max,
+            t_delta,
             block_position: origin.map(|x| x.floor() as i32),
             max_len,
         }
     }
-    fn magnitude(&self) -> f32 {
-        self.origin.distance(self.position)
-    }
-}
-
-#[inline]
-fn calculate_delta(
-    pos_on_axis: f32,
-    direction: Vec3<f32>,
-    amount_in_direction: f32,
-) -> (bool, Vec3<f32>) {
-    let direction_positive = amount_in_direction.is_sign_positive();
-    let delta = calculate_delta_(
-        direction_positive,
-        pos_on_axis,
-        amount_in_direction,
-        direction,
-    );
-    (direction_positive, delta)
-}
-
-fn calculate_delta_(
-    direction_positive: bool,
-    pos_on_axis: f32,
-    amount_in_direction: f32,
-    direction: Vec3<f32>,
-) -> Vec3<f32> {
-    let possible_delta = (if direction_positive {
-        pos_on_axis.ceil()
-    } else {
-        pos_on_axis.floor()
-    } - pos_on_axis)
-        / amount_in_direction
-        * direction;
-    if possible_delta.is_zero() {
-        1.0 / amount_in_direction.abs() * direction
-    } else {
-        possible_delta
-    }
 }
 
 impl Iterator for Ray {
-    type Item = (Vec3<i32>, usize);
-    fn next(&mut self) -> Option<Self::Item> {
-        let (positive_x, dx) = calculate_delta(self.position.x, self.direction, self.direction.x);
-        let (positive_y, dy) = calculate_delta(self.position.y, self.direction, self.direction.y);
-        let (positive_z, dz) = calculate_delta(self.position.z, self.direction, self.direction.z);
+    type Item = (Vec3<i32>, usize); // (block_position, face_index)
 
-        let (direction, &real_change) = [dx, dy, dz]
+    fn next(&mut self) -> Option<Self::Item> {
+        // 1. Find which axis has the smallest t_max (0 for X, 1 for Y, 2 for Z)
+        let (axis, &current_t) = self
+            .t_max
+            .as_slice()
             .iter()
             .enumerate()
-            .reduce(|acc, item| {
-                if item.1.magnitude_squared() < acc.1.magnitude_squared() {
-                    item
-                } else {
-                    acc
-                }
-            })
-            .expect("array is non-empty");
-        self.position += real_change;
-        let direction =
-            direction * 2 + usize::from([positive_x, positive_y, positive_z][direction]);
-        self.block_position += DIRECTION_OFFSETS[direction];
-        if self.magnitude() < self.max_len {
-            Some((self.block_position, direction))
-        } else {
-            None
+            .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())?;
+
+        // 2. Check if we've exceeded the ray's maximum length
+        if current_t > self.max_len {
+            return None;
         }
+
+        // 3. Step along the winning axis
+        self.block_position[axis] += self.step[axis];
+        self.t_max[axis] += self.t_delta[axis];
+
+        // 4. Calculate hit face index (0-5: -X, +X, -Y, +Y, -Z, +Z)
+        // If step is positive (+1), face is 2*axis + 1. If negative (-1), 2*axis.
+        let is_positive = self.step[axis] > 0;
+        let face = axis * 2 + usize::from(is_positive);
+
+        Some((self.block_position, face))
     }
 }
