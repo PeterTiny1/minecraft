@@ -1,9 +1,10 @@
 use std::f32::consts::FRAC_PI_2;
 use vek::{Aabb, Vec2, Vec3};
+use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::{
     block::BlockType,
-    camera::{self, CameraData},
+    camera::CameraData,
     chunk::{BlockProvider, ChunkDataStorage},
     ray,
 };
@@ -70,7 +71,7 @@ impl Player {
         &mut self,
         dt: f32,
         world: &ChunkDataStorage,
-        controller: &camera::PlayerController,
+        controller: &Controller,
         camera_data: &CameraData,
     ) {
         // --- 1. Apply Movement Input ---
@@ -226,5 +227,107 @@ impl Player {
     #[must_use]
     pub const fn get_looking_at(&self) -> Option<(Vec3<i32>, usize)> {
         self.looking_at_block
+    }
+}
+
+#[derive(Debug)]
+pub struct Controller {
+    pub amount_left: f32,
+    pub amount_right: f32,
+    pub amount_forward: f32,
+    pub amount_backward: f32,
+    pub amount_up: f32,
+    pub amount_down: f32,
+
+    // These are now private, only this controller manages them
+    rotate_horizontal: f32,
+    rotate_vertical: f32,
+    scroll: f32,
+    speed: f32,
+    sensitivity: f32,
+}
+
+impl Controller {
+    #[must_use]
+    pub const fn new(speed: f32, sensitivity: f32) -> Self {
+        Self {
+            amount_left: 0.0,
+            amount_right: 0.0,
+            amount_forward: 0.0,
+            amount_backward: 0.0,
+            amount_up: 0.0,
+            amount_down: 0.0,
+            rotate_horizontal: 0.0,
+            rotate_vertical: 0.0,
+            scroll: 0.0,
+            speed,
+            sensitivity,
+        }
+    }
+
+    pub const fn process_keyboard(&mut self, key: PhysicalKey, pressed: bool) -> bool {
+        let amount = if pressed { 1.0 } else { 0.0 };
+        match key {
+            PhysicalKey::Code(keycode) => match keycode {
+                KeyCode::KeyW | KeyCode::ArrowUp => {
+                    self.amount_forward = amount;
+                    true
+                }
+                KeyCode::KeyS | KeyCode::ArrowDown => {
+                    self.amount_backward = amount;
+                    true
+                }
+                KeyCode::KeyA | KeyCode::ArrowLeft => {
+                    self.amount_left = amount;
+                    true
+                }
+                KeyCode::KeyD | KeyCode::ArrowRight => {
+                    self.amount_right = amount;
+                    true
+                }
+                KeyCode::Space => {
+                    self.amount_up = amount;
+                    true
+                }
+                KeyCode::ShiftLeft => {
+                    self.amount_down = amount;
+                    true
+                }
+                _ => false,
+            },
+            PhysicalKey::Unidentified(_) => false,
+        }
+    }
+
+    pub fn process_mouse(&mut self, dx: f64, dy: f64) {
+        self.rotate_horizontal = dx as f32;
+        self.rotate_vertical = -dy as f32;
+    }
+
+    pub fn process_scroll(&mut self, delta: f32) {
+        self.scroll = delta * 200.0;
+    }
+
+    pub fn update_camera(&mut self, camera: &mut CameraData, dt: std::time::Duration) {
+        let dt_secs = dt.as_secs_f32();
+
+        // Apply rotation
+        camera.yaw = (self.rotate_horizontal * self.sensitivity).mul_add(dt_secs, camera.yaw);
+        camera.pitch = (self.rotate_vertical * self.sensitivity).mul_add(dt_secs, camera.pitch);
+
+        // Clamp pitch
+        camera.pitch = camera.pitch.clamp(
+            -std::f32::consts::FRAC_PI_2 + 0.001,
+            std::f32::consts::FRAC_PI_2 - 0.001,
+        );
+
+        // Reset mouse deltas after applying
+        self.rotate_horizontal = 0.0;
+        self.rotate_vertical = 0.0;
+        self.scroll = 0.0;
+    }
+    #[must_use]
+    pub const fn get_speed(&self) -> f32 {
+        self.speed
     }
 }

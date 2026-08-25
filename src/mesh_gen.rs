@@ -2,7 +2,9 @@ use std::f32::consts::FRAC_1_SQRT_2;
 
 use crate::{
     block::BlockType,
-    chunk::{CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32, LocatedChunk, block_index},
+    chunk::{
+        CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_HEIGHT_I32, CHUNK_WIDTH_I32, LocatedChunk, block_index,
+    },
     renderer::Vertex,
 };
 
@@ -87,7 +89,7 @@ impl MeshGenerationContext<'_> {
     fn get_block_at_offset(&self, dx: i32, dy: i32, dz: i32) -> Option<BlockType> {
         let target_y = self.local_y + dy;
 
-        if target_y < 0 || target_y >= CHUNK_HEIGHT as i32 {
+        if target_y < 0 || target_y >= CHUNK_HEIGHT_I32 {
             return Some(BlockType::Air);
         }
 

@@ -106,7 +106,7 @@ pub struct RunningState {
     window: Arc<Window>,
     render_context: renderer::RenderContext,
     camera: camera::Camera,
-    camera_controller: camera::PlayerController,
+    camera_controller: player::Controller,
     ui: ui::State,
 
     chunk_manager: ChunkManager,
@@ -123,7 +123,7 @@ impl RunningState {
         let size = window.inner_size();
         let player = Player::new(PLAYER_START_POS);
         let chunk_manager = ChunkManager::default();
-        let camera_controller = camera::PlayerController::new(10.0, 0.05);
+        let camera_controller = player::Controller::new(10.0, 0.05);
         let camera_data = camera::CameraData::new(
             PLAYER_START_POS.into_tuple(),
             -45.0_f32.to_radians(),
