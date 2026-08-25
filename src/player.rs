@@ -1,12 +1,14 @@
-use std::f32::consts::FRAC_PI_2;
+use std::{
+    f32::consts::FRAC_PI_2,
+    time::{Duration, Instant},
+};
 use vek::{Aabb, Vec2, Vec3};
-use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::{
     block::BlockType,
     camera::CameraData,
-    chunk::{BlockProvider, ChunkDataStorage},
-    ray,
+    chunk::{BlockProvider, ChunkDataStorage, ChunkManager},
+    ray, InputState, DIRECTION_OFFSETS,
 };
 
 const GRAVITY: f32 = 30.0;
@@ -19,10 +21,15 @@ const EYE_HEIGHT: f32 = 1.6;
 #[derive(Debug)]
 pub struct Player {
     pub position: Vec3<f32>,
-    velocity: Vec3<f32>,
+    pub velocity: Vec3<f32>,
     pub is_grounded: bool,
+    pub speed: f32,
+    pub sensitivity: f32,
+
     half_extents: Vec3<f32>,
     looking_at_block: Option<(Vec3<i32>, usize)>,
+    last_break_time: Instant,
+    last_place_time: Instant,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -44,13 +51,17 @@ fn get_axis_overlap(a: Aabb<f32>, b: Aabb<f32>, axis: Axis) -> f32 {
 
 impl Player {
     #[must_use]
-    pub fn new(position: Vec3<f32>) -> Self {
+    pub fn new(position: Vec3<f32>, speed: f32, sensitivity: f32) -> Self {
         Self {
             position,
             velocity: Vec3::zero(),
             is_grounded: false,
+            speed,
+            sensitivity,
             half_extents: Vec3::new(PLAYER_WIDTH_HALF, PLAYER_HEIGHT / 2.0, PLAYER_WIDTH_HALF),
             looking_at_block: None,
+            last_break_time: Instant::now(),
+            last_place_time: Instant::now(),
         }
     }
 
@@ -58,7 +69,6 @@ impl Player {
     /// `self.position` is considered the bottom-center of the player.
     #[must_use]
     pub fn aabb(&self) -> Aabb<f32> {
-        // The center of the AABB is halfway up the player's height from their position.
         let center = self.position + Vec3::new(0.0, self.half_extents.y, 0.0);
         Aabb {
             min: center - self.half_extents,
@@ -66,34 +76,39 @@ impl Player {
         }
     }
 
-    /// This is the new, merged update function
+    /// Handles mouse look, movement input, gravity, drag, collisions, and targeting raycast.
     pub fn update_physics(
         &mut self,
         dt: f32,
         world: &ChunkDataStorage,
-        controller: &Controller,
-        camera_data: &CameraData,
+        input: &InputState,
+        camera_data: &mut CameraData,
     ) {
+        // --- 0. Update Camera Rotation ---
+        camera_data.yaw += input.mouse_dx * self.sensitivity;
+        camera_data.pitch = (camera_data.pitch - input.mouse_dy * self.sensitivity)
+            .clamp(-FRAC_PI_2 + 0.001, FRAC_PI_2 - 0.001);
+
         // --- 1. Apply Movement Input ---
         let forward = (camera_data.yaw.cos() * camera_data.pitch.cos()) * Vec3::unit_x()
             + (camera_data.yaw.sin() * camera_data.pitch.cos()) * Vec3::unit_z();
         let right = (camera_data.yaw - FRAC_PI_2).cos() * Vec3::unit_x()
             + (camera_data.yaw - FRAC_PI_2).sin() * Vec3::unit_z();
 
-        let forward_force = controller.amount_forward - controller.amount_backward;
-        let right_force = controller.amount_left - controller.amount_right;
-        let up_force = controller.amount_up - controller.amount_down;
+        let forward_force = if input.forward { 1.0 } else { 0.0 } - if input.backward { 1.0 } else { 0.0 };
+        let right_force = if input.left { 1.0 } else { 0.0 } - if input.right { 1.0 } else { 0.0 };
+        let up_force = if input.up { 1.0 } else { 0.0 } - if input.down { 1.0 } else { 0.0 };
 
         let direction = (forward * forward_force + right * right_force).normalized();
 
         if direction.x.is_finite() && direction.y.is_finite() && direction.z.is_finite() {
-            self.velocity.x = (direction.x * controller.get_speed()).mul_add(dt, self.velocity.x);
-            self.velocity.z = (direction.z * controller.get_speed()).mul_add(dt, self.velocity.z);
+            self.velocity.x = (direction.x * self.speed).mul_add(dt, self.velocity.x);
+            self.velocity.z = (direction.z * self.speed).mul_add(dt, self.velocity.z);
         }
 
-        self.velocity.y = (up_force * controller.get_speed() * dt).mul_add(5.0, self.velocity.y); // Multiplier 5.0 for faster vertical movement
+        self.velocity.y = (up_force * self.speed * dt).mul_add(5.0, self.velocity.y);
 
-        // --- 2. Apply Gravity & Drag  ---
+        // --- 2. Apply Gravity & Drag ---
         self.velocity.y = GRAVITY.mul_add(-dt, self.velocity.y);
         self.velocity.y = self.velocity.y.max(-MAX_FALL_SPEED);
 
@@ -117,7 +132,7 @@ impl Player {
 
         // --- 3. Collision Detection ---
         let desired_displacement = self.velocity * dt;
-        self.is_grounded = false; // Reset grounded state each frame
+        self.is_grounded = false;
 
         self.position.x += desired_displacement.x;
         self.resolve_collisions_on_axis(world, Axis::X);
@@ -128,14 +143,13 @@ impl Player {
         self.position.z += desired_displacement.z;
         self.resolve_collisions_on_axis(world, Axis::Z);
 
-        // Handle falling off world
+        // Handle falling off world void
         if self.position.y < -64.0 {
             self.position.y = 128.0;
             self.velocity = Vec3::zero();
         }
 
-        // --- 4. Update Raycast ---
-        // Get camera position and direction
+        // --- 4. Update Raycast Target ---
         let eye_level_position = self.get_camera_position();
         let looking_direction = camera_data.get_forward_vector();
 
@@ -144,12 +158,30 @@ impl Player {
         );
     }
 
+    /// Evaluates block breaking and placing actions based on input state and cooldown timers.
+    pub fn update_blocks(&mut self, input_state: &InputState, chunk_manager: &mut ChunkManager) {
+        let Some((location, previous_step)) = self.looking_at_block else { return };
+        let now = Instant::now();
+
+        // 250ms cooldown on breaking
+        if input_state.left_click_held && now - self.last_break_time > Duration::from_millis(250) {
+            self.last_break_time = now;
+            chunk_manager.set_block(location, BlockType::Air);
+        }
+
+        // 250ms cooldown on placing
+        if input_state.right_click_held && now - self.last_place_time > Duration::from_millis(250) {
+            self.last_place_time = now;
+            let place_pos = location - DIRECTION_OFFSETS[previous_step];
+            chunk_manager.set_block(place_pos, BlockType::Stone);
+        }
+    }
+
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     fn resolve_collisions_on_axis(&mut self, world: &ChunkDataStorage, axis: Axis) {
         let skin = 0.001;
         let player_aabb = self.aabb();
 
-        // Query tight voxel bounds without skin distortion on min bounds
         let min_x = player_aabb.min.x.floor() as i32;
         let max_x = player_aabb.max.x.floor() as i32;
         let min_y = player_aabb.min.y.floor() as i32;
@@ -160,7 +192,6 @@ impl Player {
         let mut max_penetration = 0.0f32;
         let mut target_block: Option<Aabb<f32>> = None;
 
-        // Collect candidates and resolve the largest overlap on this axis
         for x in min_x..=max_x {
             for y in min_y..=max_y {
                 for z in min_z..=max_z {
@@ -222,112 +253,5 @@ impl Player {
     #[must_use]
     pub fn get_camera_position(&self) -> Vec3<f32> {
         self.position + Vec3::new(0.0, EYE_HEIGHT, 0.0)
-    }
-
-    #[must_use]
-    pub const fn get_looking_at(&self) -> Option<(Vec3<i32>, usize)> {
-        self.looking_at_block
-    }
-}
-
-#[derive(Debug)]
-pub struct Controller {
-    pub amount_left: f32,
-    pub amount_right: f32,
-    pub amount_forward: f32,
-    pub amount_backward: f32,
-    pub amount_up: f32,
-    pub amount_down: f32,
-
-    // These are now private, only this controller manages them
-    rotate_horizontal: f32,
-    rotate_vertical: f32,
-    scroll: f32,
-    speed: f32,
-    sensitivity: f32,
-}
-
-impl Controller {
-    #[must_use]
-    pub const fn new(speed: f32, sensitivity: f32) -> Self {
-        Self {
-            amount_left: 0.0,
-            amount_right: 0.0,
-            amount_forward: 0.0,
-            amount_backward: 0.0,
-            amount_up: 0.0,
-            amount_down: 0.0,
-            rotate_horizontal: 0.0,
-            rotate_vertical: 0.0,
-            scroll: 0.0,
-            speed,
-            sensitivity,
-        }
-    }
-
-    pub const fn process_keyboard(&mut self, key: PhysicalKey, pressed: bool) -> bool {
-        let amount = if pressed { 1.0 } else { 0.0 };
-        match key {
-            PhysicalKey::Code(keycode) => match keycode {
-                KeyCode::KeyW | KeyCode::ArrowUp => {
-                    self.amount_forward = amount;
-                    true
-                }
-                KeyCode::KeyS | KeyCode::ArrowDown => {
-                    self.amount_backward = amount;
-                    true
-                }
-                KeyCode::KeyA | KeyCode::ArrowLeft => {
-                    self.amount_left = amount;
-                    true
-                }
-                KeyCode::KeyD | KeyCode::ArrowRight => {
-                    self.amount_right = amount;
-                    true
-                }
-                KeyCode::Space => {
-                    self.amount_up = amount;
-                    true
-                }
-                KeyCode::ShiftLeft => {
-                    self.amount_down = amount;
-                    true
-                }
-                _ => false,
-            },
-            PhysicalKey::Unidentified(_) => false,
-        }
-    }
-
-    pub fn process_mouse(&mut self, dx: f64, dy: f64) {
-        self.rotate_horizontal = dx as f32;
-        self.rotate_vertical = -dy as f32;
-    }
-
-    pub fn process_scroll(&mut self, delta: f32) {
-        self.scroll = delta * 200.0;
-    }
-
-    pub fn update_camera(&mut self, camera: &mut CameraData, dt: std::time::Duration) {
-        let dt_secs = dt.as_secs_f32();
-
-        // Apply rotation
-        camera.yaw = (self.rotate_horizontal * self.sensitivity).mul_add(dt_secs, camera.yaw);
-        camera.pitch = (self.rotate_vertical * self.sensitivity).mul_add(dt_secs, camera.pitch);
-
-        // Clamp pitch
-        camera.pitch = camera.pitch.clamp(
-            -std::f32::consts::FRAC_PI_2 + 0.001,
-            std::f32::consts::FRAC_PI_2 - 0.001,
-        );
-
-        // Reset mouse deltas after applying
-        self.rotate_horizontal = 0.0;
-        self.rotate_vertical = 0.0;
-        self.scroll = 0.0;
-    }
-    #[must_use]
-    pub const fn get_speed(&self) -> f32 {
-        self.speed
     }
 }

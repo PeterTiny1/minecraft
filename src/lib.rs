@@ -2,6 +2,7 @@
 mod block;
 mod camera;
 mod chunk;
+mod input;
 mod mesh_gen;
 mod player;
 mod ray;
@@ -27,13 +28,10 @@ use winit::{
     window::Window,
 };
 
-use chunk::{CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_WIDTH, CHUNK_WIDTH_I32, ChunkManager};
+use chunk::ChunkManager;
 use player::Player;
 
-use crate::{
-    chunk::{CHUNK_HEIGHT_I32, block_index},
-    renderer::RenderOutcome,
-};
+use crate::{input::InputState, renderer::RenderOutcome};
 
 #[derive(Debug)]
 pub enum EngineError {
@@ -82,12 +80,6 @@ pub const PLAYER_START_POS: Vec3<f32> = Vec3::new(0.0, 100.0, 0.0);
 // --- LOCAL STRUCTS ---
 
 #[derive(Default)]
-struct InputState {
-    left_pressed: bool,
-    right_pressed: bool,
-}
-
-#[derive(Default)]
 pub struct App {
     state: Option<RunningState>,
     save_on_exit: bool,
@@ -106,7 +98,6 @@ pub struct RunningState {
     window: Arc<Window>,
     render_context: renderer::RenderContext,
     camera: camera::Camera,
-    camera_controller: player::Controller,
     ui: ui::State,
 
     chunk_manager: ChunkManager,
@@ -114,16 +105,14 @@ pub struct RunningState {
     input: InputState,
 
     last_update_time: Instant,
-    last_break_time: Instant,
 }
 
 impl RunningState {
     #[must_use]
     pub fn new(window: Arc<Window>, mut render_context: renderer::RenderContext) -> Self {
         let size = window.inner_size();
-        let player = Player::new(PLAYER_START_POS);
+        let player = Player::new(PLAYER_START_POS, 10.0, 0.002);
         let chunk_manager = ChunkManager::default();
-        let camera_controller = player::Controller::new(10.0, 0.05);
         let camera_data = camera::CameraData::new(
             PLAYER_START_POS.into_tuple(),
             -45.0_f32.to_radians(),
@@ -151,35 +140,35 @@ impl RunningState {
 
             chunk_manager,
             player,
-            camera_controller,
 
             input: InputState::default(),
             last_update_time: Instant::now(),
-            last_break_time: Instant::now(),
         }
     }
 
     /// The main game logic update tick.
+/// The main game logic update tick.
     #[tracing::instrument(skip(self))]
     fn update(&mut self, dt: std::time::Duration) {
         let dt_secs = dt.as_secs_f32().min(0.1);
-        {
-            let world_data = &self.chunk_manager.generated_data;
-            self.camera_controller
-                .update_camera(&mut self.camera.data, dt);
-            self.player.update_physics(
-                dt_secs,
-                world_data,
-                &self.camera_controller,
-                &self.camera.data,
-            );
-        }
 
+        // 1. Update player physics & camera rotation using InputState
+        self.player.update_physics(
+            dt_secs,
+            &self.chunk_manager.generated_data,
+            &self.input,
+            &mut self.camera.data,
+        );
+
+        // 2. Sync camera position to player eye position & update rendering matrices
         self.camera.data.position = self.player.get_camera_position();
         self.render_context.uniforms.update_view_proj(&self.camera);
         self.render_context.write_uniforms();
 
-        // A. Chunk Loading
+        // 3. Block interaction (Break/Place)
+        self.player.update_blocks(&self.input, &mut self.chunk_manager);
+
+        // 4. Chunk Loading & Meshing
         if let Some(chunk_loc) =
             chunk::nearest_visible_unloaded(&self.chunk_manager.generated_data, &self.camera)
         {
@@ -193,108 +182,23 @@ impl RunningState {
             let world_data = &self.chunk_manager.generated_data;
             let [chunk_x, chunk_z] = chunk_loc;
 
+            // Queue mesh jobs for center chunk and surrounding neighbors
             self.chunk_manager.queue_mesh_job(world_data, chunk_loc);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x - 1, chunk_z]);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x + 1, chunk_z]);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x, chunk_z - 1]);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x, chunk_z + 1]);
+            self.chunk_manager.queue_mesh_job(world_data, [chunk_x - 1, chunk_z]);
+            self.chunk_manager.queue_mesh_job(world_data, [chunk_x + 1, chunk_z]);
+            self.chunk_manager.queue_mesh_job(world_data, [chunk_x, chunk_z - 1]);
+            self.chunk_manager.queue_mesh_job(world_data, [chunk_x, chunk_z + 1]);
 
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x - 1, chunk_z - 1]);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x + 1, chunk_z + 1]);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x - 1, chunk_z + 1]);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x + 1, chunk_z - 1]);
+            self.chunk_manager.queue_mesh_job(world_data, [chunk_x - 1, chunk_z - 1]);
+            self.chunk_manager.queue_mesh_job(world_data, [chunk_x + 1, chunk_z + 1]);
+            self.chunk_manager.queue_mesh_job(world_data, [chunk_x - 1, chunk_z + 1]);
+            self.chunk_manager.queue_mesh_job(world_data, [chunk_x + 1, chunk_z - 1]);
         }
 
-        // B. Block Interaction (Breaking / Placing)
-        if let Some((location, previous_step)) = self.player.get_looking_at() {
-            let now = Instant::now();
-            let is_place = self.input.right_pressed;
-            let is_break =
-                self.input.left_pressed && (now - self.last_break_time).as_millis() > 250;
-
-            if is_place || is_break {
-                let target_pos = if is_place {
-                    location - DIRECTION_OFFSETS[previous_step]
-                } else {
-                    self.last_break_time = now;
-                    location
-                };
-
-                if target_pos.y >= 0 && target_pos.y < CHUNK_HEIGHT_I32 {
-                    let chunk_x = target_pos.x.div_euclid(CHUNK_WIDTH_I32);
-                    let chunk_z = target_pos.z.div_euclid(CHUNK_DEPTH_I32);
-                    let chunk_loc = [chunk_x, chunk_z];
-
-                    if let Some(chunk_arc) = self.chunk_manager.generated_data.get_mut(&chunk_loc) {
-                        let local_x = target_pos.x.rem_euclid(CHUNK_WIDTH_I32) as usize;
-                        let local_z = target_pos.z.rem_euclid(CHUNK_DEPTH_I32) as usize;
-                        #[allow(clippy::cast_sign_loss)]
-                        let local_y = target_pos.y as usize;
-
-                        let chunk = Arc::make_mut(chunk_arc);
-                        let current_block = chunk.contents[block_index(local_x, local_y, local_z)];
-
-                        let new_block = if is_place && current_block == block::BlockType::Air {
-                            Some(block::BlockType::Stone)
-                        } else if is_break {
-                            Some(block::BlockType::Air)
-                        } else {
-                            None
-                        };
-
-                        if let Some(block) = new_block {
-                            chunk.contents[block_index(local_x, local_y, local_z)] = block;
-
-                            let world_data = &self.chunk_manager.generated_data;
-                            self.chunk_manager.queue_mesh_job(world_data, chunk_loc);
-
-                            if local_x == 0 {
-                                self.chunk_manager
-                                    .queue_mesh_job(world_data, [chunk_x - 1, chunk_z]);
-                            }
-                            if local_x == CHUNK_WIDTH - 1 {
-                                self.chunk_manager
-                                    .queue_mesh_job(world_data, [chunk_x + 1, chunk_z]);
-                            }
-                            if local_z == 0 {
-                                self.chunk_manager
-                                    .queue_mesh_job(world_data, [chunk_x, chunk_z - 1]);
-                            }
-                            if local_z == CHUNK_DEPTH - 1 {
-                                self.chunk_manager
-                                    .queue_mesh_job(world_data, [chunk_x, chunk_z + 1]);
-                            }
-
-                            if local_x == 0 && local_z == 0 {
-                                self.chunk_manager
-                                    .queue_mesh_job(world_data, [chunk_x - 1, chunk_z - 1]);
-                            }
-                            if local_x == CHUNK_WIDTH - 1 && local_z == CHUNK_DEPTH - 1 {
-                                self.chunk_manager
-                                    .queue_mesh_job(world_data, [chunk_x + 1, chunk_z + 1]);
-                            }
-                            if local_x == 0 && local_z == CHUNK_DEPTH - 1 {
-                                self.chunk_manager
-                                    .queue_mesh_job(world_data, [chunk_x - 1, chunk_z + 1]);
-                            }
-                            if local_x == CHUNK_WIDTH - 1 && local_z == 0 {
-                                self.chunk_manager
-                                    .queue_mesh_job(world_data, [chunk_x + 1, chunk_z - 1]);
-                            }
-                        }
-                    }
-                }
-            }
-        }
         self.chunk_manager.insert_chunk(&self.render_context);
+
+        // 5. Reset frame-based input deltas (mouse dx/dy, scroll wheel)
+        self.input.end_frame();
     }
 
     #[tracing::instrument(skip(self))]
@@ -413,7 +317,7 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 if let Some(state) = &mut self.state {
                     state
-                        .camera_controller
+                        .input
                         .process_keyboard(event.physical_key, event.state.is_pressed());
                 }
             }
@@ -421,14 +325,10 @@ impl ApplicationHandler for App {
             WindowEvent::MouseWheel { delta, .. } => {
                 let scroll = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(pos) => {
-                        #[allow(clippy::cast_possible_truncation)]
-                        let delta = pos.y as f32;
-                        delta
-                    }
+                    MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
                 };
                 if let Some(state) = &mut self.state {
-                    state.camera_controller.process_scroll(scroll);
+                    state.input.scroll_delta += scroll;
                 }
             }
 
@@ -438,15 +338,9 @@ impl ApplicationHandler for App {
                 ..
             } => {
                 if let Some(state) = &mut self.state {
-                    match button {
-                        winit::event::MouseButton::Left => {
-                            state.input.left_pressed = button_state.is_pressed();
-                        }
-                        winit::event::MouseButton::Right => {
-                            state.input.right_pressed = button_state.is_pressed();
-                        }
-                        _ => {}
-                    }
+                    state
+                        .input
+                        .process_mouse_button(button, button_state.is_pressed());
                 }
             }
 
@@ -471,15 +365,12 @@ impl ApplicationHandler for App {
 
                     state.update(dt);
 
-                    match state.render_context.render(
-                        &state.chunk_manager,
-                        &state.camera,
-                        &state.ui,
-                    ) {
-                        RenderOutcome::Success => {}
-                        RenderOutcome::NeedsResize => {
-                            state.render_context.resize(state.render_context.size);
-                        }
+                    if state
+                        .render_context
+                        .render(&state.chunk_manager, &state.camera, &state.ui)
+                        == RenderOutcome::NeedsResize
+                    {
+                        state.render_context.resize(state.render_context.size);
                     }
                 }
             }
@@ -496,7 +387,10 @@ impl ApplicationHandler for App {
         if let DeviceEvent::MouseMotion { delta } = event
             && let Some(state) = &mut self.state
         {
-            state.camera_controller.process_mouse(delta.0, delta.1);
+            #[allow(clippy::cast_possible_truncation)]
+            state
+                .input
+                .accumulate_mouse_motion(delta.0 as f32, delta.1 as f32);
         }
     }
 

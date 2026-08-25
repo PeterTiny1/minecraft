@@ -246,6 +246,7 @@ impl From<image::ImageError> for RenderContextError {
     }
 }
 
+#[derive(PartialEq, Eq)]
 pub enum RenderOutcome {
     Success,
     NeedsResize,

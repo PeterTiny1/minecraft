@@ -200,6 +200,69 @@ impl ChunkManager {
             let _ = self.sender.try_send(job); // Handle or log error if needed
         }
     }
+
+    pub fn set_block(&mut self, target_pos: vek::Vec3<i32>, block: BlockType) -> bool {
+        if target_pos.y < 0 || target_pos.y >= CHUNK_HEIGHT_I32 {
+            return false;
+        }
+
+        let chunk_x = target_pos.x.div_euclid(CHUNK_WIDTH_I32);
+        let chunk_z = target_pos.z.div_euclid(CHUNK_DEPTH_I32);
+        let chunk_loc = [chunk_x, chunk_z];
+
+        let Some(chunk_arc) = self.generated_data.get_mut(&chunk_loc) else {
+            return false; // Chunk isn't loaded/generated yet
+        };
+
+        let local_x = target_pos.x.rem_euclid(CHUNK_WIDTH_I32) as usize;
+        let local_z = target_pos.z.rem_euclid(CHUNK_DEPTH_I32) as usize;
+        #[allow(clippy::cast_sign_loss)]
+        let local_y = target_pos.y as usize;
+
+        let idx = block_index(local_x, local_y, local_z);
+        let chunk = Arc::make_mut(chunk_arc);
+
+        // Don't re-mesh if the block didn't actually change
+        if chunk.contents[idx] == block {
+            return false;
+        }
+
+        chunk.contents[idx] = block;
+
+        // Re-mesh current chunk
+        let world_data = &self.generated_data;
+        self.queue_mesh_job(world_data, chunk_loc);
+
+        // Re-mesh adjacent neighbors if block is on chunk borders
+        if local_x == 0 {
+            self.queue_mesh_job(world_data, [chunk_x - 1, chunk_z]);
+        }
+        if local_x == CHUNK_WIDTH - 1 {
+            self.queue_mesh_job(world_data, [chunk_x + 1, chunk_z]);
+        }
+        if local_z == 0 {
+            self.queue_mesh_job(world_data, [chunk_x, chunk_z - 1]);
+        }
+        if local_z == CHUNK_DEPTH - 1 {
+            self.queue_mesh_job(world_data, [chunk_x, chunk_z + 1]);
+        }
+
+        // Corner cases
+        if local_x == 0 && local_z == 0 {
+            self.queue_mesh_job(world_data, [chunk_x - 1, chunk_z - 1]);
+        }
+        if local_x == CHUNK_WIDTH - 1 && local_z == CHUNK_DEPTH - 1 {
+            self.queue_mesh_job(world_data, [chunk_x + 1, chunk_z + 1]);
+        }
+        if local_x == 0 && local_z == CHUNK_DEPTH - 1 {
+            self.queue_mesh_job(world_data, [chunk_x - 1, chunk_z + 1]);
+        }
+        if local_x == CHUNK_WIDTH - 1 && local_z == 0 {
+            self.queue_mesh_job(world_data, [chunk_x + 1, chunk_z - 1]);
+        }
+
+        true
+    }
 }
 
 impl Default for ChunkManager {
