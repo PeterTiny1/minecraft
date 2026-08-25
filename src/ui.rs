@@ -31,6 +31,24 @@ pub struct State {
     pub uniform_buffer: wgpu::Buffer,
 }
 
+impl State {
+    pub fn resize(&mut self, queue: &wgpu::Queue, size: PhysicalSize<u32>) {
+        if size.width == 0 || size.height == 0 {
+            return;
+        }
+
+        #[allow(clippy::cast_precision_loss)]
+        let aspect = size.width as f32 / size.height as f32;
+        self.uniform.aspect = aspect;
+
+        queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[self.uniform]),
+        );
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex([f32; 2], [f32; 2]);

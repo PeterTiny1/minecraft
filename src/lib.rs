@@ -22,6 +22,7 @@ use std::{env, path::Path, sync::Arc, time::Instant};
 use vek::Vec3;
 use winit::{
     application::ApplicationHandler,
+    dpi::PhysicalSize,
     event::{DeviceEvent, KeyEvent, MouseScrollDelta, WindowEvent},
     event_loop::EventLoop,
     keyboard::{Key, NamedKey},
@@ -147,7 +148,6 @@ impl RunningState {
     }
 
     /// The main game logic update tick.
-/// The main game logic update tick.
     #[tracing::instrument(skip(self))]
     fn update(&mut self, dt: std::time::Duration) {
         let dt_secs = dt.as_secs_f32().min(0.1);
@@ -166,7 +166,8 @@ impl RunningState {
         self.render_context.write_uniforms();
 
         // 3. Block interaction (Break/Place)
-        self.player.update_blocks(&self.input, &mut self.chunk_manager);
+        self.player
+            .update_blocks(&self.input, &mut self.chunk_manager);
 
         // 4. Chunk Loading & Meshing
         if let Some(chunk_loc) =
@@ -184,15 +185,23 @@ impl RunningState {
 
             // Queue mesh jobs for center chunk and surrounding neighbors
             self.chunk_manager.queue_mesh_job(world_data, chunk_loc);
-            self.chunk_manager.queue_mesh_job(world_data, [chunk_x - 1, chunk_z]);
-            self.chunk_manager.queue_mesh_job(world_data, [chunk_x + 1, chunk_z]);
-            self.chunk_manager.queue_mesh_job(world_data, [chunk_x, chunk_z - 1]);
-            self.chunk_manager.queue_mesh_job(world_data, [chunk_x, chunk_z + 1]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x - 1, chunk_z]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x + 1, chunk_z]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x, chunk_z - 1]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x, chunk_z + 1]);
 
-            self.chunk_manager.queue_mesh_job(world_data, [chunk_x - 1, chunk_z - 1]);
-            self.chunk_manager.queue_mesh_job(world_data, [chunk_x + 1, chunk_z + 1]);
-            self.chunk_manager.queue_mesh_job(world_data, [chunk_x - 1, chunk_z + 1]);
-            self.chunk_manager.queue_mesh_job(world_data, [chunk_x + 1, chunk_z - 1]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x - 1, chunk_z - 1]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x + 1, chunk_z + 1]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x - 1, chunk_z + 1]);
+            self.chunk_manager
+                .queue_mesh_job(world_data, [chunk_x + 1, chunk_z - 1]);
         }
 
         self.chunk_manager.insert_chunk(&self.render_context);
@@ -247,6 +256,17 @@ impl RunningState {
             total = generated_chunkdata.len(),
             "Finished saving chunks"
         );
+    }
+    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        if new_size.width == 0 || new_size.height == 0 {
+            return;
+        }
+
+        self.render_context.resize(new_size);
+        self.camera
+            .projection
+            .resize(new_size.width, new_size.height);
+        self.ui.resize(&self.render_context.queue, new_size);
     }
 }
 
@@ -345,15 +365,8 @@ impl ApplicationHandler for App {
             }
 
             WindowEvent::Resized(new_size) => {
-                if let Some(state) = &mut self.state
-                    && new_size.height > 0
-                    && new_size.width > 0
-                {
-                    state.render_context.resize(new_size);
-                    state
-                        .camera
-                        .projection
-                        .resize(new_size.width, new_size.height);
+                if let Some(state) = &mut self.state {
+                    state.resize(new_size);
                 }
             }
 
@@ -370,7 +383,7 @@ impl ApplicationHandler for App {
                         .render(&state.chunk_manager, &state.camera, &state.ui)
                         == RenderOutcome::NeedsResize
                     {
-                        state.render_context.resize(state.render_context.size);
+                        state.resize(state.render_context.size);
                     }
                 }
             }
