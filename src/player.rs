@@ -5,10 +5,11 @@ use std::{
 use vek::{Aabb, Vec2, Vec3};
 
 use crate::{
-    DIRECTION_OFFSETS, InputState,
+    InputState,
     block::BlockType,
     camera::CameraData,
     chunk::{BlockProvider, ChunkDataStorage, ChunkManager},
+    direction::Direction,
     ray,
 };
 
@@ -28,7 +29,7 @@ pub struct Player {
     pub sensitivity: f32,
 
     half_extents: Vec3<f32>,
-    looking_at_block: Option<(Vec3<i32>, usize)>,
+    looking_at_block: Option<(Vec3<i32>, Direction)>,
     last_break_time: Instant,
     last_place_time: Instant,
 }
@@ -176,7 +177,7 @@ impl Player {
         // 250ms cooldown on placing
         if input_state.right_click_held && now - self.last_place_time > Duration::from_millis(250) {
             self.last_place_time = now;
-            let place_pos = location - DIRECTION_OFFSETS[previous_step];
+            let place_pos = location + previous_step.opposite().offset();
 
             // Only place if target position is currently empty/air
             if chunk_manager.get_block(place_pos) == Some(BlockType::Air) {

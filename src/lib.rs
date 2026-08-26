@@ -2,6 +2,7 @@
 mod block;
 mod camera;
 mod chunk;
+mod direction;
 mod input;
 mod mesh;
 mod player;
@@ -68,14 +69,6 @@ impl From<winit::error::EventLoopError> for EngineError {
 pub const RENDER_DISTANCE: f32 = 768.0;
 pub const SEED: u32 = 0;
 
-pub const DIRECTION_OFFSETS: [Vec3<i32>; 6] = [
-    Vec3 { x: -1, y: 0, z: 0 },
-    Vec3 { x: 1, y: 0, z: 0 },
-    Vec3 { x: 0, y: -1, z: 0 },
-    Vec3 { x: 0, y: 1, z: 0 },
-    Vec3 { x: 0, y: 0, z: -1 },
-    Vec3 { x: 0, y: 0, z: 1 },
-];
 pub const PLAYER_START_POS: Vec3<f32> = Vec3::new(0.0, 100.0, 0.0);
 
 // --- LOCAL STRUCTS ---

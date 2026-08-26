@@ -1,5 +1,7 @@
 use vek::Vec3;
 
+use crate::direction::Direction;
+
 /// 3D Voxel Raycaster (Amanatides-Woo Fast Voxel Traversal)
 pub struct Ray {
     step: Vec3<i32>,
@@ -7,7 +9,7 @@ pub struct Ray {
     t_delta: Vec3<f32>,
     block_position: Vec3<i32>,
     max_len: f32,
-    hit_face: usize,
+    hit_face: Direction,
     first_step: bool,
 }
 
@@ -56,14 +58,14 @@ impl Ray {
             t_delta,
             block_position,
             max_len,
-            hit_face: 0,
+            hit_face: Direction::NegX,
             first_step: true,
         }
     }
 }
 
 impl Iterator for Ray {
-    type Item = (Vec3<i32>, usize); // (block_position, face_index)
+    type Item = (Vec3<i32>, Direction); // (block_position, face_index)
 
     fn next(&mut self) -> Option<Self::Item> {
         // 1. First iteration yields the starting voxel (face is dummy 0)
@@ -92,9 +94,8 @@ impl Iterator for Ray {
         self.block_position[axis] += self.step[axis];
         self.t_max[axis] += self.t_delta[axis];
 
-        // 5. Calculate entry face (-X:0, +X:1, -Y:2, +Y:3, -Z:4, +Z:5)
-        self.hit_face = axis * 2 + usize::from(self.step[axis] < 0);
+        let hit_face = Direction::from_axis_and_step(axis, self.step[axis] > 0);
 
-        Some((self.block_position, self.hit_face))
+        Some((self.block_position, hit_face))
     }
 }
