@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     path::Path,
     sync::{Arc, mpsc},
-    thread,
 };
 
 use noise::OpenSimplex;
@@ -14,7 +13,7 @@ use crate::{
     RENDER_DISTANCE, SEED,
     block::BlockType,
     camera::{self, Camera},
-    mesh_gen::{Index, generate_chunk_mesh},
+    mesh_gen::{self, Index, LocatedChunk, MeshJob},
     renderer::{RenderContext, Vertex, cuboid_intersects_frustum},
     world_gen::generate,
 };
@@ -32,15 +31,6 @@ pub struct ChunkData {
     pub contents: Chunk,
 }
 pub type ChunkDataStorage = HashMap<[i32; 2], Arc<ChunkData>>;
-pub struct LocatedChunk {
-    pub loc: [i32; 2],
-    pub data: Arc<ChunkData>,
-}
-pub struct MeshJob {
-    pub chunk: LocatedChunk,
-    // NORTH CLOCKWISE
-    pub neighbours: Vec<LocatedChunk>,
-}
 const NEIGHBOUR_OFFSETS: [[i32; 2]; 8] = [
     [1, 0],   // 0: [x + 1, y]
     [1, 1],   // 1: [x + 1, y + 1]
@@ -258,7 +248,7 @@ impl Default for ChunkManager {
         let (send_generate, recv_generate) = mpsc::sync_channel(10);
         let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
         let generated_chunkdata = HashMap::new();
-        start_meshgen(recv_generate, send_chunk);
+        mesh_gen::start_meshgen(recv_generate, send_chunk);
         let noise = OpenSimplex::new(SEED);
         Self {
             generated_buffers: generated_chunk_buffers,
@@ -343,54 +333,4 @@ pub fn world_to_chunk_pos(x: i32, y: i32, z: i32) -> ([i32; 2], [usize; 3]) {
         z.rem_euclid(CHUNK_DEPTH_I32) as usize,
     ];
     (chunk_loc, local_pos)
-}
-
-pub fn start_meshgen(
-    recv_generate: mpsc::Receiver<MeshJob>,
-    send_chunk: mpsc::SyncSender<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
-) -> thread::JoinHandle<()> {
-    thread::spawn(move || manage_meshgen(&recv_generate, &send_chunk))
-}
-
-fn manage_meshgen(
-    recv_generate: &mpsc::Receiver<MeshJob>,
-    send_chunk: &mpsc::SyncSender<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
-) {
-    let mut waiting: Vec<(Vec<Vertex>, Vec<Index>, [i32; 2])> = Vec::new();
-
-    loop {
-        // 1. Drain pending waiting items without cloning heavy vertex arrays
-        let mut still_waiting = Vec::new();
-        for item in waiting.drain(..) {
-            if let Err(mpsc::TrySendError::Full(rejected)) = send_chunk.try_send(item) {
-                still_waiting.push(rejected);
-            }
-        }
-        waiting = still_waiting;
-
-        // 2. Fetch next job
-        let job = if waiting.is_empty() {
-            match recv_generate.recv() {
-                Ok(j) => j,
-                Err(_) => break, // Channel closed
-            }
-        } else {
-            match recv_generate.try_recv() {
-                Ok(j) => j,
-                Err(mpsc::TryRecvError::Empty) => {
-                    thread::sleep(std::time::Duration::from_millis(1));
-                    continue;
-                }
-                Err(mpsc::TryRecvError::Disconnected) => break,
-            }
-        };
-
-        // 3. Process mesh job
-        let (mesh, indices) = generate_chunk_mesh(&job.chunk, &job.neighbours);
-        let result = (mesh, indices, job.chunk.loc);
-
-        if let Err(mpsc::TrySendError::Full(item)) = send_chunk.try_send(result) {
-            waiting.push(item);
-        }
-    }
 }
