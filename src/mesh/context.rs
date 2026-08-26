@@ -39,7 +39,7 @@ impl MeshGenerationContext<'_> {
     fn get_block_at_offset(&self, dx: i32, dy: i32, dz: i32) -> Option<BlockType> {
         let target_y = self.local_y + dy;
 
-        if target_y < 0 || target_y >= CHUNK_HEIGHT_I32 {
+        if !(0..CHUNK_HEIGHT_I32).contains(&target_y) {
             return Some(BlockType::Air);
         }
 

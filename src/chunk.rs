@@ -228,7 +228,7 @@ impl ChunkManager {
     }
 
     /// Queues mesh updates for a target chunk and all 8 surrounding neighbors.
-    fn queue_mesh_with_neighbors(&mut self, [x, z]: [i32; 2]) {
+    fn queue_mesh_with_neighbors(&self, [x, z]: [i32; 2]) {
         for dx in -1..=1 {
             for dz in -1..=1 {
                 self.queue_mesh_job([x + dx, z + dz]);
@@ -325,7 +325,7 @@ pub fn nearest_visible_unloaded(
 }
 
 #[inline(always)]
-pub fn world_to_chunk_pos(x: i32, y: i32, z: i32) -> ([i32; 2], [usize; 3]) {
+pub const fn world_to_chunk_pos(x: i32, y: i32, z: i32) -> ([i32; 2], [usize; 3]) {
     let chunk_loc = [x.div_euclid(CHUNK_WIDTH_I32), z.div_euclid(CHUNK_DEPTH_I32)];
     let local_pos = [
         x.rem_euclid(CHUNK_WIDTH_I32) as usize,
