@@ -245,6 +245,11 @@ impl ChunkManager {
             }
         }
     }
+
+    #[must_use]
+    pub fn get_block(&self, pos: Vec3<i32>) -> Option<BlockType> {
+        self.generated_data.get_block(pos.x, pos.y, pos.z)
+    }
 }
 
 impl Default for ChunkManager {

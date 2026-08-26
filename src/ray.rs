@@ -31,7 +31,13 @@ impl Ray {
         });
 
         // 2. Distance to cross 1 full voxel along each axis (avoiding div by 0 using INFINITY)
-        let t_delta = dir.map(|d| if d == 0.0 { f32::INFINITY } else { (1.0 / d).abs() });
+        let t_delta = dir.map(|d| {
+            if d == 0.0 {
+                f32::INFINITY
+            } else {
+                (1.0 / d).abs()
+            }
+        });
 
         // 3. Distance from origin to first grid boundary (voxel face)
         let t_max = origin.map2(dir, |o, d| {
