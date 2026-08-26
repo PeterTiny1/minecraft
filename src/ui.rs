@@ -2,8 +2,8 @@ use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 
 use crate::{
-    renderer::RenderContext, renderer::create_index_buffer, renderer::create_render_pipeline,
-    renderer::load_texture, texture,
+    renderer::{RenderContext, create_index_buffer, create_render_pipeline, load_texture},
+    texture,
 };
 
 #[repr(C)]
@@ -14,7 +14,14 @@ pub struct Uniform {
 }
 
 impl Uniform {
-    pub fn new(aspect: f32) -> Self {
+    pub fn from_size(size: PhysicalSize<u32>) -> Self {
+        #[allow(clippy::cast_precision_loss)]
+        let aspect = if size.height == 0 {
+            1.0
+        } else {
+            size.width as f32 / size.height as f32
+        };
+
         Self {
             aspect,
             _padding: [0.0; 3],
@@ -37,15 +44,9 @@ impl State {
             return;
         }
 
-        #[allow(clippy::cast_precision_loss)]
-        let aspect = size.width as f32 / size.height as f32;
-        self.uniform.aspect = aspect;
+        self.uniform = Uniform::from_size(size);
 
-        queue.write_buffer(
-            &self.uniform_buffer,
-            0,
-            bytemuck::cast_slice(&[self.uniform]),
-        );
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&self.uniform));
     }
 }
 
@@ -151,16 +152,14 @@ pub fn init_state(render_context: &RenderContext, size: PhysicalSize<u32>) -> St
         create_index_buffer(&render_context.device, &[0, 1, 2, 0, 2, 3]),
     );
 
-    #[allow(clippy::cast_precision_loss)]
-    let aspect = size.width as f32 / size.height as f32;
-    let uniform = Uniform::new(aspect);
+    let uniform = Uniform::from_size(size);
 
     let uniform_buffer =
         render_context
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Uniform Buffer"),
-                contents: bytemuck::cast_slice(&[uniform]),
+                contents: bytemuck::bytes_of(&uniform),
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
 
