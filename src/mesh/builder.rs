@@ -1,43 +1,11 @@
-use std::{
-    f32::consts::FRAC_1_SQRT_2,
-    sync::{Arc, mpsc},
-    thread,
-};
+use std::f32::consts::FRAC_1_SQRT_2;
 
 use crate::{
-    ChunkData,
     block::BlockType,
-    chunk::{CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_HEIGHT_I32, CHUNK_WIDTH_I32, block_index},
+    chunk::{CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32, block_index},
+    mesh::{LocatedChunk, context::MeshGenerationContext, textures::get_texture_indices},
     renderer::Vertex,
 };
-
-pub type Index = u32;
-
-#[inline]
-const fn get_texture_indices(block_type: BlockType) -> [u8; 6] {
-    match block_type {
-        BlockType::Stone => [0; 6],
-        BlockType::Dirt => [1; 6],
-        BlockType::GrassBlock0 => [2, 3, 3, 3, 3, 1],
-        BlockType::GrassBlock1 => [4, 5, 5, 5, 5, 1],
-        BlockType::GrassBlock2 => [6, 7, 7, 7, 7, 1],
-        BlockType::BirchWood => [8, 9, 9, 9, 9, 8],
-        BlockType::Wood => [10, 11, 11, 11, 11, 10],
-        BlockType::DarkWood => [12, 13, 13, 13, 13, 12],
-        BlockType::BirchLeaf => [14; 6],
-        BlockType::Leaf => [15; 6],
-        BlockType::DarkLeaf => [16; 6],
-        BlockType::Grass0 => [17; 6],
-        BlockType::Grass1 => [18; 6],
-        BlockType::Grass2 => [19; 6],
-        BlockType::Flower0 => [20; 6],
-        BlockType::Flower1 => [21; 6],
-        BlockType::Flower2 => [22; 6],
-        BlockType::Sand => [23; 6],
-        BlockType::Water => [24, 25, 25, 25, 25, 24],
-        BlockType::Air => [0; 6],
-    }
-}
 
 const TOP_BRIGHTNESS: f32 = 1.0;
 const BOTTOM_BRIGHTNESS: f32 = 0.6;
@@ -50,115 +18,14 @@ const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
 const FAR_CORNER: f32 = 0.5 - 0.5 * FRAC_1_SQRT_2;
 const CLOSE_FLOWER_CORNER: f32 = 0.716_506_35;
 
-const FLOWER_INDICES: [Index; 12] = [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0];
-const GRASS_INDICES: [Index; 24] = [
+const FLOWER_INDICES: [u32; 12] = [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0];
+const GRASS_INDICES: [u32; 24] = [
     0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0, 4, 5, 6, 4, 6, 7, 7, 6, 4, 6, 5, 4,
 ];
-const BIDIR_INDICES: [Index; 12] = [0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0];
-const QUAD_INDICES: [Index; 6] = [0, 1, 2, 0, 2, 3];
+const BIDIR_INDICES: [u32; 12] = [0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0];
+const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
 
-pub struct MeshGenerationContext<'a> {
-    pub center: &'a LocatedChunk,
-    pub neighbors: &'a [LocatedChunk],
-    pub local_x: i32,
-    pub local_y: i32,
-    pub local_z: i32,
-    pub global_x: i32,
-    pub global_y: i32,
-    pub global_z: i32,
-    pub indices: &'a mut Vec<Index>,
-    pub vertices: &'a mut Vec<Vertex>,
-}
-
-impl MeshGenerationContext<'_> {
-    #[allow(clippy::cast_precision_loss)]
-    #[inline]
-    pub const fn worldpos_f32(&self) -> [f32; 3] {
-        [
-            self.global_x as f32,
-            self.global_y as f32,
-            self.global_z as f32,
-        ]
-    }
-
-    #[inline]
-    pub fn extend_indices(&mut self, base_indices: &[Index]) {
-        let len_index =
-            Index::try_from(self.vertices.len()).expect("mesh count exceeded u32 limit");
-        self.indices
-            .extend(base_indices.iter().map(|i| *i + len_index));
-    }
-
-    fn get_block_at_offset(&self, dx: i32, dy: i32, dz: i32) -> Option<BlockType> {
-        let target_y = self.local_y + dy;
-
-        if target_y < 0 || target_y >= CHUNK_HEIGHT_I32 {
-            return Some(BlockType::Air);
-        }
-
-        let target_x = self.local_x + dx;
-        let target_z = self.local_z + dz;
-
-        if (0..CHUNK_WIDTH_I32).contains(&target_x) && (0..CHUNK_DEPTH_I32).contains(&target_z) {
-            return Some(
-                self.center.data.contents
-                    [block_index(target_x as usize, target_y as usize, target_z as usize)],
-            );
-        }
-
-        let mut target_chunk_x = self.center.loc[0];
-        let mut target_chunk_z = self.center.loc[1];
-        let mut rem_x = target_x;
-        let mut rem_z = target_z;
-
-        if target_x < 0 {
-            target_chunk_x -= 1;
-            rem_x += CHUNK_WIDTH_I32;
-        } else if target_x >= CHUNK_WIDTH_I32 {
-            target_chunk_x += 1;
-            rem_x -= CHUNK_WIDTH_I32;
-        }
-
-        if target_z < 0 {
-            target_chunk_z -= 1;
-            rem_z += CHUNK_DEPTH_I32;
-        } else if target_z >= CHUNK_DEPTH_I32 {
-            target_chunk_z += 1;
-            rem_z -= CHUNK_DEPTH_I32;
-        }
-
-        self.neighbors
-            .iter()
-            .find(|n| n.loc == [target_chunk_x, target_chunk_z])
-            .map(|neighbor| {
-                neighbor.data.contents
-                    [block_index(rem_x as usize, target_y as usize, rem_z as usize)]
-            })
-    }
-
-    #[inline]
-    pub fn should_draw_face(&self, offset_x: i32, offset_y: i32, offset_z: i32) -> bool {
-        self.get_block_at_offset(offset_x, offset_y, offset_z)
-            .is_none_or(super::block::BlockType::is_transparent)
-    }
-
-    #[inline]
-    pub fn is_neighbor_liquid(&self, offset_x: i32, offset_y: i32, offset_z: i32) -> bool {
-        self.get_block_at_offset(offset_x, offset_y, offset_z)
-            .is_some_and(super::block::BlockType::is_liquid)
-    }
-
-    #[inline]
-    pub fn is_neighbor_solid(&self, dx: i32, dy: i32, dz: i32) -> bool {
-        self.get_block_at_offset(dx, dy, dz)
-            .is_some_and(|block| !block.is_transparent())
-    }
-}
-
-pub fn generate_chunk_mesh(
-    chunk: &LocatedChunk,
-    neighbours: &[LocatedChunk],
-) -> (Vec<Vertex>, Vec<Index>) {
+pub fn generate(chunk: &LocatedChunk, neighbours: &[LocatedChunk]) -> (Vec<Vertex>, Vec<u32>) {
     // Reserve typical chunk geometry capacity upfront to prevent re-allocations
     let mut vertices = Vec::with_capacity(8000);
     let mut indices = Vec::with_capacity(12000);
@@ -699,67 +566,6 @@ fn generate_liquid(context: &mut MeshGenerationContext, tex_indices: [u8; 6]) {
                     data: [16, side_v_top, tex, 255],
                 },
             ]);
-        }
-    }
-}
-
-pub struct LocatedChunk {
-    pub loc: [i32; 2],
-    pub data: Arc<ChunkData>,
-}
-
-pub struct MeshJob {
-    pub chunk: LocatedChunk,
-    // NORTH CLOCKWISE
-    pub neighbours: Vec<LocatedChunk>,
-}
-
-pub fn start_meshgen(
-    recv_generate: mpsc::Receiver<MeshJob>,
-    send_chunk: mpsc::SyncSender<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
-) -> thread::JoinHandle<()> {
-    thread::spawn(move || manage_meshgen(&recv_generate, &send_chunk))
-}
-
-fn manage_meshgen(
-    recv_generate: &mpsc::Receiver<MeshJob>,
-    send_chunk: &mpsc::SyncSender<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
-) {
-    let mut waiting: Vec<(Vec<Vertex>, Vec<Index>, [i32; 2])> = Vec::new();
-
-    loop {
-        // 1. Drain pending waiting items without cloning heavy vertex arrays
-        let mut still_waiting = Vec::new();
-        for item in waiting.drain(..) {
-            if let Err(mpsc::TrySendError::Full(rejected)) = send_chunk.try_send(item) {
-                still_waiting.push(rejected);
-            }
-        }
-        waiting = still_waiting;
-
-        // 2. Fetch next job
-        let job = if waiting.is_empty() {
-            match recv_generate.recv() {
-                Ok(j) => j,
-                Err(_) => break, // Channel closed
-            }
-        } else {
-            match recv_generate.try_recv() {
-                Ok(j) => j,
-                Err(mpsc::TryRecvError::Empty) => {
-                    thread::sleep(std::time::Duration::from_millis(1));
-                    continue;
-                }
-                Err(mpsc::TryRecvError::Disconnected) => break,
-            }
-        };
-
-        // 3. Process mesh job
-        let (mesh, indices) = generate_chunk_mesh(&job.chunk, &job.neighbours);
-        let result = (mesh, indices, job.chunk.loc);
-
-        if let Err(mpsc::TrySendError::Full(item)) = send_chunk.try_send(result) {
-            waiting.push(item);
         }
     }
 }

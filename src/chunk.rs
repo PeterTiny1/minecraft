@@ -13,7 +13,7 @@ use crate::{
     RENDER_DISTANCE, SEED,
     block::BlockType,
     camera::{self, Camera},
-    mesh_gen::{self, Index, LocatedChunk, MeshJob},
+    mesh::{self, LocatedChunk, MeshJob},
     renderer::{RenderContext, Vertex, cuboid_intersects_frustum},
     world_gen::generate,
 };
@@ -75,7 +75,7 @@ pub struct ChunkManager {
     noise: OpenSimplex,
 
     pub sender: mpsc::SyncSender<MeshJob>,
-    pub receiver: mpsc::Receiver<(Vec<Vertex>, Vec<Index>, [i32; 2])>,
+    pub receiver: mpsc::Receiver<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
 }
 
 impl ChunkManager {
@@ -248,7 +248,7 @@ impl Default for ChunkManager {
         let (send_generate, recv_generate) = mpsc::sync_channel(10);
         let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
         let generated_chunkdata = HashMap::new();
-        mesh_gen::start_meshgen(recv_generate, send_chunk);
+        mesh::start_meshgen(recv_generate, send_chunk);
         let noise = OpenSimplex::new(SEED);
         Self {
             generated_buffers: generated_chunk_buffers,

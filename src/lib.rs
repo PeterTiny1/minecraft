@@ -3,7 +3,7 @@ mod block;
 mod camera;
 mod chunk;
 mod input;
-mod mesh_gen;
+mod mesh;
 mod player;
 mod ray;
 mod renderer;
