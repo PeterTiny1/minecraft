@@ -169,44 +169,11 @@ impl RunningState {
         self.player
             .update_blocks(&self.input, &mut self.chunk_manager);
 
-        // 4. Chunk Loading & Meshing
-        if let Some(chunk_loc) =
-            chunk::nearest_visible_unloaded(&self.chunk_manager.generated_data, &self.camera)
-        {
-            let path_str = format!("{},{}.bin", chunk_loc[0], chunk_loc[1]);
-            tracing::trace!(chunk_loc = ?chunk_loc, "Queueing visible chunk");
-
-            let _center_arc = self
-                .chunk_manager
-                .load_or_generate_chunk_arc(Path::new(&path_str), chunk_loc);
-
-            let world_data = &self.chunk_manager.generated_data;
-            let [chunk_x, chunk_z] = chunk_loc;
-
-            // Queue mesh jobs for center chunk and surrounding neighbors
-            self.chunk_manager.queue_mesh_job(world_data, chunk_loc);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x - 1, chunk_z]);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x + 1, chunk_z]);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x, chunk_z - 1]);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x, chunk_z + 1]);
-
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x - 1, chunk_z - 1]);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x + 1, chunk_z + 1]);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x - 1, chunk_z + 1]);
-            self.chunk_manager
-                .queue_mesh_job(world_data, [chunk_x + 1, chunk_z - 1]);
-        }
-
+        // 4. Chunk Loading & GPU Uploads
+        self.chunk_manager.update_visible_chunks(&self.camera);
         self.chunk_manager.insert_chunk(&self.render_context);
 
-        // 5. Reset frame-based input deltas (mouse dx/dy, scroll wheel)
+        // 5. Reset frame-based input deltas
         self.input.end_frame();
     }
 

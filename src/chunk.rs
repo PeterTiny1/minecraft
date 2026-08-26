@@ -13,7 +13,7 @@ use wgpu::util::DeviceExt;
 use crate::{
     RENDER_DISTANCE, SEED,
     block::BlockType,
-    camera,
+    camera::{self, Camera},
     mesh_gen::{Index, generate_chunk_mesh},
     renderer::{RenderContext, Vertex, cuboid_intersects_frustum},
     world_gen::generate,
@@ -262,6 +262,31 @@ impl ChunkManager {
         }
 
         true
+    }
+
+    /// Dispatches loading/generation and neighbor remeshing for the next visible chunk.
+    pub fn update_visible_chunks(&mut self, camera: &Camera) {
+        let Some(chunk_loc) = nearest_visible_unloaded(&self.generated_data, camera) else {
+            return;
+        };
+
+        tracing::trace!(chunk_loc = ?chunk_loc, "Queueing visible chunk");
+
+        // Let ChunkManager handle file paths internally
+        let path_str = format!("{},{}.bin", chunk_loc[0], chunk_loc[1]);
+        let _ = self.load_or_generate_chunk_arc(Path::new(&path_str), chunk_loc);
+
+        // Batch meshing for chunk + 8 surrounding neighbors
+        self.queue_mesh_with_neighbors(chunk_loc);
+    }
+
+    /// Queues mesh updates for a target chunk and all 8 surrounding neighbors.
+    fn queue_mesh_with_neighbors(&mut self, [x, z]: [i32; 2]) {
+        for dx in -1..=1 {
+            for dz in -1..=1 {
+                self.queue_mesh_job(&self.generated_data, [x + dx, z + dz]);
+            }
+        }
     }
 }
 
