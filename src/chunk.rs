@@ -64,20 +64,12 @@ pub trait BlockProvider {
 
 impl BlockProvider for ChunkDataStorage {
     fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType> {
-        let chunk_x = x.div_euclid(CHUNK_WIDTH_I32);
-        let chunk_z = z.div_euclid(CHUNK_DEPTH_I32);
-        let chunk = self.get(&[chunk_x, chunk_z])?;
-
-        if y >= 0 && (y as usize) < CHUNK_HEIGHT {
-            let local_x = x.rem_euclid(CHUNK_WIDTH_I32) as usize;
-            let local_y = y as usize;
-            let local_z = z.rem_euclid(CHUNK_DEPTH_I32) as usize;
-
-            let idx = block_index(local_x, local_y, local_z);
-            Some(chunk.contents[idx])
-        } else {
-            None
+        if y < 0 || y as usize >= CHUNK_HEIGHT {
+            return None;
         }
+        let (chunk_loc, [local_x, local_y, local_z]) = world_to_chunk_pos(x, y, z);
+        let chunk = self.get(&chunk_loc)?;
+        Some(chunk.contents[block_index(local_x, local_y, local_z)])
     }
 }
 #[derive(Debug)]
@@ -177,12 +169,13 @@ impl ChunkManager {
                 render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
             });
     }
-    pub fn queue_mesh_job(&self, world_map: &HashMap<[i32; 2], Arc<ChunkData>>, loc: [i32; 2]) {
-        if let Some(center_arc) = world_map.get(&loc) {
+
+    pub fn queue_mesh_job(&self, loc: [i32; 2]) {
+        if let Some(center_arc) = self.generated_data.get(&loc) {
             let mut neighbours = Vec::with_capacity(8);
             for offset in NEIGHBOUR_OFFSETS {
                 let n_loc = [loc[0] + offset[0], loc[1] + offset[1]];
-                if let Some(neighbor_arc) = world_map.get(&n_loc) {
+                if let Some(neighbor_arc) = self.generated_data.get(&n_loc) {
                     neighbours.push(LocatedChunk {
                         loc: n_loc,
                         data: neighbor_arc.clone(),
@@ -197,7 +190,7 @@ impl ChunkManager {
                 },
                 neighbours,
             };
-            let _ = self.sender.try_send(job); // Handle or log error if needed
+            let _ = self.sender.try_send(job);
         }
     }
 
@@ -206,18 +199,12 @@ impl ChunkManager {
             return false;
         }
 
-        let chunk_x = target_pos.x.div_euclid(CHUNK_WIDTH_I32);
-        let chunk_z = target_pos.z.div_euclid(CHUNK_DEPTH_I32);
-        let chunk_loc = [chunk_x, chunk_z];
+        let (chunk_loc, [local_x, local_y, local_z]) =
+            world_to_chunk_pos(target_pos.x, target_pos.y, target_pos.z);
 
         let Some(chunk_arc) = self.generated_data.get_mut(&chunk_loc) else {
             return false; // Chunk isn't loaded/generated yet
         };
-
-        let local_x = target_pos.x.rem_euclid(CHUNK_WIDTH_I32) as usize;
-        let local_z = target_pos.z.rem_euclid(CHUNK_DEPTH_I32) as usize;
-        #[allow(clippy::cast_sign_loss)]
-        let local_y = target_pos.y as usize;
 
         let idx = block_index(local_x, local_y, local_z);
         let chunk = Arc::make_mut(chunk_arc);
@@ -229,37 +216,7 @@ impl ChunkManager {
 
         chunk.contents[idx] = block;
 
-        // Re-mesh current chunk
-        let world_data = &self.generated_data;
-        self.queue_mesh_job(world_data, chunk_loc);
-
-        // Re-mesh adjacent neighbors if block is on chunk borders
-        if local_x == 0 {
-            self.queue_mesh_job(world_data, [chunk_x - 1, chunk_z]);
-        }
-        if local_x == CHUNK_WIDTH - 1 {
-            self.queue_mesh_job(world_data, [chunk_x + 1, chunk_z]);
-        }
-        if local_z == 0 {
-            self.queue_mesh_job(world_data, [chunk_x, chunk_z - 1]);
-        }
-        if local_z == CHUNK_DEPTH - 1 {
-            self.queue_mesh_job(world_data, [chunk_x, chunk_z + 1]);
-        }
-
-        // Corner cases
-        if local_x == 0 && local_z == 0 {
-            self.queue_mesh_job(world_data, [chunk_x - 1, chunk_z - 1]);
-        }
-        if local_x == CHUNK_WIDTH - 1 && local_z == CHUNK_DEPTH - 1 {
-            self.queue_mesh_job(world_data, [chunk_x + 1, chunk_z + 1]);
-        }
-        if local_x == 0 && local_z == CHUNK_DEPTH - 1 {
-            self.queue_mesh_job(world_data, [chunk_x - 1, chunk_z + 1]);
-        }
-        if local_x == CHUNK_WIDTH - 1 && local_z == 0 {
-            self.queue_mesh_job(world_data, [chunk_x + 1, chunk_z - 1]);
-        }
+        self.queue_mesh_with_neighbors(chunk_loc);
 
         true
     }
@@ -284,7 +241,7 @@ impl ChunkManager {
     fn queue_mesh_with_neighbors(&mut self, [x, z]: [i32; 2]) {
         for dx in -1..=1 {
             for dz in -1..=1 {
-                self.queue_mesh_job(&self.generated_data, [x + dx, z + dz]);
+                self.queue_mesh_job([x + dx, z + dz]);
             }
         }
     }
@@ -370,6 +327,17 @@ pub fn nearest_visible_unloaded(
     }
 
     nearest_chunk
+}
+
+#[inline(always)]
+pub fn world_to_chunk_pos(x: i32, y: i32, z: i32) -> ([i32; 2], [usize; 3]) {
+    let chunk_loc = [x.div_euclid(CHUNK_WIDTH_I32), z.div_euclid(CHUNK_DEPTH_I32)];
+    let local_pos = [
+        x.rem_euclid(CHUNK_WIDTH_I32) as usize,
+        y as usize,
+        z.rem_euclid(CHUNK_DEPTH_I32) as usize,
+    ];
+    (chunk_loc, local_pos)
 }
 
 pub fn start_meshgen(
