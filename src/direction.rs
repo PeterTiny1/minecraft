@@ -40,11 +40,11 @@ impl Direction {
     pub fn from_axis_and_step(axis: usize, step_positive: bool) -> Self {
         match (axis, step_positive) {
             (0, false) => Self::NegX,
-            (0, true)  => Self::PosX,
+            (0, true) => Self::PosX,
             (1, false) => Self::NegY,
-            (1, true)  => Self::PosY,
+            (1, true) => Self::PosY,
             (2, false) => Self::NegZ,
-            (2, true)  => Self::PosZ,
+            (2, true) => Self::PosZ,
             _ => panic!("axis out of range: {}", axis),
         }
     }

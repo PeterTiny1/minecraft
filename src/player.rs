@@ -169,13 +169,19 @@ impl Player {
         let now = Instant::now();
 
         // 250ms cooldown on breaking
-        if input_state.left_click_held && now - self.last_break_time > Duration::from_millis(250) {
+        if input_state.left_click_just_pressed
+            || input_state.left_click_held
+                && now - self.last_break_time > Duration::from_millis(250)
+        {
             self.last_break_time = now;
             chunk_manager.set_block(location, BlockType::Air);
         }
 
         // 250ms cooldown on placing
-        if input_state.right_click_held && now - self.last_place_time > Duration::from_millis(250) {
+        if input_state.right_click_just_pressed
+            || input_state.right_click_held
+                && now - self.last_place_time > Duration::from_millis(250)
+        {
             self.last_place_time = now;
             let place_pos = location + previous_step.opposite().offset();
 
