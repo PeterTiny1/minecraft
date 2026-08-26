@@ -23,16 +23,21 @@ winit = { version = "0.30", features = ["x11", "wayland", "wayland-dlopen"] }
 unexpected_cfgs = "warn"
 
 [lints.clippy]
-# Performance and correctness enforcement
 perf = { level = "deny", priority = -1 }
 style = { level = "warn", priority = -1 }
+
+# --- Keep standard quality checks ---
+unwrap_used = "warn"
+large_types_passed_by_value = "warn"
 cloned_instead_of_copied = "warn"
 inefficient_to_string = "warn"
-large_types_passed_by_value = "warn"
-unwrap_used = "warn" # Encourages robust error propagation over game crashes
-cast_possible_truncation = "warn"
-cast_precision_loss = "warn"
-cast_sign_loss = "warn"
+
+# --- Silence math/voxel noise ---
+suboptimal_flops = "allow"        # Keeps `a * b + c` readable instead of forced `mul_add`
+imprecise_flops = "allow"
+cast_possible_truncation = "allow" # Essential for frequent f32 -> i32 -> usize voxel math
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
 
 [profile.dev]
 opt-level = 1 # Keeps project code fast to compile while remaining playable
