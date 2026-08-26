@@ -5,10 +5,11 @@ use std::{
 use vek::{Aabb, Vec2, Vec3};
 
 use crate::{
+    DIRECTION_OFFSETS, InputState,
     block::BlockType,
     camera::CameraData,
     chunk::{BlockProvider, ChunkDataStorage, ChunkManager},
-    ray, InputState, DIRECTION_OFFSETS,
+    ray,
 };
 
 const GRAVITY: f32 = 30.0;
@@ -95,7 +96,8 @@ impl Player {
         let right = (camera_data.yaw - FRAC_PI_2).cos() * Vec3::unit_x()
             + (camera_data.yaw - FRAC_PI_2).sin() * Vec3::unit_z();
 
-        let forward_force = if input.forward { 1.0 } else { 0.0 } - if input.backward { 1.0 } else { 0.0 };
+        let forward_force =
+            if input.forward { 1.0 } else { 0.0 } - if input.backward { 1.0 } else { 0.0 };
         let right_force = if input.left { 1.0 } else { 0.0 } - if input.right { 1.0 } else { 0.0 };
         let up_force = if input.up { 1.0 } else { 0.0 } - if input.down { 1.0 } else { 0.0 };
 
@@ -160,7 +162,9 @@ impl Player {
 
     /// Evaluates block breaking and placing actions based on input state and cooldown timers.
     pub fn update_blocks(&mut self, input_state: &InputState, chunk_manager: &mut ChunkManager) {
-        let Some((location, previous_step)) = self.looking_at_block else { return };
+        let Some((location, previous_step)) = self.looking_at_block else {
+            return;
+        };
         let now = Instant::now();
 
         // 250ms cooldown on breaking

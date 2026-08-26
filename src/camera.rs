@@ -20,12 +20,9 @@ impl Camera {
         self.projection.calc_matrix() * self.data.calc_matrix()
     }
 
-    // This is the function we need to add for the block raycast
     #[must_use]
     pub fn get_forward_vector(&self) -> Vec3<f32> {
-        (self.data.yaw.cos() * self.data.pitch.cos()) * Vec3::unit_x()
-            + self.data.pitch.sin() * Vec3::unit_y()
-            + (self.data.yaw.sin() * self.data.pitch.cos()) * Vec3::unit_z()
+        self.data.get_forward_vector()
     }
 }
 
@@ -47,9 +44,9 @@ impl CameraData {
     }
     #[must_use]
     pub fn get_forward_vector(&self) -> Vec3<f32> {
-        (self.yaw.cos() * self.pitch.cos()) * Vec3::unit_x()
-            + self.pitch.sin() * Vec3::unit_y()
-            + (self.yaw.sin() * self.pitch.cos()) * Vec3::unit_z()
+        let cp = self.pitch.cos();
+
+        Vec3::new(self.yaw.cos() * cp, self.pitch.sin(), self.yaw.sin() * cp)
     }
     #[must_use]
     pub fn calc_matrix(&self) -> Mat4<f32> {
@@ -88,4 +85,3 @@ impl Projection {
         Mat4::perspective_rh_zo(self.fovy, self.aspect, self.znear, self.zfar)
     }
 }
-
