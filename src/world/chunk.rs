@@ -12,7 +12,7 @@ use crate::{
     SEED,
     block::BlockType,
     camera::Camera,
-    mesh::{CompletedMesh, LocatedChunk, MeshJob, MeshWorker},
+    mesh::{ChunkMeshBuilder, CompletedMesh, LocatedChunk, MeshJob, MeshWorker},
     worker::GenericWorker,
     world::{block_index, generate, nearest_unloaded_chunks, world_to_chunk_pos},
 };
@@ -257,7 +257,7 @@ impl Default for ChunkManager {
         });
 
         let mesh_worker = MeshWorker::spawn(10, |job: MeshJob| {
-            let (vertices, indices) = crate::mesh::generate(&job.chunk, &job.neighbours);
+            let (vertices, indices) = ChunkMeshBuilder::build(&job.chunk, &job.neighbours);
 
             Some(CompletedMesh {
                 vertices,
