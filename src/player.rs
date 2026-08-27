@@ -5,16 +5,16 @@ use std::{
 use vek::{Aabb, Vec2, Vec3};
 
 use crate::{
-    InputState,
     block::BlockType,
     camera::CameraData,
     direction::Direction,
+    input::InputState,
     ray,
     world::{ChunkManager, WorldStorage},
 };
 
 const GRAVITY: f32 = 30.0;
-const FRICTION: f32 = 10.0;
+const FRICTION: f32 = 30.0;
 const MAX_FALL_SPEED: f32 = 54.0;
 const PLAYER_HEIGHT: f32 = 1.8;
 const PLAYER_WIDTH_HALF: f32 = 0.3;
@@ -34,7 +34,7 @@ pub struct Player {
     last_place_time: Instant,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Axis {
     X,
     Y,
@@ -91,68 +91,118 @@ impl Player {
         camera_data.pitch = (camera_data.pitch - input.mouse_dy * self.sensitivity)
             .clamp(-FRAC_PI_2 + 0.001, FRAC_PI_2 - 0.001);
 
-        // --- 1. Apply Movement Input ---
-        let forward = (camera_data.yaw.cos() * camera_data.pitch.cos()) * Vec3::unit_x()
-            + (camera_data.yaw.sin() * camera_data.pitch.cos()) * Vec3::unit_z();
-        let right = (camera_data.yaw - FRAC_PI_2).cos() * Vec3::unit_x()
-            + (camera_data.yaw - FRAC_PI_2).sin() * Vec3::unit_z();
+        // --- 1. Movement Direction (Aligned Directly to Camera View) ---
+        let cam_forward = camera_data.get_forward_vector();
+        let forward = Vec3::new(cam_forward.x, 0.0, cam_forward.z)
+            .try_normalized()
+            .unwrap_or(Vec3::unit_z());
 
-        let forward_force =
-            if input.forward { 1.0 } else { 0.0 } - if input.backward { 1.0 } else { 0.0 };
-        let right_force = if input.left { 1.0 } else { 0.0 } - if input.right { 1.0 } else { 0.0 };
-        let up_force = if input.up { 1.0 } else { 0.0 } - if input.down { 1.0 } else { 0.0 };
+        // Perpendicular right vector on XZ plane (guarantees exact 90-degree alignment)
+        let right = Vec3::new(-forward.z, 0.0, forward.x);
 
-        let direction = (forward * forward_force + right * right_force).normalized();
-
-        if direction.x.is_finite() && direction.y.is_finite() && direction.z.is_finite() {
-            self.velocity.x = (direction.x * self.speed).mul_add(dt, self.velocity.x);
-            self.velocity.z = (direction.z * self.speed).mul_add(dt, self.velocity.z);
+        let mut move_input = Vec2::<f32>::zero();
+        if input.forward {
+            move_input.x += 1.0;
+        }
+        if input.backward {
+            move_input.x -= 1.0;
+        }
+        if input.right {
+            move_input.y += 1.0;
+        }
+        if input.left {
+            move_input.y -= 1.0;
         }
 
-        self.velocity.y = (up_force * self.speed * dt).mul_add(5.0, self.velocity.y);
+        let input_dir = move_input.try_normalized().unwrap_or(Vec2::zero());
+        let wish_dir = forward * input_dir.x + right * input_dir.y;
 
-        // --- 2. Apply Gravity & Drag ---
-        self.velocity.y = GRAVITY.mul_add(-dt, self.velocity.y);
-        self.velocity.y = self.velocity.y.max(-MAX_FALL_SPEED);
+        // --- 2. Ground & Air Friction ---
+        let friction_rate = if self.is_grounded {
+            FRICTION
+        } else {
+            FRICTION * 0.2
+        };
 
-        // Air friction
-        let air_friction_decay = 0.95_f32.powf(dt);
-        self.velocity.x *= air_friction_decay;
-        self.velocity.z *= air_friction_decay;
+        let current_xz = Vec2::new(self.velocity.x, self.velocity.z);
+        let current_speed = current_xz.magnitude();
 
-        // Ground friction
-        if self.is_grounded {
-            let velocity_xz = Vec2::new(self.velocity.x, self.velocity.z);
-            if velocity_xz.magnitude_squared() > (FRICTION * dt).powi(2) {
-                let friction = velocity_xz.normalized() * FRICTION * dt;
-                self.velocity.x -= friction.x;
-                self.velocity.z -= friction.y;
-            } else {
-                self.velocity.x = 0.0;
-                self.velocity.z = 0.0;
+        if wish_dir == Vec3::zero() && current_speed > 0.0 {
+            let new_speed = (current_speed - friction_rate * dt).max(0.0);
+            let scale = new_speed / current_speed;
+            self.velocity.x *= scale;
+            self.velocity.z *= scale;
+        }
+
+        // --- 3. Vector-Based Linear Acceleration ---
+        const ACCELERATION: f32 = 80.0;
+        if wish_dir != Vec3::zero() {
+            let target_vel_2d = Vec2::new(wish_dir.x, wish_dir.z) * self.speed;
+            let current_vel_2d = Vec2::new(self.velocity.x, self.velocity.z);
+
+            let delta = target_vel_2d - current_vel_2d;
+            let delta_dist = delta.magnitude();
+
+            if delta_dist > 0.0 {
+                let step = (ACCELERATION * dt).min(delta_dist);
+                let new_vel = current_vel_2d + (delta / delta_dist) * step;
+
+                self.velocity.x = new_vel.x;
+                self.velocity.z = new_vel.y;
             }
         }
 
-        // --- 3. Collision Detection ---
+        // Vertical / Flight input
+        if input.up {
+            self.velocity.y += self.speed * dt * 5.0;
+        } else if input.down {
+            self.velocity.y -= self.speed * dt * 5.0;
+        }
+
+        // Gravity
+        self.velocity.y = (self.velocity.y - GRAVITY * dt).max(-MAX_FALL_SPEED);
+
+        // --- 4. Sub-Stepped Collision Resolution ---
         let desired_displacement = self.velocity * dt;
         self.is_grounded = false;
 
-        self.position.x += desired_displacement.x;
-        self.resolve_collisions_on_axis(world, Axis::X);
+        // Subdivide movement step into chunks smaller than half a block to stop tunneling
+        let max_substep = 0.4;
 
-        self.position.y += desired_displacement.y;
-        self.resolve_collisions_on_axis(world, Axis::Y);
+        let dx_steps = (desired_displacement.x.abs() / max_substep).ceil().max(1.0) as usize;
+        let step_x = desired_displacement.x / dx_steps as f32;
+        for _ in 0..dx_steps {
+            self.position.x += step_x;
+            if self.resolve_collisions_on_axis(world, Axis::X) {
+                break;
+            }
+        }
 
-        self.position.z += desired_displacement.z;
-        self.resolve_collisions_on_axis(world, Axis::Z);
+        let dy_steps = (desired_displacement.y.abs() / max_substep).ceil().max(1.0) as usize;
+        let step_y = desired_displacement.y / dy_steps as f32;
+        for _ in 0..dy_steps {
+            self.position.y += step_y;
+            if self.resolve_collisions_on_axis(world, Axis::Y) {
+                break;
+            }
+        }
 
-        // Handle falling off world void
+        let dz_steps = (desired_displacement.z.abs() / max_substep).ceil().max(1.0) as usize;
+        let step_z = desired_displacement.z / dz_steps as f32;
+        for _ in 0..dz_steps {
+            self.position.z += step_z;
+            if self.resolve_collisions_on_axis(world, Axis::Z) {
+                break;
+            }
+        }
+
+        // Void safety reset
         if self.position.y < -64.0 {
             self.position.y = 128.0;
             self.velocity = Vec3::zero();
         }
 
-        // --- 4. Update Raycast Target ---
+        // --- 5. Target Raycast ---
         let eye_level_position = self.get_camera_position();
         let looking_direction = camera_data.get_forward_vector();
 
@@ -192,7 +242,7 @@ impl Player {
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-    fn resolve_collisions_on_axis(&mut self, world: &WorldStorage, axis: Axis) {
+    fn resolve_collisions_on_axis(&mut self, world: &WorldStorage, axis: Axis) -> bool {
         let skin = 0.001;
         let player_aabb = self.aabb();
 
@@ -232,15 +282,18 @@ impl Player {
 
         if let Some(block_aabb) = target_block {
             self.handle_collision(axis, block_aabb, skin);
+            true
+        } else {
+            false
         }
     }
 
     fn handle_collision(&mut self, axis: Axis, block_aabb: Aabb<f32>, skin: f32) {
         match axis {
             Axis::X => {
-                if self.aabb().center().x < block_aabb.center().x {
+                if self.velocity.x > 0.0 {
                     self.position.x = block_aabb.min.x - self.half_extents.x - skin;
-                } else {
+                } else if self.velocity.x < 0.0 {
                     self.position.x = block_aabb.max.x + self.half_extents.x + skin;
                 }
                 self.velocity.x = 0.0;
@@ -255,9 +308,9 @@ impl Player {
                 self.velocity.y = 0.0;
             }
             Axis::Z => {
-                if self.aabb().center().z < block_aabb.center().z {
+                if self.velocity.z > 0.0 {
                     self.position.z = block_aabb.min.z - self.half_extents.z - skin;
-                } else {
+                } else if self.velocity.z < 0.0 {
                     self.position.z = block_aabb.max.z + self.half_extents.z + skin;
                 }
                 self.velocity.z = 0.0;
