@@ -21,7 +21,7 @@ impl ChunkManager {
             .mark_dirty_with_neighbors(loc, &self.storage);
     }
 
-    pub fn update_mesh_queue(&mut self, camera_pos: vek::Vec3<f32>) {
+    pub fn update_mesh_queue(&mut self, camera_pos: Vec3<f32>) {
         self.mesh_pipeline.update_queue(camera_pos, &self.storage);
     }
 

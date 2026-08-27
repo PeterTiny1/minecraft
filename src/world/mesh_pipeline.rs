@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::mpsc::TrySendError};
 
 use vek::Vec3;
 
@@ -50,8 +50,6 @@ impl MeshPipeline {
         let cam_x = (camera_pos.x as i32).div_euclid(CHUNK_WIDTH_I32);
         let cam_z = (camera_pos.z as i32).div_euclid(CHUNK_DEPTH_I32);
 
-        // Sort candidates so the closest chunks are at the END of the vector
-        // (allowing efficient `pop()`ing from nearest to furthest).
         let mut sorted_queue: Vec<[i32; 2]> = self.queue.iter().copied().collect();
         sorted_queue.sort_unstable_by_key(|&[x, z]| {
             let dx = (x - cam_x) as i64;
@@ -61,7 +59,6 @@ impl MeshPipeline {
 
         while let Some(loc) = sorted_queue.pop() {
             let Some(center_arc) = storage.data.get(&loc) else {
-                // If the chunk is no longer in storage, remove it from the backlog
                 self.queue.remove(&loc);
                 continue;
             };
@@ -85,13 +82,17 @@ impl MeshPipeline {
                 neighbours,
             };
 
-            // Non-blocking send to mesh worker
             match self.worker.sender.try_send(job) {
                 Ok(()) => {
                     self.queue.remove(&loc);
                 }
-                Err(_) => {
-                    // Channel full; leave remaining items in `self.queue`
+                Err(TrySendError::Full(_)) => {
+                    // Channel is saturated; stop popping so remaining items remain in `self.queue` for next frame
+                    break;
+                }
+                Err(TrySendError::Disconnected(_)) => {
+                    // Worker thread died, clean up queue to prevent infinite spinning
+                    self.queue.remove(&loc);
                     break;
                 }
             }
