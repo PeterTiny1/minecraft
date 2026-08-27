@@ -1,4 +1,8 @@
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+    sync::Arc,
+};
 
 use noise::OpenSimplex;
 use rkyv::{Archive, Deserialize, Serialize, access, deserialize};
@@ -10,7 +14,7 @@ use crate::{
     camera::Camera,
     mesh::{CompletedMesh, LocatedChunk, MeshJob, MeshWorker},
     worker::GenericWorker,
-    world::{block_index, nearest_visible_unloaded, world_to_chunk_pos},
+    world::{block_index, nearest_unloaded_chunks, world_to_chunk_pos},
     world_gen::generate,
 };
 
@@ -42,6 +46,8 @@ pub struct CompletedChunk {
 
 pub type ChunkWorker = GenericWorker<ChunkJob, CompletedChunk>;
 
+const CHUNK_WORKER_CAPACITY: usize = 10;
+
 const NEIGHBOUR_OFFSETS: [[i32; 2]; 8] = [
     [1, 0],   // 0: [x + 1, y]
     [1, 1],   // 1: [x + 1, y + 1]
@@ -70,13 +76,43 @@ impl BlockProvider for ChunkDataStorage {
 
 pub struct ChunkManager {
     pub generated_data: ChunkDataStorage,
+    pending_chunks: HashSet<[i32; 2]>,
+
+    // Backlog of chunks waiting for mesh generation/re-mesh
+    mesh_queue: HashSet<[i32; 2]>,
+
     mesh_worker: MeshWorker,
     chunk_worker: ChunkWorker,
 }
 
 impl ChunkManager {
-    pub fn queue_mesh_job(&self, loc: [i32; 2]) {
-        if let Some(center_arc) = self.generated_data.get(&loc) {
+    /// Schedule a chunk and its 8 neighbors for re-meshing
+    pub fn mark_dirty_with_neighbors(&mut self, [x, z]: [i32; 2]) {
+        for dx in -1..=1 {
+            for dz in -1..=1 {
+                let loc = [x + dx, z + dz];
+                // Only queue meshing if the target chunk is actually loaded
+                if self.generated_data.contains_key(&loc) {
+                    self.mesh_queue.insert(loc);
+                }
+            }
+        }
+    }
+
+    /// Processes the main thread mesh backlog and dispatches jobs to the worker as channel capacity allows.
+    pub fn update_mesh_queue(&mut self) {
+        if self.mesh_queue.is_empty() {
+            return;
+        }
+
+        let mut to_remove = Vec::new();
+
+        for &loc in &self.mesh_queue {
+            let Some(center_arc) = self.generated_data.get(&loc) else {
+                to_remove.push(loc);
+                continue;
+            };
+
             let mut neighbours = Vec::with_capacity(8);
             for offset in NEIGHBOUR_OFFSETS {
                 let n_loc = [loc[0] + offset[0], loc[1] + offset[1]];
@@ -95,7 +131,21 @@ impl ChunkManager {
                 },
                 neighbours,
             };
-            let _ = self.mesh_worker.sender.try_send(job);
+
+            // Non-blocking send to mesh worker
+            match self.mesh_worker.sender.try_send(job) {
+                Ok(()) => {
+                    to_remove.push(loc);
+                }
+                Err(_) => {
+                    // Channel is full; retain remaining items in mesh_queue for the next frame
+                    break;
+                }
+            }
+        }
+
+        for loc in to_remove {
+            self.mesh_queue.remove(&loc);
         }
     }
 
@@ -121,43 +171,48 @@ impl ChunkManager {
 
         chunk.contents[idx] = block;
 
-        self.queue_mesh_with_neighbors(chunk_loc);
+        self.mark_dirty_with_neighbors(chunk_loc);
 
         true
     }
 
-    /// Dispatches generation/loading of the next visible chunk to the background worker.
+    /// Dispatches missing visible chunks to the background worker until channel capacity is saturated.
     pub fn update_visible_chunks(&mut self, camera: &Camera) {
-        let Some(chunk_loc) = nearest_visible_unloaded(&self.generated_data, camera) else {
+        let free_capacity = CHUNK_WORKER_CAPACITY.saturating_sub(self.pending_chunks.len());
+        if free_capacity == 0 {
             return;
-        };
+        }
 
-        tracing::trace!(chunk_loc = ?chunk_loc, "Queueing visible chunk");
+        let to_queue = nearest_unloaded_chunks(
+            &self.generated_data,
+            &self.pending_chunks,
+            camera,
+            free_capacity,
+        );
 
-        let _ = self.chunk_worker.sender.try_send(ChunkJob {
-            location: chunk_loc,
-        });
+        for loc in to_queue {
+            if self
+                .chunk_worker
+                .sender
+                .try_send(ChunkJob { location: loc })
+                .is_ok()
+            {
+                self.pending_chunks.insert(loc);
+            }
+        }
     }
 
     /// Non-blocking check for any chunks generated/loaded by background workers.
-    /// Inserts completed chunk data into storage and triggers meshing for its neighborhood.
+    /// Inserts completed chunk data into storage and flags its neighborhood as dirty for meshing.
     pub fn poll_completed_chunk(&mut self) -> Option<[i32; 2]> {
         let completed = self.chunk_worker.receiver.try_recv().ok()?;
         let loc = completed.location;
 
+        self.pending_chunks.remove(&loc);
         self.generated_data.insert(loc, completed.data);
-        self.queue_mesh_with_neighbors(loc);
+        self.mark_dirty_with_neighbors(loc);
 
         Some(loc)
-    }
-
-    /// Queues mesh updates for a target chunk and all 8 surrounding neighbors.
-    fn queue_mesh_with_neighbors(&self, [x, z]: [i32; 2]) {
-        for dx in -1..=1 {
-            for dz in -1..=1 {
-                self.queue_mesh_job([x + dx, z + dz]);
-            }
-        }
     }
 
     #[must_use]
@@ -176,7 +231,7 @@ impl Default for ChunkManager {
         let noise = OpenSimplex::new(SEED);
 
         // Background worker handles disk I/O and terrain generation
-        let chunk_worker = ChunkWorker::spawn(10, move |job: ChunkJob| {
+        let chunk_worker = ChunkWorker::spawn(CHUNK_WORKER_CAPACITY, move |job: ChunkJob| {
             let path_str = format!("{},{}.bin", job.location[0], job.location[1]);
             let path = Path::new(&path_str);
 
@@ -207,6 +262,8 @@ impl Default for ChunkManager {
 
         Self {
             generated_data: HashMap::new(),
+            pending_chunks: HashSet::new(),
+            mesh_queue: HashSet::new(),
             mesh_worker,
             chunk_worker,
         }

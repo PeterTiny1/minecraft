@@ -1,11 +1,20 @@
+use std::{collections::HashSet, sync::OnceLock};
+
 use vek::{Aabb, Vec3};
 
 use crate::{
     RENDER_DISTANCE, camera,
-    renderer::cuboid_intersects_frustum,
     world::chunk::{
         CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32, ChunkDataStorage,
     },
+};
+
+const MAX_DISTANCE_X: i32 = RENDER_DISTANCE as i32 / CHUNK_WIDTH_I32 + 1;
+const MAX_DISTANCE_Y: i32 = RENDER_DISTANCE as i32 / CHUNK_DEPTH_I32 + 1;
+const RENDER_DISTANCE_CHUNKS: i32 = if MAX_DISTANCE_X > MAX_DISTANCE_Y {
+    MAX_DISTANCE_X
+} else {
+    MAX_DISTANCE_Y
 };
 
 #[inline(always)]
@@ -38,51 +47,61 @@ pub fn chunkcoord_to_aabb(coord: [i32; 2]) -> Aabb<f32> {
         max: min + Vec3::new(CHUNK_WIDTH as f32, CHUNK_HEIGHT as f32, CHUNK_DEPTH as f32),
     }
 }
-const MAX_DISTANCE_X: i32 = RENDER_DISTANCE as i32 / CHUNK_WIDTH_I32 + 1;
-const MAX_DISTANCE_Y: i32 = RENDER_DISTANCE as i32 / CHUNK_DEPTH_I32 + 1;
-const RENDER_DISTANCE_CHUNKS: i32 = if MAX_DISTANCE_X > MAX_DISTANCE_Y {
-    MAX_DISTANCE_X
-} else {
-    MAX_DISTANCE_Y
-};
-#[allow(clippy::cast_possible_truncation)]
+
+/// Returns chunk relative offsets sorted by distance squared from [0, 0].
+/// Initialized once on first request.
+fn chunk_search_offsets() -> &'static [[i32; 2]] {
+    static OFFSETS: OnceLock<Vec<[i32; 2]>> = OnceLock::new();
+    OFFSETS.get_or_init(|| {
+        let r = RENDER_DISTANCE_CHUNKS;
+        let r_sq = r * r;
+        let mut offsets = Vec::new();
+
+        for x in -r..=r {
+            for z in -r..=r {
+                let dist_sq = x * x + z * z;
+                if dist_sq <= r_sq {
+                    offsets.push([x, z]);
+                }
+            }
+        }
+
+        // Sort ascending by distance squared so nearest offsets come first
+        offsets.sort_unstable_by_key(|&[x, z]| x * x + z * z);
+        offsets
+    })
+}
+
+/// Returns up to `max_to_fetch` missing chunk positions around the camera,
+/// ordered from nearest to furthest.
 #[must_use]
-pub fn nearest_visible_unloaded(
+pub fn nearest_unloaded_chunks(
     generated_chunks: &ChunkDataStorage,
+    pending_chunks: &HashSet<[i32; 2]>,
     camera: &camera::Camera,
-) -> Option<[i32; 2]> {
+    max_to_fetch: usize,
+) -> Vec<[i32; 2]> {
+    if max_to_fetch == 0 {
+        return Vec::new();
+    }
+
     let cam_pos = camera.get_position();
-    let chunk_x = (cam_pos.x as i32).div_euclid(CHUNK_WIDTH_I32);
-    let chunk_z = (cam_pos.z as i32).div_euclid(CHUNK_DEPTH_I32);
+    let center_x = (cam_pos.x as i32).div_euclid(CHUNK_WIDTH_I32);
+    let center_z = (cam_pos.z as i32).div_euclid(CHUNK_DEPTH_I32);
 
-    let r_squared = RENDER_DISTANCE_CHUNKS * RENDER_DISTANCE_CHUNKS;
+    let mut results = Vec::with_capacity(max_to_fetch);
 
-    let mut nearest_chunk = None;
-    let mut shortest_distance = i32::MAX;
+    for &[dx, dz] in chunk_search_offsets() {
+        let location = [center_x + dx, center_z + dz];
 
-    for i in -MAX_DISTANCE_X..=MAX_DISTANCE_X {
-        for j in -MAX_DISTANCE_Y..=MAX_DISTANCE_Y {
-            let distance = i * i + j * j;
-
-            // 1. Quick distance check first (cheapest operation)
-            if distance > r_squared || distance >= shortest_distance {
-                continue;
-            }
-
-            let location = [i + chunk_x, j + chunk_z];
-
-            // 2. HashMap lookup (medium cost)
-            if generated_chunks.contains_key(&location) {
-                continue;
-            }
-
-            // 3. Frustum intersection check (most expensive)
-            if cuboid_intersects_frustum(&chunkcoord_to_aabb(location), camera) {
-                shortest_distance = distance;
-                nearest_chunk = Some(location);
+        // Skip chunks that are already loaded or currently generating
+        if !generated_chunks.contains_key(&location) && !pending_chunks.contains(&location) {
+            results.push(location);
+            if results.len() >= max_to_fetch {
+                break;
             }
         }
     }
 
-    nearest_chunk
+    results
 }

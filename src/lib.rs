@@ -166,11 +166,14 @@ impl RunningState {
         self.player
             .update_blocks(&self.input, &mut self.chunk_manager);
 
-        // 4. Chunk Loading & GPU Uploads
+        // 4. Chunk Loading, Meshing & GPU Uploads
         self.chunk_manager.update_visible_chunks(&self.camera);
 
         // Drain completed chunk generation/loads from background worker
         while self.chunk_manager.poll_completed_chunk().is_some() {}
+
+        // Dispatch queued meshing tasks to worker threads
+        self.chunk_manager.update_mesh_queue();
 
         // Drain CPU mesh worker results and upload buffers to GPU
         while let Some(mesh) = self.chunk_manager.poll_completed_mesh() {
