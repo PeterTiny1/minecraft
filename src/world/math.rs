@@ -4,8 +4,12 @@ use vek::{Aabb, Vec3};
 
 use crate::{
     RENDER_DISTANCE, camera,
-    world::types::{
-        CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32, ChunkDataStorage,
+    world::{
+        CHUNK_HEIGHT_I32,
+        types::{
+            CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32,
+            ChunkDataStorage,
+        },
     },
 };
 
@@ -104,4 +108,43 @@ pub fn nearest_unloaded_chunks(
     }
 
     results
+}
+
+/// Returns the target chunk location, array index, and relative chunk offset vectors
+/// for surrounding neighbors that are affected by AO at this position.
+#[must_use]
+pub fn resolve_block_target(pos: Vec3<i32>) -> Option<([i32; 2], usize, [Option<[i32; 2]>; 3])> {
+    if pos.y < 0 || pos.y >= CHUNK_HEIGHT_I32 {
+        return None;
+    }
+
+    let (chunk_loc, [lx, ly, lz]) = world_to_chunk_pos(pos.x, pos.y, pos.z);
+    let idx = block_index(lx, ly, lz);
+
+    let max_x = (CHUNK_WIDTH_I32 - 1) as usize;
+    let max_z = (CHUNK_DEPTH_I32 - 1) as usize;
+
+    let dx = if lx == 0 {
+        -1
+    } else if lx == max_x {
+        1
+    } else {
+        0
+    };
+    let dz = if lz == 0 {
+        -1
+    } else if lz == max_z {
+        1
+    } else {
+        0
+    };
+
+    let neighbors = match (dx, dz) {
+        (0, 0) => [None, None, None],
+        (x, 0) => [Some([x, 0]), None, None],
+        (0, z) => [Some([0, z]), None, None],
+        (x, z) => [Some([x, 0]), Some([0, z]), Some([x, z])],
+    };
+
+    Some((chunk_loc, idx, neighbors))
 }

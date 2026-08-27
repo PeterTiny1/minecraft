@@ -10,14 +10,13 @@ use crate::{
     camera::Camera,
     mesh::{CompletedMesh, LocatedChunk, MeshJob, MeshWorker},
     world::{
-        block_index,
         factory::{spawn_chunk_worker, spawn_mesh_worker},
+        math::resolve_block_target,
         nearest_unloaded_chunks,
         types::{
-            BlockProvider, CHUNK_DEPTH_I32, CHUNK_HEIGHT_I32, CHUNK_WIDTH_I32, ChunkDataStorage,
-            ChunkJob, ChunkWorker, NEIGHBOUR_OFFSETS,
+            BlockProvider, CHUNK_DEPTH_I32, CHUNK_WIDTH_I32, ChunkDataStorage, ChunkJob,
+            ChunkWorker, NEIGHBOUR_OFFSETS,
         },
-        world_to_chunk_pos,
     },
 };
 
@@ -106,28 +105,31 @@ impl ChunkManager {
         }
     }
     pub fn set_block(&mut self, target_pos: Vec3<i32>, block: BlockType) -> bool {
-        if target_pos.y < 0 || target_pos.y >= CHUNK_HEIGHT_I32 {
+        let Some((chunk_loc, idx, neighbor_offsets)) = resolve_block_target(target_pos) else {
             return false;
-        }
-
-        let (chunk_loc, [local_x, local_y, local_z]) =
-            world_to_chunk_pos(target_pos.x, target_pos.y, target_pos.z);
-
-        let Some(chunk_arc) = self.generated_data.get_mut(&chunk_loc) else {
-            return false; // Chunk isn't loaded/generated yet
         };
 
-        let idx = block_index(local_x, local_y, local_z);
-        let chunk = Arc::make_mut(chunk_arc);
+        let Some(chunk_arc) = self.generated_data.get_mut(&chunk_loc) else {
+            return false;
+        };
 
-        // Don't re-mesh if the block didn't actually change
+        let chunk = Arc::make_mut(chunk_arc);
         if chunk.contents[idx] == block {
             return false;
         }
 
         chunk.contents[idx] = block;
 
-        self.mark_dirty_with_neighbors(chunk_loc);
+        // Self always re-meshes
+        self.mesh_queue.insert(chunk_loc);
+
+        // Re-mesh direct AND diagonal neighbor chunks affected by corner AO
+        for [offset_x, offset_z] in neighbor_offsets.into_iter().flatten() {
+            let n_loc = [chunk_loc[0] + offset_x, chunk_loc[1] + offset_z];
+            if self.generated_data.contains_key(&n_loc) {
+                self.mesh_queue.insert(n_loc);
+            }
+        }
 
         true
     }
