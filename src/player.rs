@@ -10,7 +10,7 @@ use crate::{
     camera::CameraData,
     direction::Direction,
     ray,
-    world::chunk::{BlockProvider, ChunkDataStorage, ChunkManager},
+    world::{BlockProvider, ChunkDataStorage, ChunkManager},
 };
 
 const GRAVITY: f32 = 30.0;

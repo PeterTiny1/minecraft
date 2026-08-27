@@ -16,7 +16,7 @@ mod world_gen;
 // Public API re-exports
 pub use block::BlockType;
 pub use renderer::RenderContext;
-pub use world::chunk::ChunkData;
+pub use world::ChunkData;
 
 // Imports
 use std::{env, path::Path, sync::Arc, time::Instant};
@@ -32,7 +32,7 @@ use winit::{
 };
 
 use player::Player;
-use world::chunk::ChunkManager;
+use world::ChunkManager;
 
 use crate::{input::InputState, renderer::RenderOutcome, world::ChunkRenderer};
 

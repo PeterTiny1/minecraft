@@ -1,7 +1,7 @@
 use crate::{
     block::BlockType,
     world::block_index,
-    world::chunk::{
+    world::{
         CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_SIZE, CHUNK_WIDTH, CHUNK_WIDTH_I32, Chunk,
     },
 };

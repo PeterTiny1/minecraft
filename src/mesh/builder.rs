@@ -5,7 +5,7 @@ use crate::{
     mesh::{LocatedChunk, context::MeshGenerationContext, textures::get_texture_indices},
     renderer::Vertex,
     world::block_index,
-    world::chunk::{CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32},
+    world::{CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32},
 };
 
 // Shading constants
