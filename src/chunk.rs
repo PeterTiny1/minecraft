@@ -15,7 +15,7 @@ use crate::{
     camera::{self, Camera},
     mesh::{self, CompletedMesh, LocatedChunk, MeshJob},
     renderer::{RenderContext, cuboid_intersects_frustum},
-    world::block_index,
+    world::{block_index, world_to_chunk_pos},
     world_gen::generate,
 };
 pub const CHUNK_WIDTH: usize = 32;
@@ -314,15 +314,4 @@ pub fn nearest_visible_unloaded(
     }
 
     nearest_chunk
-}
-
-#[inline(always)]
-pub const fn world_to_chunk_pos(x: i32, y: i32, z: i32) -> ([i32; 2], [usize; 3]) {
-    let chunk_loc = [x.div_euclid(CHUNK_WIDTH_I32), z.div_euclid(CHUNK_DEPTH_I32)];
-    let local_pos = [
-        x.rem_euclid(CHUNK_WIDTH_I32) as usize,
-        y as usize,
-        z.rem_euclid(CHUNK_DEPTH_I32) as usize,
-    ];
-    (chunk_loc, local_pos)
 }
