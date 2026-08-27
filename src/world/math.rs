@@ -4,7 +4,7 @@ use vek::{Aabb, Vec3};
 
 use crate::{
     RENDER_DISTANCE, camera,
-    world::chunk::{
+    world::types::{
         CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32, ChunkDataStorage,
     },
 };

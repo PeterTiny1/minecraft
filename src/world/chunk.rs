@@ -5,7 +5,7 @@ use std::{
 };
 
 use noise::OpenSimplex;
-use rkyv::{Archive, Deserialize, Serialize, access, deserialize};
+use rkyv::{access, api::low::deserialize};
 use vek::Vec3;
 
 use crate::{
@@ -13,65 +13,17 @@ use crate::{
     block::BlockType,
     camera::Camera,
     mesh::{ChunkMeshBuilder, CompletedMesh, LocatedChunk, MeshJob, MeshWorker},
-    worker::GenericWorker,
-    world::{block_index, generate, nearest_unloaded_chunks, world_to_chunk_pos},
+    world::{
+        block_index, generate, nearest_unloaded_chunks,
+        types::{
+            ArchivedChunkData, BlockProvider, CHUNK_DEPTH_I32, CHUNK_HEIGHT_I32, CHUNK_WIDTH_I32,
+            ChunkData, ChunkDataStorage, ChunkJob, ChunkWorker, CompletedChunk, NEIGHBOUR_OFFSETS,
+        },
+        world_to_chunk_pos,
+    },
 };
 
-pub const CHUNK_WIDTH: usize = 32;
-pub const CHUNK_WIDTH_I32: i32 = CHUNK_WIDTH as i32;
-pub const CHUNK_HEIGHT: usize = 256;
-pub const CHUNK_HEIGHT_I32: i32 = CHUNK_HEIGHT as i32;
-pub const CHUNK_DEPTH: usize = 32;
-pub const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
-
-pub const CHUNK_SIZE: usize = CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH;
-pub type Chunk = Box<[BlockType; CHUNK_SIZE]>;
-
-#[derive(Debug, Clone, Deserialize, Serialize, Archive)]
-pub struct ChunkData {
-    pub contents: Chunk,
-}
-
-pub type ChunkDataStorage = HashMap<[i32; 2], Arc<ChunkData>>;
-
-pub struct ChunkJob {
-    pub location: [i32; 2],
-}
-
-pub struct CompletedChunk {
-    pub location: [i32; 2],
-    pub data: Arc<ChunkData>,
-}
-
-pub type ChunkWorker = GenericWorker<ChunkJob, CompletedChunk>;
-
 const CHUNK_WORKER_CAPACITY: usize = 10;
-
-const NEIGHBOUR_OFFSETS: [[i32; 2]; 8] = [
-    [1, 0],   // 0: [x + 1, y]
-    [1, 1],   // 1: [x + 1, y + 1]
-    [0, 1],   // 2: [x, y + 1]
-    [-1, 1],  // 3: [x - 1, y + 1]
-    [-1, 0],  // 4: [x - 1, y]
-    [-1, -1], // 5: [x - 1, y - 1]
-    [0, -1],  // 6: [x, y - 1]
-    [1, -1],  // 7: [x + 1, y - 1]
-];
-
-pub trait BlockProvider {
-    fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType>;
-}
-
-impl BlockProvider for ChunkDataStorage {
-    fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType> {
-        if y < 0 || y as usize >= CHUNK_HEIGHT {
-            return None;
-        }
-        let (chunk_loc, [local_x, local_y, local_z]) = world_to_chunk_pos(x, y, z);
-        let chunk = self.get(&chunk_loc)?;
-        Some(chunk.contents[block_index(local_x, local_y, local_z)])
-    }
-}
 
 pub struct ChunkManager {
     pub generated_data: ChunkDataStorage,
