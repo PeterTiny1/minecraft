@@ -13,8 +13,8 @@ use crate::{
     RENDER_DISTANCE, SEED,
     block::BlockType,
     camera::{self, Camera},
-    mesh::{self, LocatedChunk, MeshJob},
-    renderer::{RenderContext, Vertex, cuboid_intersects_frustum},
+    mesh::{self, CompletedMesh, LocatedChunk, MeshJob},
+    renderer::{RenderContext, cuboid_intersects_frustum},
     world_gen::generate,
 };
 pub const CHUNK_WIDTH: usize = 32;
@@ -75,7 +75,7 @@ pub struct ChunkManager {
     noise: OpenSimplex,
 
     pub sender: mpsc::SyncSender<MeshJob>,
-    pub receiver: mpsc::Receiver<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
+    pub receiver: mpsc::Receiver<CompletedMesh>,
 }
 
 impl ChunkManager {
@@ -112,14 +112,20 @@ impl ChunkManager {
     ///
     /// If the number of indices exceeds the 32 bit integer limit
     pub fn insert_chunk(&mut self, render_context: &RenderContext) {
-        while let Ok((mesh, indices, index)) = self.receiver.try_recv() {
+        // Destructure CompletedMesh fields directly in the match pattern
+        while let Ok(CompletedMesh {
+            vertices,
+            indices,
+            loc,
+        }) = self.receiver.try_recv()
+        {
             self.generated_buffers.insert(
-                index,
+                loc,
                 ChunkBuffers {
                     vertex: render_context.device.create_buffer_init(
                         &wgpu::util::BufferInitDescriptor {
                             label: Some("Vertex Buffer"),
-                            contents: bytemuck::cast_slice(&mesh),
+                            contents: bytemuck::cast_slice(&vertices),
                             usage: wgpu::BufferUsages::VERTEX,
                         },
                     ),
@@ -134,15 +140,6 @@ impl ChunkManager {
                         .expect("mesh index count exceeded u32 limit"),
                 },
             );
-            // let (vertsize, indexsize) = self
-            //     .generated_chunk_buffers
-            //     .iter()
-            //     .fold((0, 0), |acc, (_, item)| {
-            //         (acc.0 + item.vertex.size(), acc.1 + item.index.size())
-            //     });
-
-            // println!("Index space: {indexsize}");
-            // println!("Vertex space: {vertsize}");
         }
     }
     pub fn render_chunks(&self, render_pass: &mut wgpu::RenderPass, camera: &camera::Camera) {

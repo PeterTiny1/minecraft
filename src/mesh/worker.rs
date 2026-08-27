@@ -12,56 +12,36 @@ pub struct LocatedChunk {
 
 pub struct MeshJob {
     pub chunk: LocatedChunk,
-    // NORTH CLOCKWISE
     pub neighbours: Vec<LocatedChunk>,
+}
+
+pub struct CompletedMesh {
+    pub vertices: Vec<Vertex>,
+    pub indices: Vec<u32>,
+    pub loc: [i32; 2],
 }
 
 pub fn start_meshgen(
     recv_generate: mpsc::Receiver<MeshJob>,
-    send_chunk: mpsc::SyncSender<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
+    send_chunk: mpsc::SyncSender<CompletedMesh>,
 ) -> thread::JoinHandle<()> {
-    thread::spawn(move || manage_meshgen(&recv_generate, &send_chunk))
-}
+    thread::spawn(move || {
+        // Simple blocking loop: waits for a job, generates mesh,
+        // and blocks on send if the queue is full.
+        while let Ok(job) = recv_generate.recv() {
+            let (vertices, indices) = generate(&job.chunk, &job.neighbours);
 
-fn manage_meshgen(
-    recv_generate: &mpsc::Receiver<MeshJob>,
-    send_chunk: &mpsc::SyncSender<(Vec<Vertex>, Vec<u32>, [i32; 2])>,
-) {
-    let mut waiting: Vec<(Vec<Vertex>, Vec<u32>, [i32; 2])> = Vec::new();
+            let result = CompletedMesh {
+                vertices,
+                indices,
+                loc: job.chunk.loc,
+            };
 
-    loop {
-        // 1. Drain pending waiting items without cloning heavy vertex arrays
-        let mut still_waiting = Vec::new();
-        for item in waiting.drain(..) {
-            if let Err(mpsc::TrySendError::Full(rejected)) = send_chunk.try_send(item) {
-                still_waiting.push(rejected);
+            // Will block naturally if main thread hasn't consumed previous meshes,
+            // providing clean backpressure without manual sleep calls.
+            if send_chunk.send(result).is_err() {
+                break; // Main thread disconnected / dropped receiver
             }
         }
-        waiting = still_waiting;
-
-        // 2. Fetch next job
-        let job = if waiting.is_empty() {
-            match recv_generate.recv() {
-                Ok(j) => j,
-                Err(_) => break, // Channel closed
-            }
-        } else {
-            match recv_generate.try_recv() {
-                Ok(j) => j,
-                Err(mpsc::TryRecvError::Empty) => {
-                    thread::sleep(std::time::Duration::from_millis(1));
-                    continue;
-                }
-                Err(mpsc::TryRecvError::Disconnected) => break,
-            }
-        };
-
-        // 3. Process mesh job
-        let (mesh, indices) = generate(&job.chunk, &job.neighbours);
-        let result = (mesh, indices, job.chunk.loc);
-
-        if let Err(mpsc::TrySendError::Full(item)) = send_chunk.try_send(result) {
-            waiting.push(item);
-        }
-    }
+    })
 }
