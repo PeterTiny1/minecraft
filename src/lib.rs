@@ -173,7 +173,8 @@ impl RunningState {
         while self.chunk_manager.poll_completed_chunk().is_some() {}
 
         // Dispatch queued meshing tasks to worker threads
-        self.chunk_manager.update_mesh_queue();
+        self.chunk_manager
+            .update_mesh_queue(self.camera.get_position());
 
         // Drain CPU mesh worker results and upload buffers to GPU
         while let Some(mesh) = self.chunk_manager.poll_completed_mesh() {

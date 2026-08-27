@@ -99,17 +99,29 @@ impl ChunkManager {
         }
     }
 
-    /// Processes the main thread mesh backlog and dispatches jobs to the worker as channel capacity allows.
-    pub fn update_mesh_queue(&mut self) {
+    /// Processes the main thread mesh backlog, prioritizing chunks closest to the camera,
+    /// and dispatches jobs to the worker as channel capacity allows.
+    pub fn update_mesh_queue(&mut self, camera_pos: vek::Vec3<f32>) {
         if self.mesh_queue.is_empty() {
             return;
         }
 
-        let mut to_remove = Vec::new();
+        let cam_x = (camera_pos.x as i32).div_euclid(CHUNK_WIDTH_I32);
+        let cam_z = (camera_pos.z as i32).div_euclid(CHUNK_DEPTH_I32);
 
-        for &loc in &self.mesh_queue {
+        // Sort candidates so the closest chunks are at the END of the vector
+        // (allowing efficient `pop()`ing from nearest to furthest).
+        let mut sorted_queue: Vec<[i32; 2]> = self.mesh_queue.iter().copied().collect();
+        sorted_queue.sort_unstable_by_key(|&[x, z]| {
+            let dx = (x - cam_x) as i64;
+            let dz = (z - cam_z) as i64;
+            -(dx * dx + dz * dz)
+        });
+
+        while let Some(loc) = sorted_queue.pop() {
             let Some(center_arc) = self.generated_data.get(&loc) else {
-                to_remove.push(loc);
+                // If the chunk is no longer in storage, remove it from the backlog
+                self.mesh_queue.remove(&loc);
                 continue;
             };
 
@@ -135,20 +147,15 @@ impl ChunkManager {
             // Non-blocking send to mesh worker
             match self.mesh_worker.sender.try_send(job) {
                 Ok(()) => {
-                    to_remove.push(loc);
+                    self.mesh_queue.remove(&loc);
                 }
                 Err(_) => {
-                    // Channel is full; retain remaining items in mesh_queue for the next frame
+                    // Channel full; leave remaining items (including `loc`) in `self.mesh_queue`
                     break;
                 }
             }
         }
-
-        for loc in to_remove {
-            self.mesh_queue.remove(&loc);
-        }
     }
-
     pub fn set_block(&mut self, target_pos: Vec3<i32>, block: BlockType) -> bool {
         if target_pos.y < 0 || target_pos.y >= CHUNK_HEIGHT_I32 {
             return false;
