@@ -3,6 +3,7 @@ mod factory;
 mod generation;
 mod math;
 mod renderer;
+mod storage;
 mod types;
 
 pub use chunk::ChunkManager;

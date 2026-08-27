@@ -151,7 +151,7 @@ impl RunningState {
         // 1. Update player physics & camera rotation using InputState
         self.player.update_physics(
             dt_secs,
-            &self.chunk_manager.generated_data,
+            &self.chunk_manager.storage.data,
             &self.input,
             &mut self.camera.data,
         );
@@ -193,7 +193,7 @@ impl RunningState {
             return;
         }
 
-        let generated_chunkdata = &self.chunk_manager.generated_data;
+        let generated_chunkdata = &self.chunk_manager.storage.data;
         let mut saved_count = 0;
 
         for (chunk_location, data) in generated_chunkdata {
