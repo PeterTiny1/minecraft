@@ -1,23 +1,21 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
     sync::Arc,
 };
 
-use noise::OpenSimplex;
-use rkyv::{access, api::low::deserialize};
 use vek::Vec3;
 
 use crate::{
-    SEED,
     block::BlockType,
     camera::Camera,
-    mesh::{ChunkMeshBuilder, CompletedMesh, LocatedChunk, MeshJob, MeshWorker},
+    mesh::{CompletedMesh, LocatedChunk, MeshJob, MeshWorker},
     world::{
-        block_index, generate, nearest_unloaded_chunks,
+        block_index,
+        factory::{spawn_chunk_worker, spawn_mesh_worker},
+        nearest_unloaded_chunks,
         types::{
-            ArchivedChunkData, BlockProvider, CHUNK_DEPTH_I32, CHUNK_HEIGHT_I32, CHUNK_WIDTH_I32,
-            ChunkData, ChunkDataStorage, ChunkJob, ChunkWorker, CompletedChunk, NEIGHBOUR_OFFSETS,
+            BlockProvider, CHUNK_DEPTH_I32, CHUNK_HEIGHT_I32, CHUNK_WIDTH_I32, ChunkDataStorage,
+            ChunkJob, ChunkWorker, NEIGHBOUR_OFFSETS,
         },
         world_to_chunk_pos,
     },
@@ -186,44 +184,12 @@ impl ChunkManager {
 
 impl Default for ChunkManager {
     fn default() -> Self {
-        let noise = OpenSimplex::new(SEED);
-
-        // Background worker handles disk I/O and terrain generation
-        let chunk_worker = ChunkWorker::spawn(CHUNK_WORKER_CAPACITY, move |job: ChunkJob| {
-            let path_str = format!("{},{}.bin", job.location[0], job.location[1]);
-            let path = Path::new(&path_str);
-
-            let loaded = std::fs::read(path).ok().and_then(|buffer| {
-                let archived = access::<ArchivedChunkData, rkyv::rancor::Error>(&buffer).ok()?;
-                deserialize::<ChunkData, rkyv::rancor::Error>(archived).ok()
-            });
-
-            let chunk_data = loaded.unwrap_or_else(|| ChunkData {
-                contents: generate(&noise, job.location),
-            });
-
-            Some(CompletedChunk {
-                location: job.location,
-                data: Arc::new(chunk_data),
-            })
-        });
-
-        let mesh_worker = MeshWorker::spawn(10, |job: MeshJob| {
-            let (vertices, indices) = ChunkMeshBuilder::build(&job.chunk, &job.neighbours);
-
-            Some(CompletedMesh {
-                vertices,
-                indices,
-                loc: job.chunk.loc,
-            })
-        });
-
         Self {
             generated_data: HashMap::new(),
             pending_chunks: HashSet::new(),
+            chunk_worker: spawn_chunk_worker(CHUNK_WORKER_CAPACITY),
+            mesh_worker: spawn_mesh_worker(CHUNK_WORKER_CAPACITY),
             mesh_queue: HashSet::new(),
-            mesh_worker,
-            chunk_worker,
         }
     }
 }

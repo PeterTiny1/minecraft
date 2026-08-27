@@ -1,4 +1,5 @@
 mod chunk;
+mod factory;
 mod generation;
 mod math;
 mod renderer;
