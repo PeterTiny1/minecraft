@@ -1,14 +1,14 @@
 use crate::{
-    BlockType, block,
+    block::{self, BlockType},
     mesh::LocatedChunk,
     renderer::Vertex,
-    world::block_index,
-    world::{CHUNK_DEPTH_I32, CHUNK_HEIGHT_I32, CHUNK_WIDTH_I32},
+    world::{CHUNK_DEPTH_I32, CHUNK_HEIGHT_I32, CHUNK_WIDTH_I32, block_index},
 };
 
 pub struct MeshGenerationContext<'a> {
     pub center: &'a LocatedChunk,
-    pub neighbors: &'a [LocatedChunk],
+    /// 3x3 array indexed by [dx + 1][dz + 1] relative to the center chunk
+    pub neighbor_grid: [[Option<&'a LocatedChunk>; 3]; 3],
     pub local_x: i32,
     pub local_y: i32,
     pub local_z: i32,
@@ -19,8 +19,38 @@ pub struct MeshGenerationContext<'a> {
     pub vertices: &'a mut Vec<Vertex>,
 }
 
-impl MeshGenerationContext<'_> {
-    #[allow(clippy::cast_precision_loss)]
+impl<'a> MeshGenerationContext<'a> {
+    pub fn new(
+        center: &'a LocatedChunk,
+        neighbors: &'a [LocatedChunk],
+        indices: &'a mut Vec<u32>,
+        vertices: &'a mut Vec<Vertex>,
+    ) -> Self {
+        let mut neighbor_grid = [[None; 3]; 3];
+        let [cx, cz] = center.loc;
+
+        for chunk in neighbors {
+            let dx = chunk.loc[0] - cx;
+            let dz = chunk.loc[1] - cz;
+            if (-1..=1).contains(&dx) && (-1..=1).contains(&dz) {
+                neighbor_grid[(dx + 1) as usize][(dz + 1) as usize] = Some(chunk);
+            }
+        }
+
+        Self {
+            center,
+            neighbor_grid,
+            local_x: 0,
+            local_y: 0,
+            local_z: 0,
+            global_x: 0,
+            global_y: 0,
+            global_z: 0,
+            indices,
+            vertices,
+        }
+    }
+
     #[inline]
     pub const fn worldpos_f32(&self) -> [f32; 3] {
         [
@@ -32,14 +62,14 @@ impl MeshGenerationContext<'_> {
 
     #[inline]
     pub fn extend_indices(&mut self, base_indices: &[u32]) {
-        let len_index = u32::try_from(self.vertices.len()).expect("mesh count exceeded u32 limit");
+        let base_len = u32::try_from(self.vertices.len()).expect("Vertex count exceeded u32 limit");
         self.indices
-            .extend(base_indices.iter().map(|i| *i + len_index));
+            .extend(base_indices.iter().map(|i| *i + base_len));
     }
 
-    fn get_block_at_offset(&self, dx: i32, dy: i32, dz: i32) -> Option<BlockType> {
+    #[inline]
+    pub fn get_block_at_offset(&self, dx: i32, dy: i32, dz: i32) -> Option<BlockType> {
         let target_y = self.local_y + dy;
-
         if !(0..CHUNK_HEIGHT_I32).contains(&target_y) {
             return Some(BlockType::Air);
         }
@@ -47,6 +77,7 @@ impl MeshGenerationContext<'_> {
         let target_x = self.local_x + dx;
         let target_z = self.local_z + dz;
 
+        // Fast path: fully within center chunk
         if (0..CHUNK_WIDTH_I32).contains(&target_x) && (0..CHUNK_DEPTH_I32).contains(&target_z) {
             return Some(
                 self.center.data.contents
@@ -54,34 +85,20 @@ impl MeshGenerationContext<'_> {
             );
         }
 
-        let mut target_chunk_x = self.center.loc[0];
-        let mut target_chunk_z = self.center.loc[1];
-        let mut rem_x = target_x;
-        let mut rem_z = target_z;
+        // Slow path: neighbor lookup with proper 2D wrapping
+        let c_dx = target_x.div_euclid(CHUNK_WIDTH_I32);
+        let c_dz = target_z.div_euclid(CHUNK_DEPTH_I32);
 
-        if target_x < 0 {
-            target_chunk_x -= 1;
-            rem_x += CHUNK_WIDTH_I32;
-        } else if target_x >= CHUNK_WIDTH_I32 {
-            target_chunk_x += 1;
-            rem_x -= CHUNK_WIDTH_I32;
+        if !(-1..=1).contains(&c_dx) || !(-1..=1).contains(&c_dz) {
+            return Some(BlockType::Air);
         }
 
-        if target_z < 0 {
-            target_chunk_z -= 1;
-            rem_z += CHUNK_DEPTH_I32;
-        } else if target_z >= CHUNK_DEPTH_I32 {
-            target_chunk_z += 1;
-            rem_z -= CHUNK_DEPTH_I32;
-        }
+        let rem_x = target_x.rem_euclid(CHUNK_WIDTH_I32);
+        let rem_z = target_z.rem_euclid(CHUNK_DEPTH_I32);
 
-        self.neighbors
-            .iter()
-            .find(|n| n.loc == [target_chunk_x, target_chunk_z])
-            .map(|neighbor| {
-                neighbor.data.contents
-                    [block_index(rem_x as usize, target_y as usize, rem_z as usize)]
-            })
+        self.neighbor_grid[(c_dx + 1) as usize][(c_dz + 1) as usize].map(|chunk| {
+            chunk.data.contents[block_index(rem_x as usize, target_y as usize, rem_z as usize)]
+        })
     }
 
     #[inline]
