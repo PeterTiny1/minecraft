@@ -2,9 +2,10 @@ use std::f32::consts::FRAC_1_SQRT_2;
 
 use crate::{
     block::BlockType,
-    chunk::{CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32, block_index},
+    chunk::{CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH_I32},
     mesh::{LocatedChunk, context::MeshGenerationContext, textures::get_texture_indices},
     renderer::Vertex,
+    world::block_index,
 };
 
 // Shading constants

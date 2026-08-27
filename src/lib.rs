@@ -10,6 +10,7 @@ mod ray;
 mod renderer;
 mod texture;
 mod ui;
+mod world;
 mod world_gen;
 
 // Public API re-exports

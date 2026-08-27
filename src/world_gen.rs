@@ -1,9 +1,9 @@
 use crate::{
     block::BlockType,
     chunk::{
-        CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_SIZE, CHUNK_WIDTH, CHUNK_WIDTH_I32,
-        Chunk, block_index,
+        CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_SIZE, CHUNK_WIDTH, CHUNK_WIDTH_I32, Chunk,
     },
+    world::block_index,
 };
 use noise::{NoiseFn, OpenSimplex};
 #[derive(Clone, Copy)]

@@ -15,6 +15,7 @@ use crate::{
     camera::{self, Camera},
     mesh::{self, CompletedMesh, LocatedChunk, MeshJob},
     renderer::{RenderContext, cuboid_intersects_frustum},
+    world::block_index,
     world_gen::generate,
 };
 pub const CHUNK_WIDTH: usize = 32;
@@ -41,12 +42,6 @@ const NEIGHBOUR_OFFSETS: [[i32; 2]; 8] = [
     [0, -1],  // 6: [x, y - 1]
     [1, -1],  // 7: [x + 1, y - 1]
 ];
-
-#[inline(always)]
-pub const fn block_index(x: usize, y: usize, z: usize) -> usize {
-    // Y-first indexing optimizes vertical terrain column iteration
-    y + CHUNK_HEIGHT * (x + CHUNK_WIDTH * z)
-}
 
 pub trait BlockProvider {
     fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType>;
