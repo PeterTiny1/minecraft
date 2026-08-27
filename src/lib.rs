@@ -10,6 +10,7 @@ mod ray;
 mod renderer;
 mod texture;
 mod ui;
+mod worker;
 mod world;
 mod world_gen;
 
@@ -170,7 +171,7 @@ impl RunningState {
         self.chunk_manager.update_visible_chunks(&self.camera);
 
         // Drain CPU mesh worker results and upload buffers to GPU
-        while let Ok(mesh) = self.chunk_manager.receiver.try_recv() {
+        while let Some(mesh) = self.chunk_manager.poll_completed_mesh() {
             self.chunk_renderer
                 .insert_mesh(&self.render_context.device, mesh);
         }

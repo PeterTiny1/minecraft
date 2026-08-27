@@ -2,9 +2,7 @@ use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 
 use crate::{
-    camera::Camera,
-    mesh::CompletedMesh,
-    renderer::cuboid_intersects_frustum,
+    camera::Camera, mesh::CompletedMesh, renderer::cuboid_intersects_frustum,
     world::math::chunkcoord_to_aabb,
 };
 
@@ -34,13 +32,19 @@ impl ChunkRenderer {
         }
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("Chunk {},{} Vertex Buffer", mesh.loc[0], mesh.loc[1])),
+            label: Some(&format!(
+                "Chunk {},{} Vertex Buffer",
+                mesh.loc[0], mesh.loc[1]
+            )),
             contents: bytemuck::cast_slice(&mesh.vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("Chunk {},{} Index Buffer", mesh.loc[0], mesh.loc[1])),
+            label: Some(&format!(
+                "Chunk {},{} Index Buffer",
+                mesh.loc[0], mesh.loc[1]
+            )),
             contents: bytemuck::cast_slice(&mesh.indices),
             usage: wgpu::BufferUsages::INDEX,
         });
@@ -61,15 +65,12 @@ impl ChunkRenderer {
     }
 
     /// Draws all visible chunk meshes.
-    pub fn render_chunks<'a>(
-        &'a self,
-        render_pass: &mut wgpu::RenderPass<'a>,
-        camera: &Camera,
-    ) {
+    pub fn render_chunks<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>, camera: &Camera) {
         for (loc, buffers) in &self.generated_buffers {
             if cuboid_intersects_frustum(&chunkcoord_to_aabb(*loc), camera) {
                 render_pass.set_vertex_buffer(0, buffers.vertex_buffer.slice(..));
-                render_pass.set_index_buffer(buffers.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass
+                    .set_index_buffer(buffers.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..buffers.index_count, 0, 0..1);
             }
         }

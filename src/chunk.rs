@@ -1,9 +1,4 @@
-// src/world/chunk.rs
-use std::{
-    collections::HashMap,
-    path::Path,
-    sync::{Arc, mpsc},
-};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use noise::OpenSimplex;
 use rkyv::{Archive, Deserialize, Serialize, access, deserialize};
@@ -13,7 +8,7 @@ use crate::{
     SEED,
     block::BlockType,
     camera::Camera,
-    mesh::{CompletedMesh, LocatedChunk, MeshJob, start_meshgen},
+    mesh::{CompletedMesh, LocatedChunk, MeshJob, MeshWorker},
     world::{block_index, nearest_visible_unloaded, world_to_chunk_pos},
     world_gen::generate,
 };
@@ -65,8 +60,7 @@ pub struct ChunkManager {
     pub generated_data: ChunkDataStorage,
     noise: OpenSimplex,
 
-    pub sender: mpsc::SyncSender<MeshJob>,
-    pub receiver: mpsc::Receiver<CompletedMesh>,
+    mesh_worker: MeshWorker,
 }
 
 impl ChunkManager {
@@ -117,7 +111,7 @@ impl ChunkManager {
                 },
                 neighbours,
             };
-            let _ = self.sender.try_send(job);
+            let _ = self.mesh_worker.sender.try_send(job);
         }
     }
 
@@ -177,20 +171,28 @@ impl ChunkManager {
     pub fn get_block(&self, pos: Vec3<i32>) -> Option<BlockType> {
         self.generated_data.get_block(pos.x, pos.y, pos.z)
     }
+    /// Non-blocking check for any meshes completed by background workers.
+    pub fn poll_completed_mesh(&self) -> Option<CompletedMesh> {
+        self.mesh_worker.receiver.try_recv().ok()
+    }
 }
 
 impl Default for ChunkManager {
     fn default() -> Self {
-        let (send_generate, recv_generate) = mpsc::sync_channel(10);
-        let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
-        let generated_chunkdata = HashMap::new();
-        start_meshgen(recv_generate, send_chunk);
-        let noise = OpenSimplex::new(SEED);
+        let mesh_worker = MeshWorker::spawn(10, |job: MeshJob| {
+            let (vertices, indices) = crate::mesh::generate(&job.chunk, &job.neighbours);
+
+            Some(CompletedMesh {
+                vertices,
+                indices,
+                loc: job.chunk.loc,
+            })
+        });
+
         Self {
-            generated_data: generated_chunkdata,
-            noise,
-            sender: send_generate,
-            receiver: recv_chunk,
+            generated_data: HashMap::new(),
+            noise: OpenSimplex::new(SEED),
+            mesh_worker,
         }
     }
 }
