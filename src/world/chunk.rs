@@ -19,6 +19,44 @@ use crate::{
         },
     },
 };
+/// Chunks that need re-meshing as a result of a block modification.
+#[derive(Debug, Default)]
+pub struct BlockUpdateOutcome {
+    pub dirty_chunks: Vec<[i32; 2]>,
+}
+
+fn apply_set_block(
+    storage: &mut ChunkDataStorage,
+    target_pos: Vec3<i32>,
+    block: BlockType,
+) -> Option<BlockUpdateOutcome> {
+    let (chunk_loc, idx, neighbor_offsets) = resolve_block_target(target_pos)?;
+    let chunk_arc = storage.get_mut(&chunk_loc)?;
+    let chunk = Arc::make_mut(chunk_arc);
+
+    if chunk.contents[idx] == block {
+        return None;
+    }
+
+    chunk.contents[idx] = block;
+
+    let mut outcome = BlockUpdateOutcome {
+        dirty_chunks: Vec::with_capacity(1 + neighbor_offsets.len()),
+    };
+
+    // Self always re-meshes
+    outcome.dirty_chunks.push(chunk_loc);
+
+    // Re-mesh direct AND diagonal neighbor chunks affected by corner AO
+    for [offset_x, offset_z] in neighbor_offsets.into_iter().flatten() {
+        let n_loc = [chunk_loc[0] + offset_x, chunk_loc[1] + offset_z];
+        if storage.contains_key(&n_loc) {
+            outcome.dirty_chunks.push(n_loc);
+        }
+    }
+
+    Some(outcome)
+}
 
 const CHUNK_WORKER_CAPACITY: usize = 10;
 
@@ -105,33 +143,14 @@ impl ChunkManager {
         }
     }
     pub fn set_block(&mut self, target_pos: Vec3<i32>, block: BlockType) -> bool {
-        let Some((chunk_loc, idx, neighbor_offsets)) = resolve_block_target(target_pos) else {
-            return false;
-        };
-
-        let Some(chunk_arc) = self.generated_data.get_mut(&chunk_loc) else {
-            return false;
-        };
-
-        let chunk = Arc::make_mut(chunk_arc);
-        if chunk.contents[idx] == block {
-            return false;
-        }
-
-        chunk.contents[idx] = block;
-
-        // Self always re-meshes
-        self.mesh_queue.insert(chunk_loc);
-
-        // Re-mesh direct AND diagonal neighbor chunks affected by corner AO
-        for [offset_x, offset_z] in neighbor_offsets.into_iter().flatten() {
-            let n_loc = [chunk_loc[0] + offset_x, chunk_loc[1] + offset_z];
-            if self.generated_data.contains_key(&n_loc) {
-                self.mesh_queue.insert(n_loc);
+        if let Some(outcome) = apply_set_block(&mut self.generated_data, target_pos, block) {
+            for loc in outcome.dirty_chunks {
+                self.mesh_queue.insert(loc);
             }
+            true
+        } else {
+            false
         }
-
-        true
     }
 
     /// Dispatches missing visible chunks to the background worker until channel capacity is saturated.
