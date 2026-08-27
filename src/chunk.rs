@@ -6,7 +6,7 @@ use std::{
 
 use noise::OpenSimplex;
 use rkyv::{Archive, Deserialize, Serialize, access, deserialize};
-use vek::{Aabb, Vec3};
+use vek::Vec3;
 use wgpu::util::DeviceExt;
 
 use crate::{
@@ -15,7 +15,7 @@ use crate::{
     camera::{self, Camera},
     mesh::{self, CompletedMesh, LocatedChunk, MeshJob},
     renderer::{RenderContext, cuboid_intersects_frustum},
-    world::{block_index, world_to_chunk_pos},
+    world::{block_index, chunkcoord_to_aabb, world_to_chunk_pos},
     world_gen::generate,
 };
 pub const CHUNK_WIDTH: usize = 32;
@@ -259,20 +259,6 @@ const RENDER_DISTANCE_CHUNKS: i32 = if MAX_DISTANCE_X > MAX_DISTANCE_Y {
 } else {
     MAX_DISTANCE_Y
 };
-
-#[allow(clippy::cast_precision_loss)]
-#[must_use]
-pub fn chunkcoord_to_aabb(coord: [i32; 2]) -> Aabb<f32> {
-    let min = Vec3::new(
-        (coord[0] * CHUNK_WIDTH_I32) as f32,
-        0.0,
-        (coord[1] * CHUNK_DEPTH_I32) as f32,
-    );
-    Aabb {
-        min,
-        max: min + Vec3::new(CHUNK_WIDTH as f32, CHUNK_HEIGHT as f32, CHUNK_DEPTH as f32),
-    }
-}
 
 #[allow(clippy::cast_possible_truncation)]
 #[must_use]
