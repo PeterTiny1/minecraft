@@ -2,10 +2,10 @@ use vek::{Aabb, Vec3};
 
 use crate::{
     RENDER_DISTANCE, camera,
-    chunk::{
+    renderer::cuboid_intersects_frustum,
+    world::chunk::{
         CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_WIDTH, CHUNK_WIDTH_I32, ChunkDataStorage,
     },
-    renderer::cuboid_intersects_frustum,
 };
 
 #[inline(always)]

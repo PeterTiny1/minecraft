@@ -1,9 +1,9 @@
 use crate::{
     BlockType, block,
-    chunk::{CHUNK_DEPTH_I32, CHUNK_HEIGHT_I32, CHUNK_WIDTH_I32},
     mesh::LocatedChunk,
     renderer::Vertex,
     world::block_index,
+    world::chunk::{CHUNK_DEPTH_I32, CHUNK_HEIGHT_I32, CHUNK_WIDTH_I32},
 };
 
 pub struct MeshGenerationContext<'a> {

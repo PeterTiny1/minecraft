@@ -1,7 +1,6 @@
 // Crate modules
 mod block;
 mod camera;
-mod chunk;
 mod direction;
 mod input;
 mod mesh;
@@ -16,8 +15,8 @@ mod world_gen;
 
 // Public API re-exports
 pub use block::BlockType;
-pub use chunk::ChunkData;
 pub use renderer::RenderContext;
+pub use world::chunk::ChunkData;
 
 // Imports
 use std::{env, path::Path, sync::Arc, time::Instant};
@@ -32,8 +31,8 @@ use winit::{
     window::Window,
 };
 
-use chunk::ChunkManager;
 use player::Player;
+use world::chunk::ChunkManager;
 
 use crate::{input::InputState, renderer::RenderOutcome, world::ChunkRenderer};
 

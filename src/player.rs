@@ -8,9 +8,9 @@ use crate::{
     InputState,
     block::BlockType,
     camera::CameraData,
-    chunk::{BlockProvider, ChunkDataStorage, ChunkManager},
     direction::Direction,
     ray,
+    world::chunk::{BlockProvider, ChunkDataStorage, ChunkManager},
 };
 
 const GRAVITY: f32 = 30.0;
