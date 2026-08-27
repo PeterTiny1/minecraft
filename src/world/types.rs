@@ -1,11 +1,7 @@
 use rkyv::{Archive, Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{
-    block::BlockType,
-    worker::GenericWorker,
-    world::{block_index, world_to_chunk_pos},
-};
+use crate::{block::BlockType, worker::GenericWorker};
 
 // --- World & Chunk Dimensions ---
 pub const CHUNK_WIDTH: usize = 32;
@@ -49,19 +45,3 @@ pub const NEIGHBOUR_OFFSETS: [[i32; 2]; 8] = [
     [0, -1],  // 6: [x, y - 1]
     [1, -1],  // 7: [x + 1, y - 1]
 ];
-
-// --- Block Queries Trait ---
-pub trait BlockProvider {
-    fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType>;
-}
-
-impl BlockProvider for ChunkDataStorage {
-    fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType> {
-        if y < 0 || y as usize >= CHUNK_HEIGHT {
-            return None;
-        }
-        let (chunk_loc, [local_x, local_y, local_z]) = world_to_chunk_pos(x, y, z);
-        let chunk = self.get(&chunk_loc)?;
-        Some(chunk.contents[block_index(local_x, local_y, local_z)])
-    }
-}

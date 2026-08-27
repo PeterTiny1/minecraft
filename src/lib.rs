@@ -151,7 +151,7 @@ impl RunningState {
         // 1. Update player physics & camera rotation using InputState
         self.player.update_physics(
             dt_secs,
-            &self.chunk_manager.storage.data,
+            &self.chunk_manager.storage,
             &self.input,
             &mut self.camera.data,
         );

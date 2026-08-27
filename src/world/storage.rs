@@ -4,8 +4,8 @@ use vek::Vec3;
 use crate::{
     block::BlockType,
     world::{
-        math::resolve_block_target,
-        types::{BlockProvider, ChunkDataStorage},
+        CHUNK_HEIGHT_I32, block_index, math::resolve_block_target, types::ChunkDataStorage,
+        world_to_chunk_pos,
     },
 };
 
@@ -29,7 +29,12 @@ impl WorldStorage {
 
     #[must_use]
     pub fn get_block(&self, pos: Vec3<i32>) -> Option<BlockType> {
-        self.data.get_block(pos.x, pos.y, pos.z)
+        if pos.y < 0 || pos.y >= CHUNK_HEIGHT_I32 {
+            return None;
+        }
+        let (chunk_loc, [local_x, local_y, local_z]) = world_to_chunk_pos(pos.x, pos.y, pos.z);
+        let chunk = self.data.get(&chunk_loc)?;
+        Some(chunk.contents[block_index(local_x, local_y, local_z)])
     }
 
     pub fn set_block(

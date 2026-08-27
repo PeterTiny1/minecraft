@@ -10,7 +10,7 @@ use crate::{
     camera::CameraData,
     direction::Direction,
     ray,
-    world::{BlockProvider, ChunkDataStorage, ChunkManager},
+    world::{ChunkManager, WorldStorage},
 };
 
 const GRAVITY: f32 = 30.0;
@@ -82,7 +82,7 @@ impl Player {
     pub fn update_physics(
         &mut self,
         dt: f32,
-        world: &ChunkDataStorage,
+        world: &WorldStorage,
         input: &InputState,
         camera_data: &mut CameraData,
     ) {
@@ -156,9 +156,8 @@ impl Player {
         let eye_level_position = self.get_camera_position();
         let looking_direction = camera_data.get_forward_vector();
 
-        self.looking_at_block = ray::Ray::new(eye_level_position, looking_direction, 5.0).find(
-            |(e, _)| matches!(world.get_block(e.x, e.y, e.z), Some(b) if b != BlockType::Air),
-        );
+        self.looking_at_block = ray::Ray::new(eye_level_position, looking_direction, 5.0)
+            .find(|(e, _)| matches!(world.get_block(*e), Some(b) if b != BlockType::Air));
     }
 
     /// Evaluates block breaking and placing actions based on input state and cooldown timers.
@@ -193,7 +192,7 @@ impl Player {
     }
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-    fn resolve_collisions_on_axis(&mut self, world: &ChunkDataStorage, axis: Axis) {
+    fn resolve_collisions_on_axis(&mut self, world: &WorldStorage, axis: Axis) {
         let skin = 0.001;
         let player_aabb = self.aabb();
 
@@ -210,7 +209,8 @@ impl Player {
         for x in min_x..=max_x {
             for y in min_y..=max_y {
                 for z in min_z..=max_z {
-                    if let Some(block) = world.get_block(x, y, z)
+                    let pos = Vec3::new(x, y, z);
+                    if let Some(block) = world.get_block(pos)
                         && block.is_solid()
                     {
                         let block_aabb = Aabb {
