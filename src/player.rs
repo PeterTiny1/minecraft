@@ -41,16 +41,87 @@ enum Axis {
     Z,
 }
 
-fn get_axis_overlap(a: Aabb<f32>, b: Aabb<f32>, axis: Axis) -> f32 {
-    let (a_min, a_max, b_min, b_max) = match axis {
-        Axis::X => (a.min.x, a.max.x, b.min.x, b.max.x),
-        Axis::Y => (a.min.y, a.max.y, b.min.y, b.max.y),
-        Axis::Z => (a.min.z, a.max.z, b.min.z, b.max.z),
+/// Calculates continuous collision detection between `moving` with `displacement`
+/// against a stationary `obstacle`.
+fn swept_aabb(
+    moving: Aabb<f32>,
+    displacement: Vec3<f32>,
+    obstacle: Aabb<f32>,
+) -> Option<(f32, Axis)> {
+    // 1. Calculate entry and exit distances along each axis
+    let (x_entry_dist, x_exit_dist) = if displacement.x > 0.0 {
+        (obstacle.min.x - moving.max.x, obstacle.max.x - moving.min.x)
+    } else {
+        (obstacle.max.x - moving.min.x, obstacle.min.x - moving.max.x)
     };
 
-    (a_max.min(b_max) - a_min.max(b_min)).max(0.0)
-}
+    let (y_entry_dist, y_exit_dist) = if displacement.y > 0.0 {
+        (obstacle.min.y - moving.max.y, obstacle.max.y - moving.min.y)
+    } else {
+        (obstacle.max.y - moving.min.y, obstacle.min.y - moving.max.y)
+    };
 
+    let (z_entry_dist, z_exit_dist) = if displacement.z > 0.0 {
+        (obstacle.min.z - moving.max.z, obstacle.max.z - moving.min.z)
+    } else {
+        (obstacle.max.z - moving.min.z, obstacle.min.z - moving.max.z)
+    };
+
+    // 2. Calculate entry and exit times for each axis (scaled 0.0 to 1.0)
+    let (x_entry, x_exit) = if displacement.x == 0.0 {
+        // If already overlapping on X, entry is immediate (-inf) and exit is +inf.
+        // If not overlapping at all on X, entry/exit are both invalid.
+        if moving.max.x <= obstacle.min.x || moving.min.x >= obstacle.max.x {
+            return None;
+        }
+        (-f32::INFINITY, f32::INFINITY)
+    } else {
+        (x_entry_dist / displacement.x, x_exit_dist / displacement.x)
+    };
+
+    let (y_entry, y_exit) = if displacement.y == 0.0 {
+        if moving.max.y <= obstacle.min.y || moving.min.y >= obstacle.max.y {
+            return None;
+        }
+        (-f32::INFINITY, f32::INFINITY)
+    } else {
+        (y_entry_dist / displacement.y, y_exit_dist / displacement.y)
+    };
+
+    let (z_entry, z_exit) = if displacement.z == 0.0 {
+        if moving.max.z <= obstacle.min.z || moving.min.z >= obstacle.max.z {
+            return None;
+        }
+        (-f32::INFINITY, f32::INFINITY)
+    } else {
+        (z_entry_dist / displacement.z, z_exit_dist / displacement.z)
+    };
+
+    // 3. Find overall entry and exit time
+    let entry_time = x_entry.max(y_entry).max(z_entry);
+    let exit_time = x_exit.min(y_exit).min(z_exit);
+
+    // 4. Determine collision validity:
+    // Notice `entry_time >= exit_time` (exclusive bounds) prevents snagging on zero-thickness edges.
+    if entry_time >= exit_time
+        || (x_entry < 0.0 && y_entry < 0.0 && z_entry < 0.0)
+        || entry_time > 1.0
+        || entry_time < 0.0
+    {
+        return None;
+    }
+
+    // 5. Identify normal hit axis
+    let hit_axis = if x_entry >= y_entry && x_entry >= z_entry {
+        Axis::X
+    } else if y_entry >= x_entry && y_entry >= z_entry {
+        Axis::Y
+    } else {
+        Axis::Z
+    };
+
+    Some((entry_time, hit_axis))
+}
 impl Player {
     #[must_use]
     pub fn new(position: Vec3<f32>, speed: f32, sensitivity: f32) -> Self {
@@ -97,7 +168,6 @@ impl Player {
             .try_normalized()
             .unwrap_or(Vec3::unit_z());
 
-        // Perpendicular right vector on XZ plane (guarantees exact 90-degree alignment)
         let right = Vec3::new(-forward.z, 0.0, forward.x);
 
         let mut move_input = Vec2::<f32>::zero();
@@ -162,39 +232,13 @@ impl Player {
         // Gravity
         self.velocity.y = (self.velocity.y - GRAVITY * dt).max(-MAX_FALL_SPEED);
 
-        // --- 4. Sub-Stepped Collision Resolution ---
-        let desired_displacement = self.velocity * dt;
+        // --- 4. Swept AABB Collision Resolution ---
         self.is_grounded = false;
 
-        // Subdivide movement step into chunks smaller than half a block to stop tunneling
-        let max_substep = 0.4;
-
-        let dx_steps = (desired_displacement.x.abs() / max_substep).ceil().max(1.0) as usize;
-        let step_x = desired_displacement.x / dx_steps as f32;
-        for _ in 0..dx_steps {
-            self.position.x += step_x;
-            if self.resolve_collisions_on_axis(world, Axis::X) {
-                break;
-            }
-        }
-
-        let dy_steps = (desired_displacement.y.abs() / max_substep).ceil().max(1.0) as usize;
-        let step_y = desired_displacement.y / dy_steps as f32;
-        for _ in 0..dy_steps {
-            self.position.y += step_y;
-            if self.resolve_collisions_on_axis(world, Axis::Y) {
-                break;
-            }
-        }
-
-        let dz_steps = (desired_displacement.z.abs() / max_substep).ceil().max(1.0) as usize;
-        let step_z = desired_displacement.z / dz_steps as f32;
-        for _ in 0..dz_steps {
-            self.position.z += step_z;
-            if self.resolve_collisions_on_axis(world, Axis::Z) {
-                break;
-            }
-        }
+        // Move per axis sequentially to enable wall sliding
+        self.move_and_slide_axis(world, Axis::X, dt);
+        self.move_and_slide_axis(world, Axis::Y, dt);
+        self.move_and_slide_axis(world, Axis::Z, dt);
 
         // Void safety reset
         if self.position.y < -64.0 {
@@ -208,6 +252,95 @@ impl Player {
 
         self.looking_at_block = ray::Ray::new(eye_level_position, looking_direction, 5.0)
             .find(|(e, _)| matches!(world.get_block(*e), Some(b) if b != BlockType::Air));
+    }
+
+    /// Moves the player along a single axis using Swept AABB Continuous Collision Detection.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+    fn move_and_slide_axis(&mut self, world: &WorldStorage, axis: Axis, dt: f32) {
+        let displacement = match axis {
+            Axis::X => Vec3::new(self.velocity.x * dt, 0.0, 0.0),
+            Axis::Y => Vec3::new(0.0, self.velocity.y * dt, 0.0),
+            Axis::Z => Vec3::new(0.0, 0.0, self.velocity.z * dt),
+        };
+
+        if displacement == Vec3::zero() {
+            return;
+        }
+
+        let player_aabb = self.aabb();
+        let destination_aabb = Aabb {
+            min: player_aabb.min + displacement,
+            max: player_aabb.max + displacement,
+        };
+
+        // Construct a broadphase AABB spanning from start position to end position using map2
+        let swept_box = Aabb {
+            min: player_aabb.min.map2(destination_aabb.min, f32::min),
+            max: player_aabb.max.map2(destination_aabb.max, f32::max),
+        };
+
+        let min_x = swept_box.min.x.floor() as i32;
+        let max_x = swept_box.max.x.floor() as i32;
+        let min_y = swept_box.min.y.floor() as i32;
+        let max_y = swept_box.max.y.floor() as i32;
+        let min_z = swept_box.min.z.floor() as i32;
+        let max_z = swept_box.max.z.floor() as i32;
+
+        let mut earliest_hit = 1.0f32;
+        let mut hit_occurred = false;
+
+        for x in min_x..=max_x {
+            for y in min_y..=max_y {
+                for z in min_z..=max_z {
+                    let pos = Vec3::new(x, y, z);
+                    if let Some(block) = world.get_block(pos)
+                        && block.is_solid()
+                    {
+                        let block_aabb = Aabb {
+                            min: Vec3::new(x as f32, y as f32, z as f32),
+                            max: Vec3::new((x + 1) as f32, (y + 1) as f32, (z + 1) as f32),
+                        };
+
+                        if let Some((hit_time, _)) =
+                            swept_aabb(player_aabb, displacement, block_aabb)
+                        {
+                            if hit_time < earliest_hit {
+                                earliest_hit = hit_time;
+                                hit_occurred = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if hit_occurred {
+            // Advance player position precisely up to the block boundary face (no skin needed)
+            match axis {
+                Axis::X => {
+                    self.position.x += displacement.x * earliest_hit;
+                    self.velocity.x = 0.0;
+                }
+                Axis::Y => {
+                    self.position.y += displacement.y * earliest_hit;
+                    if self.velocity.y <= 0.0 {
+                        self.is_grounded = true;
+                    }
+                    self.velocity.y = 0.0;
+                }
+                Axis::Z => {
+                    self.position.z += displacement.z * earliest_hit;
+                    self.velocity.z = 0.0;
+                }
+            }
+        } else {
+            // Unobstructed path: full displacement applied
+            match axis {
+                Axis::X => self.position.x += displacement.x,
+                Axis::Y => self.position.y += displacement.y,
+                Axis::Z => self.position.z += displacement.z,
+            }
+        }
     }
 
     /// Evaluates block breaking and placing actions based on input state and cooldown timers.
@@ -234,86 +367,20 @@ impl Player {
             self.last_place_time = now;
             let place_pos = location + previous_step.opposite().offset();
 
-            // Only place if target position is currently empty/air
-            if chunk_manager.get_block(place_pos) == Some(BlockType::Air) {
+            let target_aabb = Aabb {
+                min: Vec3::new(place_pos.x as f32, place_pos.y as f32, place_pos.z as f32),
+                max: Vec3::new(
+                    (place_pos.x + 1) as f32,
+                    (place_pos.y + 1) as f32,
+                    (place_pos.z + 1) as f32,
+                ),
+            };
+
+            // Prevent placing block inside player bounding box
+            let intersects_player = self.aabb().collides_with_aabb(target_aabb);
+
+            if chunk_manager.get_block(place_pos) == Some(BlockType::Air) && !intersects_player {
                 chunk_manager.set_block(place_pos, BlockType::Stone);
-            }
-        }
-    }
-
-    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-    fn resolve_collisions_on_axis(&mut self, world: &WorldStorage, axis: Axis) -> bool {
-        let skin = 0.001;
-        let player_aabb = self.aabb();
-
-        let min_x = player_aabb.min.x.floor() as i32;
-        let max_x = player_aabb.max.x.floor() as i32;
-        let min_y = player_aabb.min.y.floor() as i32;
-        let max_y = player_aabb.max.y.floor() as i32;
-        let min_z = player_aabb.min.z.floor() as i32;
-        let max_z = player_aabb.max.z.floor() as i32;
-
-        let mut max_penetration = 0.0f32;
-        let mut target_block: Option<Aabb<f32>> = None;
-
-        for x in min_x..=max_x {
-            for y in min_y..=max_y {
-                for z in min_z..=max_z {
-                    let pos = Vec3::new(x, y, z);
-                    if let Some(block) = world.get_block(pos)
-                        && block.is_solid()
-                    {
-                        let block_aabb = Aabb {
-                            min: Vec3::new(x as f32, y as f32, z as f32),
-                            max: Vec3::new((x + 1) as f32, (y + 1) as f32, (z + 1) as f32),
-                        };
-
-                        if player_aabb.collides_with_aabb(block_aabb) {
-                            let penetration = get_axis_overlap(player_aabb, block_aabb, axis);
-                            if penetration > max_penetration {
-                                max_penetration = penetration;
-                                target_block = Some(block_aabb);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if let Some(block_aabb) = target_block {
-            self.handle_collision(axis, block_aabb, skin);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn handle_collision(&mut self, axis: Axis, block_aabb: Aabb<f32>, skin: f32) {
-        match axis {
-            Axis::X => {
-                if self.velocity.x > 0.0 {
-                    self.position.x = block_aabb.min.x - self.half_extents.x - skin;
-                } else if self.velocity.x < 0.0 {
-                    self.position.x = block_aabb.max.x + self.half_extents.x + skin;
-                }
-                self.velocity.x = 0.0;
-            }
-            Axis::Y => {
-                if self.velocity.y <= 0.0 {
-                    self.position.y = block_aabb.max.y + skin;
-                    self.is_grounded = true;
-                } else {
-                    self.position.y = block_aabb.min.y - PLAYER_HEIGHT - skin;
-                }
-                self.velocity.y = 0.0;
-            }
-            Axis::Z => {
-                if self.velocity.z > 0.0 {
-                    self.position.z = block_aabb.min.z - self.half_extents.z - skin;
-                } else if self.velocity.z < 0.0 {
-                    self.position.z = block_aabb.max.z + self.half_extents.z + skin;
-                }
-                self.velocity.z = 0.0;
             }
         }
     }
