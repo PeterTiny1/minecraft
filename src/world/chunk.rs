@@ -9,6 +9,7 @@ use crate::{
     block::BlockType,
     camera::Camera,
     mesh::{CompletedMesh, LocatedChunk, MeshJob, MeshWorker},
+    worker::GenericWorker,
     world::{block_index, nearest_visible_unloaded, world_to_chunk_pos},
     world_gen::generate,
 };
@@ -29,6 +30,17 @@ pub struct ChunkData {
 }
 
 pub type ChunkDataStorage = HashMap<[i32; 2], Arc<ChunkData>>;
+
+pub struct ChunkJob {
+    pub location: [i32; 2],
+}
+
+pub struct CompletedChunk {
+    pub location: [i32; 2],
+    pub data: Arc<ChunkData>,
+}
+
+pub type ChunkWorker = GenericWorker<ChunkJob, CompletedChunk>;
 
 const NEIGHBOUR_OFFSETS: [[i32; 2]; 8] = [
     [1, 0],   // 0: [x + 1, y]
@@ -58,39 +70,11 @@ impl BlockProvider for ChunkDataStorage {
 
 pub struct ChunkManager {
     pub generated_data: ChunkDataStorage,
-    noise: OpenSimplex,
-
     mesh_worker: MeshWorker,
+    chunk_worker: ChunkWorker,
 }
 
 impl ChunkManager {
-    /// Attempts to read and deserialize a chunk from disk; falls back to procedural generation.
-    fn get_or_generate_chunk(&self, path: &Path, chunk_location: [i32; 2]) -> ChunkData {
-        let loaded = std::fs::read(path).ok().and_then(|buffer| {
-            let archived = access::<ArchivedChunkData, rkyv::rancor::Error>(&buffer).ok()?;
-            deserialize::<ChunkData, rkyv::rancor::Error>(archived).ok()
-        });
-
-        loaded.unwrap_or_else(|| ChunkData {
-            contents: generate(&self.noise, chunk_location),
-        })
-    }
-
-    pub fn load_or_generate_chunk_arc(
-        &mut self,
-        path: &Path,
-        chunk_location: [i32; 2],
-    ) -> Arc<ChunkData> {
-        if let Some(existing) = self.generated_data.get(&chunk_location) {
-            return existing.clone();
-        }
-
-        let new_chunk = Arc::new(self.get_or_generate_chunk(path, chunk_location));
-        self.generated_data
-            .insert(chunk_location, new_chunk.clone());
-        new_chunk
-    }
-
     pub fn queue_mesh_job(&self, loc: [i32; 2]) {
         if let Some(center_arc) = self.generated_data.get(&loc) {
             let mut neighbours = Vec::with_capacity(8);
@@ -142,7 +126,7 @@ impl ChunkManager {
         true
     }
 
-    /// Dispatches loading/generation and neighbor remeshing for the next visible chunk.
+    /// Dispatches generation/loading of the next visible chunk to the background worker.
     pub fn update_visible_chunks(&mut self, camera: &Camera) {
         let Some(chunk_loc) = nearest_visible_unloaded(&self.generated_data, camera) else {
             return;
@@ -150,12 +134,21 @@ impl ChunkManager {
 
         tracing::trace!(chunk_loc = ?chunk_loc, "Queueing visible chunk");
 
-        // Let ChunkManager handle file paths internally
-        let path_str = format!("{},{}.bin", chunk_loc[0], chunk_loc[1]);
-        let _ = self.load_or_generate_chunk_arc(Path::new(&path_str), chunk_loc);
+        let _ = self.chunk_worker.sender.try_send(ChunkJob {
+            location: chunk_loc,
+        });
+    }
 
-        // Batch meshing for chunk + 8 surrounding neighbors
-        self.queue_mesh_with_neighbors(chunk_loc);
+    /// Non-blocking check for any chunks generated/loaded by background workers.
+    /// Inserts completed chunk data into storage and triggers meshing for its neighborhood.
+    pub fn poll_completed_chunk(&mut self) -> Option<[i32; 2]> {
+        let completed = self.chunk_worker.receiver.try_recv().ok()?;
+        let loc = completed.location;
+
+        self.generated_data.insert(loc, completed.data);
+        self.queue_mesh_with_neighbors(loc);
+
+        Some(loc)
     }
 
     /// Queues mesh updates for a target chunk and all 8 surrounding neighbors.
@@ -171,6 +164,7 @@ impl ChunkManager {
     pub fn get_block(&self, pos: Vec3<i32>) -> Option<BlockType> {
         self.generated_data.get_block(pos.x, pos.y, pos.z)
     }
+
     /// Non-blocking check for any meshes completed by background workers.
     pub fn poll_completed_mesh(&self) -> Option<CompletedMesh> {
         self.mesh_worker.receiver.try_recv().ok()
@@ -179,6 +173,28 @@ impl ChunkManager {
 
 impl Default for ChunkManager {
     fn default() -> Self {
+        let noise = OpenSimplex::new(SEED);
+
+        // Background worker handles disk I/O and terrain generation
+        let chunk_worker = ChunkWorker::spawn(10, move |job: ChunkJob| {
+            let path_str = format!("{},{}.bin", job.location[0], job.location[1]);
+            let path = Path::new(&path_str);
+
+            let loaded = std::fs::read(path).ok().and_then(|buffer| {
+                let archived = access::<ArchivedChunkData, rkyv::rancor::Error>(&buffer).ok()?;
+                deserialize::<ChunkData, rkyv::rancor::Error>(archived).ok()
+            });
+
+            let chunk_data = loaded.unwrap_or_else(|| ChunkData {
+                contents: generate(&noise, job.location),
+            });
+
+            Some(CompletedChunk {
+                location: job.location,
+                data: Arc::new(chunk_data),
+            })
+        });
+
         let mesh_worker = MeshWorker::spawn(10, |job: MeshJob| {
             let (vertices, indices) = crate::mesh::generate(&job.chunk, &job.neighbours);
 
@@ -191,8 +207,8 @@ impl Default for ChunkManager {
 
         Self {
             generated_data: HashMap::new(),
-            noise: OpenSimplex::new(SEED),
             mesh_worker,
+            chunk_worker,
         }
     }
 }

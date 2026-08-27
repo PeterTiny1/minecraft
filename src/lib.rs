@@ -169,6 +169,9 @@ impl RunningState {
         // 4. Chunk Loading & GPU Uploads
         self.chunk_manager.update_visible_chunks(&self.camera);
 
+        // Drain completed chunk generation/loads from background worker
+        while self.chunk_manager.poll_completed_chunk().is_some() {}
+
         // Drain CPU mesh worker results and upload buffers to GPU
         while let Some(mesh) = self.chunk_manager.poll_completed_mesh() {
             self.chunk_renderer
