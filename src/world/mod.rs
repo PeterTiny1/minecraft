@@ -2,6 +2,7 @@ mod chunk;
 mod factory;
 mod generation;
 mod math;
+mod mesh_pipeline;
 mod renderer;
 mod storage;
 mod types;
