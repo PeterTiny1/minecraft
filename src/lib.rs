@@ -34,7 +34,7 @@ use winit::{
 use chunk::ChunkManager;
 use player::Player;
 
-use crate::{input::InputState, renderer::RenderOutcome};
+use crate::{input::InputState, renderer::RenderOutcome, world::ChunkRenderer};
 
 #[derive(Debug)]
 pub enum EngineError {
@@ -96,6 +96,7 @@ pub struct RunningState {
     ui: ui::State,
 
     chunk_manager: ChunkManager,
+    chunk_renderer: ChunkRenderer,
     player: Player,
     input: InputState,
 
@@ -126,6 +127,7 @@ impl RunningState {
         };
         render_context.uniforms.update_view_proj(&camera);
         render_context.write_uniforms();
+        let chunk_renderer = ChunkRenderer::new();
 
         Self {
             window,
@@ -134,6 +136,7 @@ impl RunningState {
             camera,
 
             chunk_manager,
+            chunk_renderer,
             player,
 
             input: InputState::default(),
@@ -165,7 +168,12 @@ impl RunningState {
 
         // 4. Chunk Loading & GPU Uploads
         self.chunk_manager.update_visible_chunks(&self.camera);
-        self.chunk_manager.insert_chunk(&self.render_context);
+
+        // Drain CPU mesh worker results and upload buffers to GPU
+        while let Ok(mesh) = self.chunk_manager.receiver.try_recv() {
+            self.chunk_renderer
+                .insert_mesh(&self.render_context.device, mesh);
+        }
 
         // 5. Reset frame-based input deltas
         self.input.end_frame();
@@ -341,7 +349,7 @@ impl ApplicationHandler for App {
 
                     if state
                         .render_context
-                        .render(&state.chunk_manager, &state.camera, &state.ui)
+                        .render(&state.chunk_renderer, &state.camera, &state.ui)
                         == RenderOutcome::NeedsResize
                     {
                         state.resize(state.render_context.size);

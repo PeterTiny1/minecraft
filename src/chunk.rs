@@ -1,3 +1,4 @@
+// src/world/chunk.rs
 use std::{
     collections::HashMap,
     path::Path,
@@ -7,17 +8,16 @@ use std::{
 use noise::OpenSimplex;
 use rkyv::{Archive, Deserialize, Serialize, access, deserialize};
 use vek::Vec3;
-use wgpu::util::DeviceExt;
 
 use crate::{
     SEED,
     block::BlockType,
-    camera::{self, Camera},
-    mesh::{self, CompletedMesh, LocatedChunk, MeshJob},
-    renderer::{RenderContext, cuboid_intersects_frustum},
-    world::{block_index, chunkcoord_to_aabb, nearest_visible_unloaded, world_to_chunk_pos},
+    camera::Camera,
+    mesh::{CompletedMesh, LocatedChunk, MeshJob, start_meshgen},
+    world::{block_index, nearest_visible_unloaded, world_to_chunk_pos},
     world_gen::generate,
 };
+
 pub const CHUNK_WIDTH: usize = 32;
 pub const CHUNK_WIDTH_I32: i32 = CHUNK_WIDTH as i32;
 pub const CHUNK_HEIGHT: usize = 256;
@@ -27,11 +27,14 @@ pub const CHUNK_DEPTH_I32: i32 = CHUNK_DEPTH as i32;
 
 pub const CHUNK_SIZE: usize = CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH;
 pub type Chunk = Box<[BlockType; CHUNK_SIZE]>;
+
 #[derive(Debug, Clone, Deserialize, Serialize, Archive)]
 pub struct ChunkData {
     pub contents: Chunk,
 }
+
 pub type ChunkDataStorage = HashMap<[i32; 2], Arc<ChunkData>>;
+
 const NEIGHBOUR_OFFSETS: [[i32; 2]; 8] = [
     [1, 0],   // 0: [x + 1, y]
     [1, 1],   // 1: [x + 1, y + 1]
@@ -57,15 +60,8 @@ impl BlockProvider for ChunkDataStorage {
         Some(chunk.contents[block_index(local_x, local_y, local_z)])
     }
 }
-#[derive(Debug)]
-struct ChunkBuffers {
-    index: wgpu::Buffer,
-    vertex: wgpu::Buffer,
-    num_indices: u32,
-}
 
 pub struct ChunkManager {
-    generated_buffers: HashMap<[i32; 2], ChunkBuffers>,
     pub generated_data: ChunkDataStorage,
     noise: OpenSimplex,
 
@@ -77,10 +73,8 @@ impl ChunkManager {
     /// Attempts to read and deserialize a chunk from disk; falls back to procedural generation.
     fn get_or_generate_chunk(&self, path: &Path, chunk_location: [i32; 2]) -> ChunkData {
         let loaded = std::fs::read(path).ok().and_then(|buffer| {
-            // buffer lives inside this entire block
             let archived = access::<ArchivedChunkData, rkyv::rancor::Error>(&buffer).ok()?;
             deserialize::<ChunkData, rkyv::rancor::Error>(archived).ok()
-            // ChunkData is owned, so buffer can be safely dropped here
         });
 
         loaded.unwrap_or_else(|| ChunkData {
@@ -101,55 +95,6 @@ impl ChunkManager {
         self.generated_data
             .insert(chunk_location, new_chunk.clone());
         new_chunk
-    }
-
-    /// Panics
-    ///
-    /// If the number of indices exceeds the 32 bit integer limit
-    pub fn insert_chunk(&mut self, render_context: &RenderContext) {
-        // Destructure CompletedMesh fields directly in the match pattern
-        while let Ok(CompletedMesh {
-            vertices,
-            indices,
-            loc,
-        }) = self.receiver.try_recv()
-        {
-            self.generated_buffers.insert(
-                loc,
-                ChunkBuffers {
-                    vertex: render_context.device.create_buffer_init(
-                        &wgpu::util::BufferInitDescriptor {
-                            label: Some("Vertex Buffer"),
-                            contents: bytemuck::cast_slice(&vertices),
-                            usage: wgpu::BufferUsages::VERTEX,
-                        },
-                    ),
-                    index: render_context.device.create_buffer_init(
-                        &wgpu::util::BufferInitDescriptor {
-                            label: Some("Index Buffer"),
-                            contents: bytemuck::cast_slice(&indices),
-                            usage: wgpu::BufferUsages::INDEX,
-                        },
-                    ),
-                    num_indices: u32::try_from(indices.len())
-                        .expect("mesh index count exceeded u32 limit"),
-                },
-            );
-        }
-    }
-    pub fn render_chunks(&self, render_pass: &mut wgpu::RenderPass, camera: &camera::Camera) {
-        self.generated_buffers
-            .iter() // Iterates over (&chunk_location, &chunk_data) pairs
-            .filter(|(location, _chunk)| {
-                // Dereference location explicitly depending on map type (or use **location)
-                cuboid_intersects_frustum(&chunkcoord_to_aabb(**location), camera)
-            })
-            .for_each(|(_location, chunk)| {
-                // We already have a direct reference to `chunk` here—no map lookup needed!
-                render_pass.set_vertex_buffer(0, chunk.vertex.slice(..));
-                render_pass.set_index_buffer(chunk.index.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..chunk.num_indices, 0, 0..1);
-            });
     }
 
     pub fn queue_mesh_job(&self, loc: [i32; 2]) {
@@ -176,7 +121,7 @@ impl ChunkManager {
         }
     }
 
-    pub fn set_block(&mut self, target_pos: vek::Vec3<i32>, block: BlockType) -> bool {
+    pub fn set_block(&mut self, target_pos: Vec3<i32>, block: BlockType) -> bool {
         if target_pos.y < 0 || target_pos.y >= CHUNK_HEIGHT_I32 {
             return false;
         }
@@ -236,14 +181,12 @@ impl ChunkManager {
 
 impl Default for ChunkManager {
     fn default() -> Self {
-        let generated_chunk_buffers = HashMap::new();
         let (send_generate, recv_generate) = mpsc::sync_channel(10);
         let (send_chunk, recv_chunk) = mpsc::sync_channel(10);
         let generated_chunkdata = HashMap::new();
-        mesh::start_meshgen(recv_generate, send_chunk);
+        start_meshgen(recv_generate, send_chunk);
         let noise = OpenSimplex::new(SEED);
         Self {
-            generated_buffers: generated_chunk_buffers,
             generated_data: generated_chunkdata,
             noise,
             sender: send_generate,

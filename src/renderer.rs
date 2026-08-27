@@ -1,7 +1,7 @@
 use core::fmt;
 use std::sync::Arc;
 
-use crate::{camera, chunk::ChunkManager, texture, ui};
+use crate::{camera, texture, ui, world::ChunkRenderer};
 use vek::{Aabb, Mat4, Vec4};
 use wgpu::{PipelineCompilationOptions, util::DeviceExt};
 use winit::{dpi::PhysicalSize, window::Window};
@@ -450,7 +450,7 @@ impl RenderContext {
     /// `self.surface.get_current_texture` fails
     pub fn render(
         &self,
-        chunk_manager: &ChunkManager,
+        chunk_renderer: &ChunkRenderer,
         camera: &camera::Camera,
         ui: &ui::State,
     ) -> RenderOutcome {
@@ -511,7 +511,7 @@ impl RenderContext {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
-            chunk_manager.render_chunks(&mut render_pass, camera);
+            chunk_renderer.render_chunks(&mut render_pass, camera);
 
             render_pass.set_pipeline(&ui.pipeline);
             render_pass.set_bind_group(0, &ui.crosshair_bind_group, &[]);
