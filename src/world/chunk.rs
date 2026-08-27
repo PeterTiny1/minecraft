@@ -1,18 +1,10 @@
-use std::collections::HashSet;
-
 use vek::Vec3;
 
 use crate::{
     block::BlockType,
     camera::Camera,
     mesh::CompletedMesh,
-    world::{
-        factory::spawn_chunk_worker,
-        mesh_pipeline::MeshPipeline,
-        nearest_unloaded_chunks,
-        storage::WorldStorage,
-        types::{ChunkJob, ChunkWorker},
-    },
+    world::{loader::ChunkLoader, mesh_pipeline::MeshPipeline, storage::WorldStorage},
 };
 
 const CHUNK_WORKER_CAPACITY: usize = 10;
@@ -20,8 +12,7 @@ const CHUNK_WORKER_CAPACITY: usize = 10;
 pub struct ChunkManager {
     pub storage: WorldStorage,
     pub mesh_pipeline: MeshPipeline,
-    pending_chunks: HashSet<[i32; 2]>,
-    chunk_worker: ChunkWorker,
+    pub loader: ChunkLoader,
 }
 
 impl ChunkManager {
@@ -46,35 +37,13 @@ impl ChunkManager {
     }
 
     pub fn update_visible_chunks(&mut self, camera: &Camera) {
-        let free_capacity = CHUNK_WORKER_CAPACITY.saturating_sub(self.pending_chunks.len());
-        if free_capacity == 0 {
-            return;
-        }
-
-        let to_queue = nearest_unloaded_chunks(
-            &self.storage.data,
-            &self.pending_chunks,
-            camera,
-            free_capacity,
-        );
-
-        for loc in to_queue {
-            if self
-                .chunk_worker
-                .sender
-                .try_send(ChunkJob { location: loc })
-                .is_ok()
-            {
-                self.pending_chunks.insert(loc);
-            }
-        }
+        self.loader.update_visible_chunks(camera, &self.storage);
     }
 
     pub fn poll_completed_chunk(&mut self) -> Option<[i32; 2]> {
-        let completed = self.chunk_worker.receiver.try_recv().ok()?;
+        let completed = self.loader.poll_completed_chunk()?;
         let loc = completed.location;
 
-        self.pending_chunks.remove(&loc);
         self.storage.data.insert(loc, completed.data);
         self.mark_dirty_with_neighbors(loc);
 
@@ -95,9 +64,8 @@ impl Default for ChunkManager {
     fn default() -> Self {
         Self {
             storage: WorldStorage::new(),
-            pending_chunks: HashSet::new(),
-            chunk_worker: spawn_chunk_worker(CHUNK_WORKER_CAPACITY),
             mesh_pipeline: MeshPipeline::new(CHUNK_WORKER_CAPACITY),
+            loader: ChunkLoader::new(CHUNK_WORKER_CAPACITY),
         }
     }
 }

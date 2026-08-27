@@ -1,6 +1,7 @@
 mod chunk;
 mod factory;
 mod generation;
+mod loader;
 mod math;
 mod mesh_pipeline;
 mod renderer;
