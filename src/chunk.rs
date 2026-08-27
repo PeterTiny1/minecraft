@@ -10,12 +10,12 @@ use vek::Vec3;
 use wgpu::util::DeviceExt;
 
 use crate::{
-    RENDER_DISTANCE, SEED,
+    SEED,
     block::BlockType,
     camera::{self, Camera},
     mesh::{self, CompletedMesh, LocatedChunk, MeshJob},
     renderer::{RenderContext, cuboid_intersects_frustum},
-    world::{block_index, chunkcoord_to_aabb, world_to_chunk_pos},
+    world::{block_index, chunkcoord_to_aabb, nearest_visible_unloaded, world_to_chunk_pos},
     world_gen::generate,
 };
 pub const CHUNK_WIDTH: usize = 32;
@@ -250,54 +250,4 @@ impl Default for ChunkManager {
             receiver: recv_chunk,
         }
     }
-}
-
-const MAX_DISTANCE_X: i32 = RENDER_DISTANCE as i32 / CHUNK_WIDTH_I32 + 1;
-const MAX_DISTANCE_Y: i32 = RENDER_DISTANCE as i32 / CHUNK_DEPTH_I32 + 1;
-const RENDER_DISTANCE_CHUNKS: i32 = if MAX_DISTANCE_X > MAX_DISTANCE_Y {
-    MAX_DISTANCE_X
-} else {
-    MAX_DISTANCE_Y
-};
-
-#[allow(clippy::cast_possible_truncation)]
-#[must_use]
-pub fn nearest_visible_unloaded(
-    generated_chunks: &HashMap<[i32; 2], Arc<ChunkData>>,
-    camera: &camera::Camera,
-) -> Option<[i32; 2]> {
-    let cam_pos = camera.get_position();
-    let chunk_x = (cam_pos.x as i32).div_euclid(CHUNK_WIDTH_I32);
-    let chunk_z = (cam_pos.z as i32).div_euclid(CHUNK_DEPTH_I32);
-
-    let r_squared = RENDER_DISTANCE_CHUNKS * RENDER_DISTANCE_CHUNKS;
-
-    let mut nearest_chunk = None;
-    let mut shortest_distance = i32::MAX;
-
-    for i in -MAX_DISTANCE_X..=MAX_DISTANCE_X {
-        for j in -MAX_DISTANCE_Y..=MAX_DISTANCE_Y {
-            let distance = i * i + j * j;
-
-            // 1. Quick distance check first (cheapest operation)
-            if distance > r_squared || distance >= shortest_distance {
-                continue;
-            }
-
-            let location = [i + chunk_x, j + chunk_z];
-
-            // 2. HashMap lookup (medium cost)
-            if generated_chunks.contains_key(&location) {
-                continue;
-            }
-
-            // 3. Frustum intersection check (most expensive)
-            if cuboid_intersects_frustum(&chunkcoord_to_aabb(location), camera) {
-                shortest_distance = distance;
-                nearest_chunk = Some(location);
-            }
-        }
-    }
-
-    nearest_chunk
 }
