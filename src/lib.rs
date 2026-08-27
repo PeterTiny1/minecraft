@@ -11,7 +11,6 @@ mod texture;
 mod ui;
 mod worker;
 mod world;
-mod world_gen;
 
 // Public API re-exports
 pub use block::BlockType;

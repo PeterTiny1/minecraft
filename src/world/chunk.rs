@@ -14,8 +14,7 @@ use crate::{
     camera::Camera,
     mesh::{CompletedMesh, LocatedChunk, MeshJob, MeshWorker},
     worker::GenericWorker,
-    world::{block_index, nearest_unloaded_chunks, world_to_chunk_pos},
-    world_gen::generate,
+    world::{block_index, generate, nearest_unloaded_chunks, world_to_chunk_pos},
 };
 
 pub const CHUNK_WIDTH: usize = 32;
