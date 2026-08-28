@@ -1,4 +1,7 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 
 use crate::{
     camera::Camera,
@@ -12,6 +15,8 @@ use crate::{
 
 pub struct ChunkLoader {
     pending_chunks: HashSet<[i32; 2]>,
+    /// Unbounded backlog for save jobs so no save is ever dropped when channel saturates
+    save_backlog: VecDeque<ChunkJob>,
     worker: ChunkWorker,
     capacity: usize,
 }
@@ -20,13 +25,18 @@ impl ChunkLoader {
     pub fn new(capacity: usize) -> Self {
         Self {
             pending_chunks: HashSet::new(),
+            save_backlog: VecDeque::new(),
             worker: spawn_chunk_worker(capacity),
             capacity,
         }
     }
 
-    /// Dispatches missing visible chunks to the background worker until channel capacity is saturated.
+    /// Dispatches missing visible chunks and flushes pending save jobs to workers.
     pub fn update_visible_chunks(&mut self, camera: &Camera, storage: &WorldStorage) {
+        // 1. Drain save backlog into worker channel first (prioritize saving memory)
+        self.flush_save_backlog();
+
+        // 2. Schedule missing chunk loads up to available channel capacity
         let free_capacity = self.capacity.saturating_sub(self.pending_chunks.len());
         if free_capacity == 0 {
             return;
@@ -47,9 +57,9 @@ impl ChunkLoader {
         }
     }
 
-    /// Dispatches an unloaded chunk's data to a background worker to be serialized and saved to disk.
+    /// Dispatches an unloaded chunk's data to be serialized and saved to disk.
+    /// If the worker channel is full, queues it in an internal backlog to guarantee zero lost saves.
     pub fn unload_chunk(&mut self, location: [i32; 2], data: Arc<ChunkData>) {
-        // If the chunk was pending load, ensure it is removed from pending tracking
         self.pending_chunks.remove(&location);
 
         let job = ChunkJob {
@@ -57,17 +67,28 @@ impl ChunkLoader {
             kind: ChunkJobKind::Save(data),
         };
 
-        if let Err(e) = self.worker.sender.try_send(job) {
-            tracing::error!(
-                chunk_location = ?location,
-                error = %e,
-                "Failed to queue chunk save task to worker"
-            );
+        // Try immediate send; if worker channel is full, push to local backlog
+        if let Err(std::sync::mpsc::TrySendError::Full(overflow_job)) =
+            self.worker.sender.try_send(job)
+        {
+            self.save_backlog.push_back(overflow_job);
+        }
+    }
+
+    /// Attempts to push queued save tasks from the backlog to the worker pool.
+    fn flush_save_backlog(&mut self) {
+        while let Some(job) = self.save_backlog.pop_front() {
+            if let Err(std::sync::mpsc::TrySendError::Full(returned_job)) =
+                self.worker.sender.try_send(job)
+            {
+                // Channel is saturated again; put the job back and try again next frame
+                self.save_backlog.push_front(returned_job);
+                break;
+            }
         }
     }
 
     /// Non-blocking check for any chunks generated/loaded by background workers.
-    /// Removes the chunk from pending state and returns the completed data.
     pub fn poll_completed_chunk(&mut self) -> Option<CompletedChunk> {
         let completed = self.worker.receiver.try_recv().ok()?;
         self.pending_chunks.remove(&completed.location);

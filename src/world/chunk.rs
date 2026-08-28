@@ -1,8 +1,13 @@
 use vek::Vec3;
 
 use crate::{
-    RENDER_DISTANCE, block::BlockType, camera::Camera, mesh::CompletedMesh, world::{
-        CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_WIDTH, CHUNK_WIDTH_I32, ChunkRenderer, loader::ChunkLoader, mesh_pipeline::MeshPipeline, save_chunks, storage::WorldStorage,
+    RENDER_DISTANCE,
+    block::BlockType,
+    camera::Camera,
+    mesh::CompletedMesh,
+    world::{
+        CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_WIDTH, CHUNK_WIDTH_I32, ChunkRenderer,
+        loader::ChunkLoader, mesh_pipeline::MeshPipeline, save_chunks, storage::WorldStorage,
     },
 };
 
