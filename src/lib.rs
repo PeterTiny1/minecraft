@@ -18,7 +18,7 @@ pub use renderer::RenderContext;
 pub use world::ChunkData;
 
 // Imports
-use std::{env, path::Path, sync::Arc, time::Instant};
+use std::{env, sync::Arc, time::Instant};
 
 use vek::Vec3;
 use winit::{
@@ -185,53 +185,6 @@ impl RunningState {
         self.input.end_frame();
     }
 
-    #[tracing::instrument(skip(self))]
-    fn save_all_chunks(&self) {
-        let save_dir = Path::new("saves");
-        if let Err(e) = std::fs::create_dir_all(save_dir) {
-            tracing::error!(error = %e, "Failed to create saves directory");
-            return;
-        }
-
-        let generated_chunkdata = &self.chunk_manager.storage.data;
-        let mut saved_count = 0;
-
-        for (chunk_location, data) in generated_chunkdata {
-            let file_path =
-                save_dir.join(format!("{},{}.bin", chunk_location[0], chunk_location[1]));
-
-            // Handle serialization errors without crashing
-            let bytes = match rkyv::to_bytes::<rkyv::rancor::Error>(data) {
-                Ok(bytes) => bytes,
-                Err(e) => {
-                    tracing::error!(
-                        chunk_location = ?chunk_location,
-                        error = %e,
-                        "Failed to serialize chunk"
-                    );
-                    continue;
-                }
-            };
-
-            // std::fs::write creates/truncates and writes in one step
-            if let Err(e) = std::fs::write(&file_path, &bytes) {
-                tracing::error!(
-                    chunk_location = ?chunk_location,
-                    path = %file_path.display(),
-                    error = %e,
-                    "Failed to write chunk file"
-                );
-            } else {
-                saved_count += 1;
-            }
-        }
-
-        tracing::info!(
-            saved_count,
-            total = generated_chunkdata.len(),
-            "Finished saving chunks"
-        );
-    }
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         if new_size.width == 0 || new_size.height == 0 {
             return;
@@ -304,7 +257,7 @@ impl ApplicationHandler for App {
                 if self.save_on_exit
                     && let Some(state) = &self.state
                 {
-                    state.save_all_chunks();
+                    state.chunk_manager.save_all();
                 }
                 event_loop.exit();
             }

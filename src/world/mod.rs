@@ -7,6 +7,7 @@ mod mesh_pipeline;
 mod renderer;
 mod storage;
 mod types;
+mod save;
 
 pub use chunk::ChunkManager;
 pub use generation::generate;
@@ -17,3 +18,4 @@ pub use types::{
     CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_HEIGHT, CHUNK_HEIGHT_I32, CHUNK_SIZE, CHUNK_WIDTH,
     CHUNK_WIDTH_I32, Chunk, ChunkData,
 };
+pub use save::save_chunks;

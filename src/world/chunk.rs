@@ -1,10 +1,7 @@
 use vek::Vec3;
 
 use crate::{
-    block::BlockType,
-    camera::Camera,
-    mesh::CompletedMesh,
-    world::{loader::ChunkLoader, mesh_pipeline::MeshPipeline, storage::WorldStorage},
+    block::BlockType, camera::Camera, mesh::CompletedMesh, world::{loader::ChunkLoader, mesh_pipeline::MeshPipeline, save_chunks, storage::WorldStorage},
 };
 
 const CHUNK_WORKER_CAPACITY: usize = 10;
@@ -57,6 +54,11 @@ impl ChunkManager {
     /// Non-blocking check for any meshes completed by background workers.
     pub fn poll_completed_mesh(&self) -> Option<CompletedMesh> {
         self.mesh_pipeline.poll_completed()
+    }
+
+    pub fn save_all(&self) {
+        let save_dir = std::path::Path::new("saves");
+        save_chunks(&self.storage.data, save_dir);
     }
 }
 
