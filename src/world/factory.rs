@@ -5,28 +5,41 @@ use std::sync::Arc;
 use crate::{
     SEED,
     mesh::{ChunkMeshBuilder, CompletedMesh, MeshJob, MeshWorker},
-    world::types::{ArchivedChunkData, ChunkData, ChunkJob, ChunkWorker, CompletedChunk},
+    world::{
+        save::save_single_chunk,
+        types::{
+            ArchivedChunkData, ChunkData, ChunkJob, ChunkJobKind, ChunkWorker, CompletedChunk,
+        },
+    },
 };
 
-/// Spawns the worker thread pool responsible for loading/generating terrain chunk data.
 pub fn spawn_chunk_worker(capacity: usize) -> ChunkWorker {
     let noise = OpenSimplex::new(SEED);
-    ChunkWorker::spawn(capacity, move |job: ChunkJob| {
-        let file_name = format!("{},{}.bin", job.location[0], job.location[1]);
+    ChunkWorker::spawn(capacity, move |job: ChunkJob| match job.kind {
+        ChunkJobKind::Save(data) => {
+            let save_dir = std::path::Path::new("saves");
+            save_single_chunk(job.location, &data, save_dir);
+            // Fire-and-forget: No completed chunk needs to return to the main thread
+            None
+        }
+        ChunkJobKind::LoadOrGenerate => {
+            let save_dir = std::path::Path::new("saves");
+            let file_path = save_dir.join(format!("{},{}.bin", job.location[0], job.location[1]));
 
-        let chunk_data = if let Ok(bytes) = std::fs::read(&file_name) {
-            let archived = access::<ArchivedChunkData, rkyv::rancor::Error>(&bytes).ok()?;
-            let data: ChunkData = deserialize::<_, rkyv::rancor::Error>(archived).ok()?;
-            Arc::new(data)
-        } else {
-            let chunk = crate::world::generate(&noise, job.location);
-            Arc::new(ChunkData { contents: chunk })
-        };
+            let chunk_data = if let Ok(bytes) = std::fs::read(&file_path) {
+                let archived = access::<ArchivedChunkData, rkyv::rancor::Error>(&bytes).ok()?;
+                let data: ChunkData = deserialize::<_, rkyv::rancor::Error>(archived).ok()?;
+                Arc::new(data)
+            } else {
+                let chunk = crate::world::generate(&noise, job.location);
+                Arc::new(ChunkData { contents: chunk })
+            };
 
-        Some(CompletedChunk {
-            location: job.location,
-            data: chunk_data,
-        })
+            Some(CompletedChunk {
+                location: job.location,
+                data: chunk_data,
+            })
+        }
     })
 }
 

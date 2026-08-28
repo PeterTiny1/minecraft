@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     camera::Camera,
@@ -6,7 +6,7 @@ use crate::{
         factory::spawn_chunk_worker,
         nearest_unloaded_chunks,
         storage::WorldStorage,
-        types::{ChunkJob, ChunkWorker, CompletedChunk},
+        types::{ChunkData, ChunkJob, ChunkJobKind, ChunkWorker, CompletedChunk},
     },
 };
 
@@ -36,14 +36,33 @@ impl ChunkLoader {
             nearest_unloaded_chunks(&storage.data, &self.pending_chunks, camera, free_capacity);
 
         for loc in to_queue {
-            if self
-                .worker
-                .sender
-                .try_send(ChunkJob { location: loc })
-                .is_ok()
-            {
+            let job = ChunkJob {
+                location: loc,
+                kind: ChunkJobKind::LoadOrGenerate,
+            };
+
+            if self.worker.sender.try_send(job).is_ok() {
                 self.pending_chunks.insert(loc);
             }
+        }
+    }
+
+    /// Dispatches an unloaded chunk's data to a background worker to be serialized and saved to disk.
+    pub fn unload_chunk(&mut self, location: [i32; 2], data: Arc<ChunkData>) {
+        // If the chunk was pending load, ensure it is removed from pending tracking
+        self.pending_chunks.remove(&location);
+
+        let job = ChunkJob {
+            location,
+            kind: ChunkJobKind::Save(data),
+        };
+
+        if let Err(e) = self.worker.sender.try_send(job) {
+            tracing::error!(
+                chunk_location = ?location,
+                error = %e,
+                "Failed to queue chunk save task to worker"
+            );
         }
     }
 

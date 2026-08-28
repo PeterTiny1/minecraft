@@ -167,6 +167,8 @@ impl RunningState {
 
         // 4. Chunk Loading, Meshing & GPU Uploads
         self.chunk_manager.update_visible_chunks(&self.camera);
+        self.chunk_manager
+            .unload_far_chunks(self.camera.get_position(), &mut self.chunk_renderer);
 
         // Drain completed chunk generation/loads from background worker
         while self.chunk_manager.poll_completed_chunk().is_some() {}

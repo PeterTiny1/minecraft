@@ -22,9 +22,14 @@ pub struct ChunkData {
 
 pub type ChunkDataStorage = HashMap<[i32; 2], Arc<ChunkData>>;
 
-// --- Worker Job DTOs ---
+pub enum ChunkJobKind {
+    LoadOrGenerate,
+    Save(Arc<ChunkData>),
+}
+
 pub struct ChunkJob {
     pub location: [i32; 2],
+    pub kind: ChunkJobKind,
 }
 
 pub struct CompletedChunk {

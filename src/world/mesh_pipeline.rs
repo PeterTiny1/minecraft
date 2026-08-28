@@ -103,4 +103,8 @@ impl MeshPipeline {
     pub fn poll_completed(&self) -> Option<CompletedMesh> {
         self.worker.receiver.try_recv().ok()
     }
+
+    pub fn remove_mesh(&mut self, loc: [i32; 2]) {
+        self.queue.remove(&loc);
+    }
 }

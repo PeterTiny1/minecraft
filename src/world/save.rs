@@ -46,3 +46,33 @@ where
 
     tracing::info!(saved_count, total, "Finished saving chunks");
 }
+
+pub fn save_single_chunk(chunk_location: [i32; 2], data: &ChunkData, save_dir: &Path) {
+    if let Err(e) = std::fs::create_dir_all(save_dir) {
+        tracing::error!(error = %e, "Failed to create saves directory");
+        return;
+    }
+
+    let file_path = save_dir.join(format!("{},{}.bin", chunk_location[0], chunk_location[1]));
+
+    let bytes = match rkyv::to_bytes::<rkyv::rancor::Error>(data) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            tracing::error!(
+                chunk_location = ?chunk_location,
+                error = %e,
+                "Failed to serialize chunk"
+            );
+            return;
+        }
+    };
+
+    if let Err(e) = std::fs::write(&file_path, &bytes) {
+        tracing::error!(
+            chunk_location = ?chunk_location,
+            path = %file_path.display(),
+            error = %e,
+            "Failed to write chunk file"
+        );
+    }
+}
