@@ -2,7 +2,7 @@ use std::f32::consts::FRAC_1_SQRT_2;
 
 use crate::{
     block::{self, BlockType},
-    mesh::{LocatedChunk, textures::get_texture_indices},
+    mesh::{Data, LocatedChunk, textures::get_texture_indices},
     renderer::Vertex,
     world::{CHUNK_DEPTH_I32, CHUNK_HEIGHT_I32, CHUNK_WIDTH_I32, block_index},
 };
@@ -22,14 +22,9 @@ const BLOCK_WATER_HEIGHT: f32 = 0.5;
 const WATER_V_TOP_OFF: u8 = (16.0 - BLOCK_WATER_HEIGHT * 16.0) as u8;
 
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
-// Indices for double-sided quads
-const DOUBLE_SIDED_QUAD_INDICES: [u32; 12] = [
-    0, 1, 2, 0, 2, 3, // Front-face (CCW)
-    0, 3, 2, 0, 2, 1, // Back-face (CW)
-];
-const FLOWER_INDICES: [u32; 12] = [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0];
-const GRASS_INDICES: [u32; 24] = [
-    0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0, 4, 5, 6, 4, 6, 7, 7, 6, 4, 6, 5, 4,
+const GRASS_INDICES: [u32; 12] = [
+    0, 1, 2, 0, 2, 3, // Quad 1
+    4, 5, 6, 4, 6, 7, // Quad 2
 ];
 
 // --- Internal Configuration Sub-structs ---
@@ -192,18 +187,26 @@ pub struct ChunkMeshBuilder<'a> {
     neighbor_grid: [[Option<&'a LocatedChunk>; 3]; 3],
     local_pos: (i32, i32, i32),
     global_pos: (i32, i32, i32),
-    vertices: Vec<Vertex>,
-    indices: Vec<u32>,
+    opaque_vertices: Vec<Vertex>,
+    opaque_indices: Vec<u32>,
+    cutout_nocull_vertices: Vec<Vertex>,
+    cutout_nocull_indices: Vec<u32>,
+    translucent_vertices: Vec<Vertex>,
+    translucent_indices: Vec<u32>,
 }
 
 impl<'a> ChunkMeshBuilder<'a> {
-    pub fn build(
-        center: &'a LocatedChunk,
-        neighbors: &'a [LocatedChunk],
-    ) -> (Vec<Vertex>, Vec<u32>) {
+    pub fn build(center: &'a LocatedChunk, neighbors: &'a [LocatedChunk]) -> Data {
         let mut builder = Self::new(center, neighbors);
         builder.generate_mesh();
-        (builder.vertices, builder.indices)
+        Data {
+            opaque_vertices: builder.opaque_vertices,
+            opaque_indices: builder.opaque_indices,
+            cutout_nocull_vertices: builder.cutout_nocull_vertices,
+            cutout_nocull_indices: builder.cutout_nocull_indices,
+            translucent_vertices: builder.translucent_vertices,
+            translucent_indices: builder.translucent_indices,
+        }
     }
 
     fn new(center: &'a LocatedChunk, neighbors: &'a [LocatedChunk]) -> Self {
@@ -223,8 +226,12 @@ impl<'a> ChunkMeshBuilder<'a> {
             neighbor_grid,
             local_pos: (0, 0, 0),
             global_pos: (0, 0, 0),
-            vertices: Vec::with_capacity(8000),
-            indices: Vec::with_capacity(12000),
+            opaque_vertices: Vec::with_capacity(8000),
+            opaque_indices: Vec::with_capacity(12000),
+            cutout_nocull_vertices: Vec::with_capacity(2000),
+            cutout_nocull_indices: Vec::with_capacity(3000),
+            translucent_vertices: Vec::with_capacity(2000),
+            translucent_indices: Vec::with_capacity(3000),
         }
     }
 
@@ -267,9 +274,24 @@ impl<'a> ChunkMeshBuilder<'a> {
     }
 
     #[inline]
-    fn extend_indices(&mut self, base_indices: &[u32]) {
-        let base_len = u32::try_from(self.vertices.len()).expect("Vertex count exceeded u32 limit");
-        self.indices
+    fn extend_opaque_indices(&mut self, base_indices: &[u32]) {
+        let base_len =
+            u32::try_from(self.opaque_vertices.len()).expect("Vertex count exceeded u32 limit");
+        self.opaque_indices
+            .extend(base_indices.iter().map(|i| *i + base_len));
+    }
+
+    fn extend_translucent_indices(&mut self, base_indices: &[u32]) {
+        let base_len = u32::try_from(self.translucent_vertices.len())
+            .expect("Vertex count exceeded u32 limit");
+        self.translucent_indices
+            .extend(base_indices.iter().map(|i| *i + base_len));
+    }
+
+    fn extend_cutout_nocull_indices(&mut self, base_indices: &[u32]) {
+        let base_len = u32::try_from(self.cutout_nocull_vertices.len())
+            .expect("Vertex count exceeded u32 limit");
+        self.cutout_nocull_indices
             .extend(base_indices.iter().map(|i| *i + base_len));
     }
 
@@ -358,7 +380,7 @@ impl<'a> ChunkMeshBuilder<'a> {
             }
 
             let tex_index = tex_indices[face.tex_idx];
-            self.extend_indices(&QUAD_INDICES);
+            self.extend_opaque_indices(&QUAD_INDICES);
 
             for (i, &offset) in face.v_pos.iter().enumerate() {
                 let (s1, s2, c) = face.ao_offsets[i];
@@ -370,7 +392,7 @@ impl<'a> ChunkMeshBuilder<'a> {
                 );
 
                 let uv = uv_coords[i];
-                self.vertices.push(Vertex {
+                self.opaque_vertices.push(Vertex {
                     position: [x + offset[0], y + offset[1], z + offset[2]],
                     data: [uv[0], uv[1], tex_index, light],
                 });
@@ -381,9 +403,9 @@ impl<'a> ChunkMeshBuilder<'a> {
     #[inline]
     fn generate_grass(&mut self, tex_index: u8) {
         let [x, y, z] = self.worldpos_f32();
-        self.extend_indices(&GRASS_INDICES);
+        self.extend_cutout_nocull_indices(&GRASS_INDICES);
 
-        self.vertices.extend_from_slice(&[
+        self.cutout_nocull_vertices.extend_from_slice(&[
             Vertex {
                 position: [x + CLOSE_CORNER, y + 1.0, z + FAR_CORNER],
                 data: [0, 0, tex_index, 255],
@@ -422,9 +444,9 @@ impl<'a> ChunkMeshBuilder<'a> {
     #[inline]
     fn generate_flower(&mut self, tex_index: u8) {
         let [x, y, z] = self.worldpos_f32();
-        self.extend_indices(&FLOWER_INDICES);
+        self.extend_cutout_nocull_indices(&QUAD_INDICES);
 
-        self.vertices.extend_from_slice(&[
+        self.cutout_nocull_vertices.extend_from_slice(&[
             Vertex {
                 position: [x + CLOSE_FLOWER_CORNER, y + 1.0, z + FAR_CORNER],
                 data: [0, 0, tex_index, 255],
@@ -458,8 +480,8 @@ impl<'a> ChunkMeshBuilder<'a> {
         // Top face
         if !is_submerged {
             let tex = tex_indices[0];
-            self.extend_indices(&DOUBLE_SIDED_QUAD_INDICES);
-            self.vertices.extend_from_slice(&[
+            self.extend_translucent_indices(&QUAD_INDICES);
+            self.translucent_vertices.extend_from_slice(&[
                 Vertex {
                     position: [x, top_y, z],
                     data: [0, 0, tex, 255],
@@ -482,8 +504,8 @@ impl<'a> ChunkMeshBuilder<'a> {
         // Bottom face
         if !self.is_neighbor_liquid(0, -1, 0) && self.should_draw_face(0, -1, 0) {
             let tex = tex_indices[5];
-            self.extend_indices(&DOUBLE_SIDED_QUAD_INDICES);
-            self.vertices.extend_from_slice(&[
+            self.extend_translucent_indices(&QUAD_INDICES);
+            self.translucent_vertices.extend_from_slice(&[
                 Vertex {
                     position: [x, y, z],
                     data: [0, 0, tex, 255],
@@ -511,8 +533,8 @@ impl<'a> ChunkMeshBuilder<'a> {
                 let (x0, z0) = (x + face.p0.0, z + face.p0.1);
                 let (x1, z1) = (x + face.p1.0, z + face.p1.1);
 
-                self.extend_indices(&DOUBLE_SIDED_QUAD_INDICES);
-                self.vertices.extend_from_slice(&[
+                self.extend_translucent_indices(&QUAD_INDICES);
+                self.translucent_vertices.extend_from_slice(&[
                     Vertex {
                         position: [x0, top_y, z0],
                         data: [0, side_v_top, tex, 255],

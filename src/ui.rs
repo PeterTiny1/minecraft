@@ -2,7 +2,9 @@ use wgpu::util::DeviceExt;
 use winit::dpi::PhysicalSize;
 
 use crate::{
-    renderer::{RenderContext, create_index_buffer, create_render_pipeline, load_texture},
+    renderer::{
+        PipelineConfig, RenderContext, create_index_buffer, create_render_pipeline, load_texture,
+    },
     texture,
 };
 
@@ -174,29 +176,47 @@ pub fn init_state(render_context: &RenderContext, size: PhysicalSize<u32>) -> St
             label: Some("ui_uniform_bind_group"),
         });
 
-    let pipeline = create_render_pipeline(
-        &render_context.device,
-        &render_context
+    // 1. Create the pipeline layout
+    let ui_pipeline_layout =
+        render_context
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
+                label: Some("UI Pipeline Layout"),
                 bind_group_layouts: &[
                     Some(&ui_bind_group_layout),
                     Some(&uniform_bind_group_layout),
                 ],
                 immediate_size: 0,
-            }),
+            });
+
+    // 2. Compile the UI shader module
+    let ui_shader = render_context
+        .device
+        .create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("UI Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
+        });
+
+    // 3. Create the UI pipeline using the updated helper
+    let ui_pipeline = create_render_pipeline(
+        &render_context.device,
+        &ui_pipeline_layout,
         render_context.config.format,
         Some(texture::Texture::DEPTH_FORMAT),
         &[Some(Vertex::desc())],
-        wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
+        &ui_shader,
+        PipelineConfig {
+            label: "UI Render Pipeline",
+            vs_entry: "vs_main",
+            fs_entry: "fs_main",
+            cull_mode: None, // Disable culling so UI elements render regardless of winding order
+            depth_write_enabled: false, // UI shouldn't overwrite the depth buffer over 3D world geometry
+            blend: Some(wgpu::BlendState::ALPHA_BLENDING), // Enable transparency for UI overlays
         },
     );
 
     State {
-        pipeline,
+        pipeline: ui_pipeline,
         crosshair,
         crosshair_bind_group,
         uniform_bind_group,

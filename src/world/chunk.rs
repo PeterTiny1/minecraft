@@ -4,7 +4,7 @@ use crate::{
     RENDER_DISTANCE,
     block::BlockType,
     camera::Camera,
-    mesh::CompletedMesh,
+    mesh::Completed,
     world::{
         CHUNK_DEPTH, CHUNK_DEPTH_I32, CHUNK_WIDTH, CHUNK_WIDTH_I32, ChunkRenderer,
         loader::ChunkLoader, mesh_pipeline::MeshPipeline, save_chunks, storage::WorldStorage,
@@ -61,7 +61,7 @@ impl ChunkManager {
         self.storage.get_block(pos)
     }
     /// Non-blocking check for any meshes completed by background workers.
-    pub fn poll_completed_mesh(&self) -> Option<CompletedMesh> {
+    pub fn poll_completed_mesh(&self) -> Option<Completed> {
         self.mesh_pipeline.poll_completed()
     }
 

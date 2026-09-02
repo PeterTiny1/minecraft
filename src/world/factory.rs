@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     SEED,
-    mesh::{ChunkMeshBuilder, CompletedMesh, MeshJob, MeshWorker},
+    mesh::{ChunkMeshBuilder, Completed, Job, Worker},
     world::{
         save::save_single_chunk,
         types::{
@@ -44,15 +44,11 @@ pub fn spawn_chunk_worker(capacity: usize) -> ChunkWorker {
 }
 
 /// Spawns the worker thread pool responsible for building chunk render meshes.
-pub fn spawn_mesh_worker(capacity: usize) -> MeshWorker {
-    MeshWorker::spawn(capacity, move |job: MeshJob| {
+pub fn spawn_mesh_worker(capacity: usize) -> Worker {
+    Worker::spawn(capacity, move |job: Job| {
         let loc = job.chunk.loc;
-        let (vertices, indices) = ChunkMeshBuilder::build(&job.chunk, &job.neighbours);
+        let data = ChunkMeshBuilder::build(&job.chunk, &job.neighbours);
 
-        Some(CompletedMesh {
-            vertices,
-            indices,
-            loc,
-        })
+        Some(Completed { data, loc })
     })
 }

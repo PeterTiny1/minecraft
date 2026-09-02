@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::{camera, texture, ui, world::ChunkRenderer};
 use vek::{Aabb, Mat4, Vec4};
-use wgpu::{PipelineCompilationOptions, util::DeviceExt};
+use wgpu::util::DeviceExt;
 use winit::{dpi::PhysicalSize, window::Window};
 
 const BLOCK_TEXTURES: &[&[u8]] = &[
@@ -117,6 +117,15 @@ impl Uniforms {
     }
 }
 
+pub struct PipelineConfig<'a> {
+    pub label: &'a str,
+    pub vs_entry: &'a str,
+    pub fs_entry: &'a str,
+    pub cull_mode: Option<wgpu::Face>,
+    pub depth_write_enabled: bool,
+    pub blend: Option<wgpu::BlendState>,
+}
+
 #[must_use]
 pub fn create_render_pipeline(
     device: &wgpu::Device,
@@ -124,40 +133,40 @@ pub fn create_render_pipeline(
     color_format: wgpu::TextureFormat,
     depth_format: Option<wgpu::TextureFormat>,
     vertex_layouts: &[Option<wgpu::VertexBufferLayout>],
-    shader: wgpu::ShaderModuleDescriptor,
+    shader: &wgpu::ShaderModule,
+    config: PipelineConfig,
 ) -> wgpu::RenderPipeline {
-    let shader = device.create_shader_module(shader);
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some(&format!("{shader:?}")),
+        label: Some(config.label),
         layout: Some(layout),
         vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: Some("vs_main"),
+            module: shader,
+            entry_point: Some(config.vs_entry), // Custom vertex entry
             buffers: vertex_layouts,
-            compilation_options: PipelineCompilationOptions::default(),
+            compilation_options: Default::default(),
         },
         fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: Some("fs_main"),
+            module: shader,
+            entry_point: Some(config.fs_entry), // Custom fragment entry!
             targets: &[Some(wgpu::ColorTargetState {
                 format: color_format,
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                blend: config.blend,
                 write_mask: wgpu::ColorWrites::ALL,
             })],
-            compilation_options: PipelineCompilationOptions::default(),
+            compilation_options: Default::default(),
         }),
         primitive: wgpu::PrimitiveState {
             topology: wgpu::PrimitiveTopology::TriangleList,
             strip_index_format: None,
             front_face: wgpu::FrontFace::Ccw,
-            cull_mode: Some(wgpu::Face::Back),
+            cull_mode: config.cull_mode,
             polygon_mode: wgpu::PolygonMode::Fill,
             conservative: false,
             unclipped_depth: false,
         },
         depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
             format,
-            depth_write_enabled: Some(true),
+            depth_write_enabled: Some(config.depth_write_enabled),
             depth_compare: Some(wgpu::CompareFunction::Less),
             stencil: wgpu::StencilState::default(),
             bias: wgpu::DepthBiasState::default(),
@@ -258,7 +267,9 @@ pub struct RenderContext {
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub size: PhysicalSize<u32>,
-    render_pipeline: wgpu::RenderPipeline,
+    opaque_pipeline: wgpu::RenderPipeline,
+    cutout_nocull_pipeline: wgpu::RenderPipeline,
+    translucent_pipeline: wgpu::RenderPipeline,
     diffuse_bind_group: wgpu::BindGroup,
     pub uniforms: Uniforms,
     uniform_buffer: wgpu::Buffer,
@@ -400,22 +411,64 @@ impl RenderContext {
         });
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
-        let render_pipeline = create_render_pipeline(
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Chunk Pipeline Layout"),
+            bind_group_layouts: &[
+                Some(&diffuse_bind_group_layout),
+                Some(&uniform_bind_group_layout),
+            ],
+            immediate_size: 0,
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        });
+        let opaque_pipeline = create_render_pipeline(
             &device,
-            &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[
-                    Some(&diffuse_bind_group_layout),
-                    Some(&uniform_bind_group_layout),
-                ],
-                immediate_size: 0,
-            }),
+            &pipeline_layout,
             config.format,
             Some(texture::Texture::DEPTH_FORMAT),
             &[Some(Vertex::desc())],
-            wgpu::ShaderModuleDescriptor {
-                label: Some("Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+            &shader,
+            PipelineConfig {
+                label: "Opaque Pipeline",
+                vs_entry: "vs_main",
+                fs_entry: "fs_opaque",
+                cull_mode: Some(wgpu::Face::Back),
+                depth_write_enabled: true,
+                blend: None,
+            },
+        );
+        let cutout_nocull_pipeline = create_render_pipeline(
+            &device,
+            &pipeline_layout,
+            config.format,
+            Some(texture::Texture::DEPTH_FORMAT),
+            &[Some(Vertex::desc())],
+            &shader,
+            PipelineConfig {
+                label: "Cutout Double-Sided Pipeline",
+                vs_entry: "vs_main",
+                fs_entry: "fs_cutout",
+                cull_mode: None, // No culling so plants are visible from both sides
+                depth_write_enabled: true,
+                blend: None,
+            },
+        );
+        let translucent_pipeline = create_render_pipeline(
+            &device,
+            &pipeline_layout,
+            config.format,
+            Some(texture::Texture::DEPTH_FORMAT),
+            &[Some(Vertex::desc())],
+            &shader,
+            PipelineConfig {
+                label: "Translucent Pipeline",
+                vs_entry: "vs_main",
+                fs_entry: "fs_translucent",
+                cull_mode: None,
+                depth_write_enabled: false,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
             },
         );
         Ok(Self {
@@ -424,7 +477,9 @@ impl RenderContext {
             queue,
             config,
             size,
-            render_pipeline,
+            opaque_pipeline,
+            cutout_nocull_pipeline,
+            translucent_pipeline,
             diffuse_bind_group,
             uniforms,
             uniform_buffer,
@@ -508,10 +563,14 @@ impl RenderContext {
                 multiview_mask: None,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_pipeline(&self.opaque_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
-            chunk_renderer.render_chunks(&mut render_pass, camera);
+            chunk_renderer.render_pass(&mut render_pass, camera, |b| &b.opaque);
+            render_pass.set_pipeline(&self.cutout_nocull_pipeline);
+            chunk_renderer.render_pass(&mut render_pass, camera, |b| &b.cutout_nocull);
+            render_pass.set_pipeline(&self.translucent_pipeline);
+            chunk_renderer.render_pass(&mut render_pass, camera, |b| &b.translucent);
 
             render_pass.set_pipeline(&ui.pipeline);
             render_pass.set_bind_group(0, &ui.crosshair_bind_group, &[]);

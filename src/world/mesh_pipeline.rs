@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::mpsc::TrySendError};
 use vek::Vec3;
 
 use crate::{
-    mesh::{CompletedMesh, LocatedChunk, MeshJob, MeshWorker},
+    mesh::{Completed, Job, LocatedChunk, Worker},
     world::{
         factory::spawn_mesh_worker,
         storage::WorldStorage,
@@ -13,7 +13,7 @@ use crate::{
 
 pub struct MeshPipeline {
     queue: HashSet<[i32; 2]>,
-    worker: MeshWorker,
+    worker: Worker,
 }
 
 impl MeshPipeline {
@@ -74,7 +74,7 @@ impl MeshPipeline {
                 }
             }
 
-            let job = MeshJob {
+            let job = Job {
                 chunk: LocatedChunk {
                     loc,
                     data: center_arc.clone(),
@@ -100,7 +100,7 @@ impl MeshPipeline {
     }
 
     /// Non-blocking check for any meshes completed by background workers.
-    pub fn poll_completed(&self) -> Option<CompletedMesh> {
+    pub fn poll_completed(&self) -> Option<Completed> {
         self.worker.receiver.try_recv().ok()
     }
 
