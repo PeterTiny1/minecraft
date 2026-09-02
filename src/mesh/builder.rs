@@ -22,6 +22,11 @@ const BLOCK_WATER_HEIGHT: f32 = 0.5;
 const WATER_V_TOP_OFF: u8 = (16.0 - BLOCK_WATER_HEIGHT * 16.0) as u8;
 
 const QUAD_INDICES: [u32; 6] = [0, 1, 2, 0, 2, 3];
+// Indices for double-sided quads
+const DOUBLE_SIDED_QUAD_INDICES: [u32; 12] = [
+    0, 1, 2, 0, 2, 3, // Front-face (CCW)
+    0, 3, 2, 0, 2, 1, // Back-face (CW)
+];
 const FLOWER_INDICES: [u32; 12] = [0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0];
 const GRASS_INDICES: [u32; 24] = [
     0, 1, 2, 0, 2, 3, 3, 2, 0, 2, 1, 0, 4, 5, 6, 4, 6, 7, 7, 6, 4, 6, 5, 4,
@@ -453,7 +458,7 @@ impl<'a> ChunkMeshBuilder<'a> {
         // Top face
         if !is_submerged {
             let tex = tex_indices[0];
-            self.extend_indices(&QUAD_INDICES);
+            self.extend_indices(&DOUBLE_SIDED_QUAD_INDICES);
             self.vertices.extend_from_slice(&[
                 Vertex {
                     position: [x, top_y, z],
@@ -477,7 +482,7 @@ impl<'a> ChunkMeshBuilder<'a> {
         // Bottom face
         if !self.is_neighbor_liquid(0, -1, 0) && self.should_draw_face(0, -1, 0) {
             let tex = tex_indices[5];
-            self.extend_indices(&QUAD_INDICES);
+            self.extend_indices(&DOUBLE_SIDED_QUAD_INDICES);
             self.vertices.extend_from_slice(&[
                 Vertex {
                     position: [x, y, z],
@@ -506,7 +511,7 @@ impl<'a> ChunkMeshBuilder<'a> {
                 let (x0, z0) = (x + face.p0.0, z + face.p0.1);
                 let (x1, z1) = (x + face.p1.0, z + face.p1.1);
 
-                self.extend_indices(&QUAD_INDICES);
+                self.extend_indices(&DOUBLE_SIDED_QUAD_INDICES);
                 self.vertices.extend_from_slice(&[
                     Vertex {
                         position: [x0, top_y, z0],
