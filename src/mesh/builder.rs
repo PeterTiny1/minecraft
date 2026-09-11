@@ -265,11 +265,11 @@ impl<'a> ChunkMeshBuilder<'a> {
     }
 
     #[inline]
-    fn worldpos_f32(&self) -> [f32; 3] {
+    fn local_f32(&self) -> [f32; 3] {
         [
-            self.global_pos.0 as f32,
-            self.global_pos.1 as f32,
-            self.global_pos.2 as f32,
+            self.local_pos.0 as f32,
+            self.local_pos.1 as f32,
+            self.local_pos.2 as f32,
         ]
     }
 
@@ -370,7 +370,7 @@ impl<'a> ChunkMeshBuilder<'a> {
     }
 
     fn generate_solid(&mut self, tex_indices: [u8; 6]) {
-        let [x, y, z] = self.worldpos_f32();
+        let [x, y, z] = self.local_f32();
         let uv_coords = [[0, 0], [0, 16], [16, 16], [16, 0]];
 
         for face in &SOLID_FACES {
@@ -402,7 +402,7 @@ impl<'a> ChunkMeshBuilder<'a> {
 
     #[inline]
     fn generate_grass(&mut self, tex_index: u8) {
-        let [x, y, z] = self.worldpos_f32();
+        let [x, y, z] = self.local_f32();
         self.extend_cutout_nocull_indices(&GRASS_INDICES);
 
         self.cutout_nocull_vertices.extend_from_slice(&[
@@ -443,7 +443,7 @@ impl<'a> ChunkMeshBuilder<'a> {
 
     #[inline]
     fn generate_flower(&mut self, tex_index: u8) {
-        let [x, y, z] = self.worldpos_f32();
+        let [x, y, z] = self.local_f32();
         self.extend_cutout_nocull_indices(&QUAD_INDICES);
 
         self.cutout_nocull_vertices.extend_from_slice(&[
@@ -468,7 +468,7 @@ impl<'a> ChunkMeshBuilder<'a> {
 
     #[inline]
     fn generate_liquid(&mut self, tex_indices: [u8; 6]) {
-        let [x, y, z] = self.worldpos_f32();
+        let [x, y, z] = self.local_f32();
         let is_submerged = self.is_neighbor_liquid(0, 1, 0);
 
         let (top_y, side_v_top) = if is_submerged {

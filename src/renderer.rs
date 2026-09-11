@@ -1,7 +1,10 @@
 use core::fmt;
 use std::sync::Arc;
 
-use crate::{camera, texture, ui, world::ChunkRenderer};
+use crate::{
+    camera, texture, ui,
+    world::{ChunkRenderer, VisibleChunk},
+};
 use vek::{Aabb, Mat4, Vec4};
 use wgpu::util::DeviceExt;
 use winit::{dpi::PhysicalSize, window::Window};
@@ -114,6 +117,102 @@ impl Uniforms {
 
     pub fn update_view_proj(&mut self, camera: &camera::Camera) {
         self.view_proj = camera.get_transformation();
+    }
+}
+
+pub struct ChunkOffsetBuffer {
+    pub buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
+    pub layout: wgpu::BindGroupLayout,
+    pub capacity: usize, // Track capacity in elements to reallocate as needed
+}
+
+impl ChunkOffsetBuffer {
+    pub fn new(device: &wgpu::Device) -> Self {
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Chunk Offset Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
+        let initial_capacity = 256; // Reasonable starting count
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Chunk Offset Storage Buffer"),
+            size: (initial_capacity * std::mem::size_of::<[f32; 4]>()) as wgpu::BufferAddress,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Chunk Offset Bind Group"),
+            layout: &layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            }],
+        });
+
+        Self {
+            buffer,
+            bind_group,
+            layout,
+            capacity: initial_capacity,
+        }
+    }
+
+    pub fn prepare(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        visible_chunks: &[VisibleChunk],
+    ) {
+        if visible_chunks.is_empty() {
+            return;
+        }
+
+        // 1. Pack relative offsets into 16-byte aligned vec4s ([x, y, z, pad])
+        let raw_data: Vec<[f32; 4]> = visible_chunks
+            .iter()
+            .map(|c| {
+                [
+                    c.relative_offset[0],
+                    c.relative_offset[1],
+                    c.relative_offset[2],
+                    0.0,
+                ]
+            })
+            .collect();
+
+        // 2. Reallocate buffer and bind group if frame exceeds current capacity
+        if raw_data.len() > self.capacity {
+            self.capacity = raw_data.len().next_power_of_two();
+            self.buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Chunk Offset Storage Buffer"),
+                size: (self.capacity * std::mem::size_of::<[f32; 4]>()) as wgpu::BufferAddress,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+
+            self.bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Chunk Offset Bind Group"),
+                layout: &self.layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.buffer.as_entire_binding(),
+                }],
+            });
+        }
+
+        // 3. Write data to the GPU buffer
+        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&raw_data));
     }
 }
 
@@ -275,6 +374,7 @@ pub struct RenderContext {
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
+    chunk_offset_buffer: ChunkOffsetBuffer,
 }
 
 impl RenderContext {
@@ -411,11 +511,13 @@ impl RenderContext {
         });
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
+        let chunk_offset_buffer = ChunkOffsetBuffer::new(&device);
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Chunk Pipeline Layout"),
             bind_group_layouts: &[
                 Some(&diffuse_bind_group_layout),
                 Some(&uniform_bind_group_layout),
+                Some(&chunk_offset_buffer.layout),
             ],
             immediate_size: 0,
         });
@@ -485,6 +587,7 @@ impl RenderContext {
             uniform_buffer,
             uniform_bind_group,
             depth_texture,
+            chunk_offset_buffer,
         })
     }
 
@@ -504,7 +607,7 @@ impl RenderContext {
     ///
     /// `self.surface.get_current_texture` fails
     pub fn render(
-        &self,
+        &mut self,
         chunk_renderer: &ChunkRenderer,
         camera: &camera::Camera,
         ui: &ui::State,
@@ -527,6 +630,8 @@ impl RenderContext {
         // 1. CPU PHASE: Cull chunks & precompute relative offsets ONCE
         // -----------------------------------------------------------------
         let visible_chunks = chunk_renderer.cull_visible_chunks(camera);
+        self.chunk_offset_buffer
+            .prepare(&self.device, &self.queue, &visible_chunks);
 
         let view = output
             .texture
@@ -573,6 +678,7 @@ impl RenderContext {
             // -----------------------------------------------------------------
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.chunk_offset_buffer.bind_group, &[]);
 
             render_pass.set_pipeline(&self.opaque_pipeline);
             ChunkRenderer::render_pass(&visible_chunks, &mut render_pass, |b| &b.opaque);

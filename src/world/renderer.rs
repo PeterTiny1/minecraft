@@ -141,9 +141,6 @@ impl ChunkRenderer {
 
     /// Performs frustum culling ONCE for the frame and computes camera-relative chunk positions.
     pub fn cull_visible_chunks<'a>(&'a self, camera: &Camera) -> Vec<VisibleChunk<'a>> {
-        let cam_chunk_x = (camera.get_position().x / 32.0).floor() as i32;
-        let cam_chunk_z = (camera.get_position().z / 32.0).floor() as i32;
-
         self.chunks
             .iter()
             .filter_map(|(loc, buffers)| {
@@ -152,9 +149,9 @@ impl ChunkRenderer {
                 }
 
                 if cuboid_intersects_frustum(&chunkcoord_to_aabb(*loc), camera) {
-                    let rel_x = ((loc[0] - cam_chunk_x) * 32) as f32;
+                    let rel_x = (loc[0] * 32) as f32;
                     let rel_y = 0.0; // Adjust if your chunks use Y-coordinates
-                    let rel_z = ((loc[1] - cam_chunk_z) * 32) as f32;
+                    let rel_z = (loc[1] * 32) as f32;
 
                     Some(VisibleChunk {
                         loc: *loc,
@@ -174,7 +171,7 @@ impl ChunkRenderer {
         render_pass: &mut wgpu::RenderPass<'a>,
         get_draw: impl Fn(&'a ChunkBuffers) -> &SubMeshDraw,
     ) {
-        for chunk in visible_chunks {
+        for (i, chunk) in visible_chunks.iter().enumerate() {
             let draw = get_draw(chunk.buffers);
             if draw.count == 0 {
                 continue;
@@ -187,7 +184,8 @@ impl ChunkRenderer {
             );
 
             let end = draw.start + draw.count;
-            render_pass.draw_indexed(draw.start..end, 0, 0..1);
+            let instance_idx = i as u32;
+            render_pass.draw_indexed(draw.start..end, 0, instance_idx..instance_idx + 1);
         }
     }
 }

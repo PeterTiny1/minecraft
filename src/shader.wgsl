@@ -2,8 +2,15 @@ struct Uniforms {
     view_proj: mat4x4<f32>,
 };
 
+struct ChunkOffset {
+    offset: vec3<f32>,
+    _padding: f32,
+}
+
 @group(1) @binding(0)
 var<uniform> uniforms: Uniforms;
+@group(2) @binding(0)
+var<storage, read> chunk_offsets: array<ChunkOffset>;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -19,10 +26,15 @@ struct VertexOutput {
 
 // --- Shared Vertex Shader ---
 @vertex
-fn vs_main(in: VertexInput) -> VertexOutput {
+fn vs_main(
+    in: VertexInput,
+    @builtin(instance_index) instance_idx: u32,
+) -> VertexOutput {
+    let chunk_offset = chunk_offsets[instance_idx].offset;
+    let local_pos = in.position + chunk_offset;
     var out: VertexOutput;
 
-    out.clip_position = uniforms.view_proj * vec4<f32>(in.position, 1.0);
+    out.clip_position = uniforms.view_proj * vec4<f32>(local_pos, 1.0);
 
     // 1. Unpack UV coordinates
     out.tex_coords = vec2<f32>(in.data.xy) / 16.0;

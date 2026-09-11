@@ -12,7 +12,7 @@ mod types;
 pub use chunk::ChunkManager;
 pub use generation::generate;
 pub use math::{block_index, nearest_unloaded_chunks, world_to_chunk_pos};
-pub use renderer::ChunkRenderer;
+pub use renderer::{ChunkRenderer, VisibleChunk};
 pub use save::save_chunks;
 pub use storage::WorldStorage;
 pub use types::{
