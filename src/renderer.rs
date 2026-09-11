@@ -523,6 +523,11 @@ impl RenderContext {
             }
         };
 
+        // -----------------------------------------------------------------
+        // 1. CPU PHASE: Cull chunks & precompute relative offsets ONCE
+        // -----------------------------------------------------------------
+        let visible_chunks = chunk_renderer.cull_visible_chunks(camera);
+
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -563,15 +568,22 @@ impl RenderContext {
                 multiview_mask: None,
             });
 
-            render_pass.set_pipeline(&self.opaque_pipeline);
+            // -----------------------------------------------------------------
+            // 2. GPU DRAW PHASE: Pass pre-culled slice into each draw layer
+            // -----------------------------------------------------------------
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
-            chunk_renderer.render_pass(&mut render_pass, camera, |b| &b.opaque);
-            render_pass.set_pipeline(&self.cutout_nocull_pipeline);
-            chunk_renderer.render_pass(&mut render_pass, camera, |b| &b.cutout_nocull);
-            render_pass.set_pipeline(&self.translucent_pipeline);
-            chunk_renderer.render_pass(&mut render_pass, camera, |b| &b.translucent);
 
+            render_pass.set_pipeline(&self.opaque_pipeline);
+            ChunkRenderer::render_pass(&visible_chunks, &mut render_pass, |b| &b.opaque);
+
+            render_pass.set_pipeline(&self.cutout_nocull_pipeline);
+            ChunkRenderer::render_pass(&visible_chunks, &mut render_pass, |b| &b.cutout_nocull);
+
+            render_pass.set_pipeline(&self.translucent_pipeline);
+            ChunkRenderer::render_pass(&visible_chunks, &mut render_pass, |b| &b.translucent);
+
+            // UI Rendering
             render_pass.set_pipeline(&ui.pipeline);
             render_pass.set_bind_group(0, &ui.crosshair_bind_group, &[]);
             render_pass.set_bind_group(1, &ui.uniform_bind_group, &[]);

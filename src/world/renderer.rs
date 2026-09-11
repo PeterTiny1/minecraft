@@ -24,8 +24,17 @@ pub struct ChunkBuffers {
 impl ChunkBuffers {
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.opaque.count == 0 && self.translucent.count == 0
+        self.opaque.count == 0 && self.cutout_nocull.count == 0 && self.translucent.count == 0
     }
+}
+
+/// Represents a chunk that passed frustum culling for the current frame.
+/// Holds the pre-calculated camera-relative offset for precision rendering.
+pub struct VisibleChunk<'a> {
+    pub loc: [i32; 2],
+    pub buffers: &'a ChunkBuffers,
+    /// Offset relative to the camera's current chunk origin: `(chunk_pos - cam_chunk_pos) * 32.0`
+    pub relative_offset: [f32; 3],
 }
 
 #[derive(Default)]
@@ -45,7 +54,10 @@ impl ChunkRenderer {
         let data = &mesh.data;
 
         // Check if chunk is completely empty across all pipelines
-        if data.opaque_indices.is_empty() && data.translucent_indices.is_empty() {
+        if data.opaque_indices.is_empty()
+            && data.cutout_nocull_indices.is_empty()
+            && data.translucent_indices.is_empty()
+        {
             self.chunks.remove(&mesh.loc);
             return;
         }
@@ -56,7 +68,7 @@ impl ChunkRenderer {
         let translucent_count = data.translucent_indices.len() as u32;
 
         let opaque_v_len = data.opaque_vertices.len() as u32;
-        let cutout_nocull_v_len = data.cutout_nocull_vertices.iter().len() as u32;
+        let cutout_nocull_v_len = data.cutout_nocull_vertices.len() as u32;
 
         // Re-index cutout and translucent indices relative to the combined vertex buffer
         let mut combined_indices =
@@ -127,27 +139,55 @@ impl ChunkRenderer {
         self.chunks.remove(loc);
     }
 
-    /// Renders a specific pass (Opaque, Cutout, or Translucent) across all visible chunks.
+    /// Performs frustum culling ONCE for the frame and computes camera-relative chunk positions.
+    pub fn cull_visible_chunks<'a>(&'a self, camera: &Camera) -> Vec<VisibleChunk<'a>> {
+        let cam_chunk_x = (camera.get_position().x / 32.0).floor() as i32;
+        let cam_chunk_z = (camera.get_position().z / 32.0).floor() as i32;
+
+        self.chunks
+            .iter()
+            .filter_map(|(loc, buffers)| {
+                if buffers.is_empty() {
+                    return None;
+                }
+
+                if cuboid_intersects_frustum(&chunkcoord_to_aabb(*loc), camera) {
+                    let rel_x = ((loc[0] - cam_chunk_x) * 32) as f32;
+                    let rel_y = 0.0; // Adjust if your chunks use Y-coordinates
+                    let rel_z = ((loc[1] - cam_chunk_z) * 32) as f32;
+
+                    Some(VisibleChunk {
+                        loc: *loc,
+                        buffers,
+                        relative_offset: [rel_x, rel_y, rel_z],
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Renders a specific pass (Opaque, Cutout, or Translucent) across pre-culled visible chunks.
     pub fn render_pass<'a>(
-        &'a self,
+        visible_chunks: &'a [VisibleChunk<'a>],
         render_pass: &mut wgpu::RenderPass<'a>,
-        camera: &Camera,
         get_draw: impl Fn(&'a ChunkBuffers) -> &SubMeshDraw,
     ) {
-        for (loc, buffers) in &self.chunks {
-            let draw = get_draw(buffers);
+        for chunk in visible_chunks {
+            let draw = get_draw(chunk.buffers);
             if draw.count == 0 {
                 continue;
             }
 
-            if cuboid_intersects_frustum(&chunkcoord_to_aabb(*loc), camera) {
-                render_pass.set_vertex_buffer(0, buffers.vertex_buffer.slice(..));
-                render_pass
-                    .set_index_buffer(buffers.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.set_vertex_buffer(0, chunk.buffers.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(
+                chunk.buffers.index_buffer.slice(..),
+                wgpu::IndexFormat::Uint32,
+            );
 
-                let end = draw.start + draw.count;
-                render_pass.draw_indexed(draw.start..end, 0, 0..1);
-            }
+            let end = draw.start + draw.count;
+            render_pass.draw_indexed(draw.start..end, 0, 0..1);
         }
     }
 }
