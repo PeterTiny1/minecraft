@@ -3,16 +3,9 @@ use std::f32::consts::FRAC_1_SQRT_2;
 use crate::{
     block::{self, BlockType},
     mesh::{Data, LocatedChunk, textures::get_texture_indices},
-    renderer::Vertex,
+    renderer::{CompactVertex, Vertex},
     world::{CHUNK_DEPTH_I32, CHUNK_HEIGHT_I32, CHUNK_WIDTH_I32, block_index},
 };
-
-// --- Mesh Constants ---
-const TOP_BRIGHTNESS: f32 = 1.0;
-const BOTTOM_BRIGHTNESS: f32 = 0.6;
-const SIDE_BRIGHTNESS: f32 = 0.8;
-const FRONT_BRIGHTNESS: f32 = 0.9;
-const BACK_BRIGHTNESS: f32 = 0.7;
 
 const CLOSE_CORNER: f32 = 0.5 + 0.5 * FRAC_1_SQRT_2;
 const FAR_CORNER: f32 = 0.5 - 0.5 * FRAC_1_SQRT_2;
@@ -31,9 +24,7 @@ const GRASS_INDICES: [u32; 12] = [
 struct SolidFaceConfig {
     dir: (i32, i32, i32),
     tex_idx: usize,
-    base_brightness: f32,
     ao_offsets: [((i32, i32, i32), (i32, i32, i32), (i32, i32, i32)); 4],
-    v_pos: [[f32; 3]; 4],
 }
 
 struct LiquidSideFace {
@@ -48,108 +39,66 @@ const SOLID_FACES: [SolidFaceConfig; 6] = [
     SolidFaceConfig {
         dir: (1, 0, 0),
         tex_idx: 2,
-        base_brightness: SIDE_BRIGHTNESS,
         ao_offsets: [
             ((1, 1, 0), (1, 0, 1), (1, 1, 1)),
             ((1, -1, 0), (1, 0, 1), (1, -1, 1)),
             ((1, -1, 0), (1, 0, -1), (1, -1, -1)),
             ((1, 1, 0), (1, 0, -1), (1, 1, -1)),
         ],
-        v_pos: [
-            [1.0, 1.0, 1.0],
-            [1.0, 0.0, 1.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.0],
-        ],
     },
     // -X (Left)
     SolidFaceConfig {
         dir: (-1, 0, 0),
         tex_idx: 4,
-        base_brightness: SIDE_BRIGHTNESS,
         ao_offsets: [
             ((-1, 1, 0), (-1, 0, -1), (-1, 1, -1)),
             ((-1, -1, 0), (-1, 0, -1), (-1, -1, -1)),
             ((-1, -1, 0), (-1, 0, 1), (-1, -1, 1)),
             ((-1, 1, 0), (-1, 0, 1), (-1, 1, 1)),
         ],
-        v_pos: [
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 1.0, 1.0],
-        ],
     },
     // +Y (Top)
     SolidFaceConfig {
         dir: (0, 1, 0),
         tex_idx: 0,
-        base_brightness: TOP_BRIGHTNESS,
         ao_offsets: [
             ((-1, 1, 0), (0, 1, -1), (-1, 1, -1)),
             ((-1, 1, 0), (0, 1, 1), (-1, 1, 1)),
             ((1, 1, 0), (0, 1, 1), (1, 1, 1)),
             ((1, 1, 0), (0, 1, -1), (1, 1, -1)),
         ],
-        v_pos: [
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [1.0, 1.0, 0.0],
-        ],
     },
     // -Y (Bottom)
     SolidFaceConfig {
         dir: (0, -1, 0),
         tex_idx: 5,
-        base_brightness: BOTTOM_BRIGHTNESS,
         ao_offsets: [
             ((1, -1, 0), (0, -1, -1), (1, -1, -1)),
             ((1, -1, 0), (0, -1, 1), (1, -1, 1)),
             ((-1, -1, 0), (0, -1, 1), (-1, -1, 1)),
             ((-1, -1, 0), (0, -1, -1), (-1, -1, -1)),
         ],
-        v_pos: [
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 0.0],
-        ],
     },
     // +Z (Front)
     SolidFaceConfig {
         dir: (0, 0, 1),
         tex_idx: 1,
-        base_brightness: FRONT_BRIGHTNESS,
         ao_offsets: [
             ((0, 1, 1), (-1, 0, 1), (-1, 1, 1)),
             ((0, -1, 1), (-1, 0, 1), (-1, -1, 1)),
             ((0, -1, 1), (1, 0, 1), (1, -1, 1)),
             ((0, 1, 1), (1, 0, 1), (1, 1, 1)),
         ],
-        v_pos: [
-            [0.0, 1.0, 1.0],
-            [0.0, 0.0, 1.0],
-            [1.0, 0.0, 1.0],
-            [1.0, 1.0, 1.0],
-        ],
     },
     // -Z (Back)
     SolidFaceConfig {
         dir: (0, 0, -1),
         tex_idx: 3,
-        base_brightness: BACK_BRIGHTNESS,
         ao_offsets: [
             ((0, 1, -1), (1, 0, -1), (1, 1, -1)),
             ((0, -1, -1), (1, 0, -1), (1, -1, -1)),
             ((0, -1, -1), (-1, 0, -1), (-1, -1, -1)),
             ((0, 1, -1), (-1, 0, -1), (-1, 1, -1)),
-        ],
-        v_pos: [
-            [1.0, 1.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
         ],
     },
 ];
@@ -187,7 +136,7 @@ pub struct ChunkMeshBuilder<'a> {
     neighbor_grid: [[Option<&'a LocatedChunk>; 3]; 3],
     local_pos: (i32, i32, i32),
     global_pos: (i32, i32, i32),
-    opaque_vertices: Vec<Vertex>,
+    opaque_vertices: Vec<CompactVertex>,
     opaque_indices: Vec<u32>,
     cutout_nocull_vertices: Vec<Vertex>,
     cutout_nocull_indices: Vec<u32>,
@@ -346,34 +295,23 @@ impl<'a> ChunkMeshBuilder<'a> {
     }
 
     #[inline(always)]
-    fn calculate_ao_light(
-        &self,
-        side1: bool,
-        side2: bool,
-        corner: bool,
-        default_brightness: f32,
-    ) -> u8 {
-        let ao_level = if side1 && side2 {
+    fn calculate_ao_level(&self, side1: bool, side2: bool, corner: bool) -> u8 {
+        if side1 && side2 {
             0
         } else {
             3 - (side1 as u8 + side2 as u8 + corner as u8)
-        };
-
-        let ao_factor = match ao_level {
-            0 => 0.4,
-            1 => 0.6,
-            2 => 0.8,
-            _ => 1.0,
-        };
-
-        (default_brightness * ao_factor * 255.0) as u8
+        }
     }
 
     fn generate_solid(&mut self, tex_indices: [u8; 6]) {
-        let [x, y, z] = self.local_f32();
-        let uv_coords = [[0, 0], [0, 16], [16, 16], [16, 0]];
+        // Local block coordinates (0..31, 0..255, 0..31)
+        let (x, y, z) = (
+            self.local_pos.0 as u32,
+            self.local_pos.1 as u32,
+            self.local_pos.2 as u32,
+        );
 
-        for face in &SOLID_FACES {
+        for (face_idx, face) in SOLID_FACES.iter().enumerate() {
             let (dx, dy, dz) = face.dir;
             if !self.should_draw_face(dx, dy, dz) {
                 continue;
@@ -382,20 +320,27 @@ impl<'a> ChunkMeshBuilder<'a> {
             let tex_index = tex_indices[face.tex_idx];
             self.extend_opaque_indices(&QUAD_INDICES);
 
-            for (i, &offset) in face.v_pos.iter().enumerate() {
-                let (s1, s2, c) = face.ao_offsets[i];
-                let light = self.calculate_ao_light(
+            // Push 4 vertices per face quad (corner_idx 0..3)
+            for corner_idx in 0..4 {
+                let (s1, s2, c) = face.ao_offsets[corner_idx];
+
+                // Calculate discrete AO level (0..3) instead of float multiplication
+                let ao_level = self.calculate_ao_level(
                     self.is_neighbor_solid(s1.0, s1.1, s1.2),
                     self.is_neighbor_solid(s2.0, s2.1, s2.2),
                     self.is_neighbor_solid(c.0, c.1, c.2),
-                    face.base_brightness,
                 );
 
-                let uv = uv_coords[i];
-                self.opaque_vertices.push(Vertex {
-                    position: [x + offset[0], y + offset[1], z + offset[2]],
-                    data: [uv[0], uv[1], tex_index, light],
-                });
+                // Construct compact 32-bit integer vertex
+                self.opaque_vertices.push(CompactVertex::new(
+                    x,
+                    y,
+                    z,
+                    corner_idx as u32,
+                    face_idx as u32,
+                    ao_level,
+                    tex_index,
+                ));
             }
         }
     }

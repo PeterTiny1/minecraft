@@ -102,6 +102,36 @@ impl Vertex {
     }
 }
 
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct CompactVertex(pub u32);
+
+impl CompactVertex {
+    #[inline(always)]
+    pub fn new(x: u32, y: u32, z: u32, vertex_idx: u32, face: u32, ao: u8, tex: u8) -> Self {
+        let packed = (x & 0x1F)
+            | ((y & 0xFF) << 5)
+            | ((z & 0x1F) << 13)
+            | ((vertex_idx & 0x03) << 18)
+            | ((face & 0x07) << 20)
+            | (((ao as u32) & 0x03) << 23)
+            | (((tex as u32) & 0x7F) << 25);
+        Self(packed)
+    }
+
+    const fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[wgpu::VertexAttribute {
+                offset: 0,
+                shader_location: 0,
+                format: wgpu::VertexFormat::Uint32,
+            }],
+        }
+    }
+}
+
 #[repr(C, align(16))]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Uniforms {
@@ -530,11 +560,11 @@ impl RenderContext {
             &pipeline_layout,
             config.format,
             Some(texture::Texture::DEPTH_FORMAT),
-            &[Some(Vertex::desc())],
+            &[Some(CompactVertex::desc())],
             &shader,
             PipelineConfig {
                 label: "Opaque Pipeline",
-                vs_entry: "vs_main",
+                vs_entry: "vs_compact",
                 fs_entry: "fs_opaque",
                 cull_mode: Some(wgpu::Face::Back),
                 depth_write_enabled: true,
@@ -550,7 +580,7 @@ impl RenderContext {
             &shader,
             PipelineConfig {
                 label: "Cutout Double-Sided Pipeline",
-                vs_entry: "vs_main",
+                vs_entry: "vs_explicit",
                 fs_entry: "fs_cutout",
                 cull_mode: None, // No culling so plants are visible from both sides
                 depth_write_enabled: true,
@@ -566,7 +596,7 @@ impl RenderContext {
             &shader,
             PipelineConfig {
                 label: "Translucent Pipeline",
-                vs_entry: "vs_main",
+                vs_entry: "vs_explicit",
                 fs_entry: "fs_translucent",
                 cull_mode: None,
                 depth_write_enabled: false,

@@ -5,11 +5,14 @@ use std::sync::Arc;
 
 pub use builder::ChunkMeshBuilder;
 
-use crate::{ChunkData, renderer::Vertex};
+use crate::{
+    ChunkData,
+    renderer::{CompactVertex, Vertex},
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct Data {
-    pub opaque_vertices: Vec<Vertex>,
+    pub opaque_vertices: Vec<CompactVertex>,
     pub opaque_indices: Vec<u32>,
     pub cutout_nocull_vertices: Vec<Vertex>,
     pub cutout_nocull_indices: Vec<u32>,
