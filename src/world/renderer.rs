@@ -35,6 +35,7 @@ pub struct VisibleChunk<'a> {
     pub loc: [i32; 2],
     pub buffers: &'a ChunkBuffers,
     pub relative_offset: [f32; 3],
+    pub distance_sq: f32,
 }
 
 #[derive(Default)]
@@ -152,28 +153,31 @@ impl ChunkRenderer {
     }
 
     pub fn cull_visible_chunks<'a>(&'a self, camera: &Camera) -> Vec<VisibleChunk<'a>> {
-        self.chunks
-            .iter()
-            .filter_map(|(loc, buffers)| {
-                if buffers.is_empty() {
-                    return None;
-                }
+        let mut visible = Vec::new();
+        let camera_pos = camera.get_position();
 
-                if cuboid_intersects_frustum(&chunkcoord_to_aabb(*loc), camera) {
-                    let rel_x = (loc[0] * 32) as f32;
-                    let rel_y = 0.0;
-                    let rel_z = (loc[1] * 32) as f32;
+        for (&loc, buffers) in &self.chunks {
+            if buffers.is_empty() {
+                continue;
+            }
 
-                    Some(VisibleChunk {
-                        loc: *loc,
-                        buffers,
-                        relative_offset: [rel_x, rel_y, rel_z],
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect()
+            let aabb = chunkcoord_to_aabb(loc);
+            if cuboid_intersects_frustum(&aabb, camera) {
+                // Calculate chunk center relative to camera
+                let center = (aabb.min + aabb.max) * 0.5;
+                let rel = center - camera_pos;
+                let dist_sq = rel.x * rel.x + rel.y * rel.y + rel.z * rel.z;
+
+                visible.push(VisibleChunk {
+                    loc,
+                    buffers,
+                    relative_offset: [loc[0] as f32 * 32.0, 0.0, loc[1] as f32 * 32.0],
+                    distance_sq: dist_sq,
+                });
+            }
+        }
+
+        visible
     }
 
     /// Renders a specific pass (Opaque, Cutout, or Translucent) across pre-culled visible chunks.
@@ -204,6 +208,33 @@ impl ChunkRenderer {
 
             // Note: base_vertex is 0 because vertex_buffer is sliced to the submesh start!
             render_pass.draw_indexed(draw.index_start..end, 0, instance_idx..instance_idx + 1);
+        }
+    }
+
+    pub fn render_pass_reversed<'a>(
+        visible_chunks: &[VisibleChunk<'a>],
+        render_pass: &mut wgpu::RenderPass<'a>,
+        submesh_selector: impl Fn(&ChunkBuffers) -> &SubMeshDraw,
+    ) {
+        let total = visible_chunks.len();
+        for (i, chunk) in visible_chunks.iter().rev().enumerate() {
+            let draw = submesh_selector(chunk.buffers);
+            if draw.index_count == 0 {
+                continue;
+            }
+
+            let original_index = (total - 1 - i) as u32;
+            let end = draw.index_start + draw.index_count;
+
+            render_pass.set_vertex_buffer(
+                0,
+                chunk.buffers.vertex_buffer.slice(draw.vertex_byte_offset..),
+            );
+            render_pass.set_index_buffer(
+                chunk.buffers.index_buffer.slice(..),
+                wgpu::IndexFormat::Uint32,
+            );
+            render_pass.draw_indexed(draw.index_start..end, 0, original_index..original_index + 1);
         }
     }
 }

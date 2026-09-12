@@ -659,7 +659,12 @@ impl RenderContext {
         // -----------------------------------------------------------------
         // 1. CPU PHASE: Cull chunks & precompute relative offsets ONCE
         // -----------------------------------------------------------------
-        let visible_chunks = chunk_renderer.cull_visible_chunks(camera);
+        let mut visible_chunks = chunk_renderer.cull_visible_chunks(camera);
+        visible_chunks.sort_unstable_by(|a, b| {
+            a.distance_sq
+                .partial_cmp(&b.distance_sq)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         self.chunk_offset_buffer
             .prepare(&self.device, &self.queue, &visible_chunks);
 
@@ -717,7 +722,9 @@ impl RenderContext {
             ChunkRenderer::render_pass(&visible_chunks, &mut render_pass, |b| &b.cutout_nocull);
 
             render_pass.set_pipeline(&self.translucent_pipeline);
-            ChunkRenderer::render_pass(&visible_chunks, &mut render_pass, |b| &b.translucent);
+            ChunkRenderer::render_pass_reversed(&visible_chunks, &mut render_pass, |b| {
+                &b.translucent
+            });
 
             // UI Rendering
             render_pass.set_pipeline(&ui.pipeline);
