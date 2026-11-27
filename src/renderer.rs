@@ -2,7 +2,7 @@ use core::fmt;
 use std::sync::Arc;
 
 use crate::{
-    camera, texture, ui,
+    RENDER_DISTANCE, camera, texture, ui,
     world::{ChunkRenderer, VisibleChunk},
 };
 use vek::{Aabb, Mat4, Vec4};
@@ -154,11 +154,19 @@ pub struct ChunkOffsetBuffer {
     pub buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
     pub layout: wgpu::BindGroupLayout,
-    pub capacity: usize, // Track capacity in elements to reallocate as needed
+    pub capacity: usize,
 }
 
 impl ChunkOffsetBuffer {
-    pub fn new(device: &wgpu::Device) -> Self {
+    /// Calculates the maximum possible visible chunks for a given 2D render distance,
+    /// rounded up to the nearest power of two for optimal buffer alignment.
+    pub fn max_capacity_for_render_distance(render_distance: usize) -> usize {
+        let side = (render_distance * 2) + 1;
+        let max_grid_chunks = side * side;
+        max_grid_chunks.next_power_of_two()
+    }
+
+    pub fn new(device: &wgpu::Device, render_distance: usize) -> Self {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Chunk Offset Bind Group Layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -173,10 +181,11 @@ impl ChunkOffsetBuffer {
             }],
         });
 
-        let initial_capacity = 256; // Reasonable starting count
+        let capacity = Self::max_capacity_for_render_distance(render_distance);
+
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Chunk Offset Storage Buffer"),
-            size: (initial_capacity * std::mem::size_of::<[f32; 4]>()) as wgpu::BufferAddress,
+            size: (capacity * std::mem::size_of::<[f32; 4]>()) as wgpu::BufferAddress,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -194,22 +203,18 @@ impl ChunkOffsetBuffer {
             buffer,
             bind_group,
             layout,
-            capacity: initial_capacity,
+            capacity,
         }
     }
 
-    pub fn prepare(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        visible_chunks: &[VisibleChunk],
-    ) {
+    pub fn prepare(&mut self, queue: &wgpu::Queue, visible_chunks: &[VisibleChunk]) {
         if visible_chunks.is_empty() {
             return;
         }
 
-        // 1. Pack relative offsets into 16-byte aligned vec4s ([x, y, z, pad])
-        let raw_data: Vec<[f32; 4]> = visible_chunks
+        let count = visible_chunks.len().min(self.capacity);
+
+        let raw_data: Vec<[f32; 4]> = visible_chunks[..count]
             .iter()
             .map(|c| {
                 [
@@ -221,27 +226,6 @@ impl ChunkOffsetBuffer {
             })
             .collect();
 
-        // 2. Reallocate buffer and bind group if frame exceeds current capacity
-        if raw_data.len() > self.capacity {
-            self.capacity = raw_data.len().next_power_of_two();
-            self.buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Chunk Offset Storage Buffer"),
-                size: (self.capacity * std::mem::size_of::<[f32; 4]>()) as wgpu::BufferAddress,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-
-            self.bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Chunk Offset Bind Group"),
-                layout: &self.layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.buffer.as_entire_binding(),
-                }],
-            });
-        }
-
-        // 3. Write data to the GPU buffer
         queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&raw_data));
     }
 }
@@ -541,7 +525,8 @@ impl RenderContext {
         });
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
-        let chunk_offset_buffer = ChunkOffsetBuffer::new(&device);
+        let chunk_offset_buffer =
+            ChunkOffsetBuffer::new(&device, (RENDER_DISTANCE / 32.0) as usize);
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Chunk Pipeline Layout"),
             bind_group_layouts: &[
@@ -666,7 +651,7 @@ impl RenderContext {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         self.chunk_offset_buffer
-            .prepare(&self.device, &self.queue, &visible_chunks);
+            .prepare(&self.queue, &visible_chunks);
 
         let view = output
             .texture
